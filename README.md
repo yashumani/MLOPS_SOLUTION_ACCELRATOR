@@ -1,4 +1,4 @@
-# Proposal for Integrating SAVYMINDS GenAI Platform in Executive Reporting at Verizon
+# Proposal for Integrating SAVYMINDS GenAI Platform in Executive Reporting
 
 ## Executive Summary
 
