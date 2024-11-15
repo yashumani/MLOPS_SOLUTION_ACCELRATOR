@@ -21,7 +21,7 @@
 
 ### **Step 3: Platform Setup and Data Integration**
 
-- **Example Scenario**: Corporate data often resides in multiple systems (e.g., CRM, ERP, Data Warehouse), requiring integration for smooth AI processing.
+- **Example Scenario**: Corporate data often resides in multiple systems, requiring integration for smooth AI processing.
 - **Action**: Collaborate with IT and data teams to enable SAVYMINDS to securely access necessary data sources for automated content generation.
   - **Best Practice**: Conduct a data audit to ensure SAVYMINDS has access to accurate, up-to-date data for producing newsletter content and podcast summaries.
 
