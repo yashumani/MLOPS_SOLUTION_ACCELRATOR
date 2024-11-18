@@ -8,7 +8,8 @@ This document provides a detailed breakdown of Verizon's KPIs, their definitions
 - **Definition**: Comprises three activity codes:
   - **Activations (ACTIVITY_CD = 'AC')**: Represents a new line of service.
   - **30-Day Deactivations (ACTIVITY_CD = 'D3')** and **60-Day Deactivations (ACTIVITY_CD = 'D6')**: Lines deactivated within 30 or 60 days.
-- **Formula**: Gross Adds = ACTIVITY_CD = 'AC' - (ACTIVITY_CD = 'D3' or ACTIVITY_CD = 'D6')
+- **Formula**:
+Gross Adds = ACTIVITY_CD = 'AC' - (ACTIVITY_CD = 'D3' or ACTIVITY_CD = 'D6')
 
 - **Key Note**: D3 and D6 offset AC transactions to ensure 30/60-day disconnects are excluded.
 - **Source Table**: `DLA_SUM_FACT_V`
