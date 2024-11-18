@@ -1,4 +1,4 @@
-# Key KPIs: Understanding How Our Business is Measured
+# Key KPIs: Understanding How Verizon's Business is Measured
 
 This document provides a detailed breakdown of Verizon's KPIs, their definitions, formulas, and source tables.
 
