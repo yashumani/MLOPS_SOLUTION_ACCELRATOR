@@ -6,20 +6,17 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, cross_val_score, KFold
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.decomposition import PCA
 from sklearn.metrics import mean_squared_error, r2_score, classification_report, mean_absolute_error
 from h2o.automl import H2OAutoML
 import h2o
 from fastapi import FastAPI
 import pickle
-from scipy.stats import ks_2samp
+from evidently import ColumnMapping
+from evidently.dashboard import Dashboard
+from evidently.dashboard.tabs import DataDriftTab
 from kaggle.api.kaggle_api_extended import KaggleApi
 import datasets
-import mlflow
-import mlflow.sklearn
-import mlflow.h2o
 
-# Run the script and check the output. The script will load the Boston Housing dataset, preprocess the data, run an H2O AutoML model, evaluate the model, and monitor data drift. The data drift report will be saved in the Reports folder.
 # Constants
 DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/"
 TARGET_COLUMN = "medv"
@@ -55,7 +52,7 @@ def load_data(filepath):
 def clean_data(df):
     print("\n--- Data Cleaning ---")
     missing_values = df.isnull().sum().sum()
-    if (missing_values > 0):
+    if missing_values > 0:
         df = df.dropna()
     for col in df.select_dtypes(include=[np.number]).columns:
         lower_bound = df[col].quantile(0.01)
@@ -82,10 +79,17 @@ def preprocess_data(df, target_column, degree=DEGREE):
 
 # AutoML with H2O
 def run_h2o_automl(X_train, y_train, X_test, max_models=10):
-    train = h2o.H2OFrame(pd.concat([X_train, y_train], axis=1))
-    test = h2o.H2OFrame(pd.DataFrame(X_test, columns=train.columns[:-1]))
+    feature_columns = [f"feature_{i}" for i in range(X_train.shape[1])]
+
+    # Create H2OFrame with consistent column names
+    train = h2o.H2OFrame(pd.concat([pd.DataFrame(X_train, columns=feature_columns), pd.DataFrame(y_train, columns=[TARGET_COLUMN])], axis=1))
+    test = h2o.H2OFrame(pd.DataFrame(X_test, columns=feature_columns))
+
+    # Train AutoML
     aml = H2OAutoML(max_models=max_models, seed=42)
     aml.train(y=TARGET_COLUMN, training_frame=train)
+    
+    # Display leaderboard
     leaderboard = aml.leaderboard.as_data_frame()
     print(leaderboard)
     return aml.leader
@@ -96,23 +100,17 @@ def evaluate_model(y_true, y_pred, problem_type="regression"):
         mae = mean_absolute_error(y_true, y_pred)
         r2 = r2_score(y_true, y_pred)
         print(f"MAE: {mae:.4f}, R²: {r2:.4f}")
-        return mae, r2
     elif problem_type == "classification":
-        report = classification_report(y_true, y_pred, output_dict=True)
         print(classification_report(y_true, y_pred))
-        return report
 
 # Drift Detection
 def monitor_data_drift(reference_data, current_data):
-    drift_report = {}
-    for column in reference_data.columns:
-        stat, p_value = ks_2samp(reference_data[column], current_data[column])
-        drift_report[column] = {"statistic": stat, "p_value": p_value}
-    with open(os.path.join(REPORTS_PATH, "data_drift_report.txt"), "w") as f:
-        for column, metrics in drift_report.items():
-            f.write(f"{column}: {metrics}\n")
-    print("Data drift report saved.")
+    column_mapping = ColumnMapping()
+    dashboard = Dashboard(tabs=[DataDriftTab()])
+    dashboard.calculate(reference_data, current_data, column_mapping=column_mapping)
+    dashboard.save(os.path.join(REPORTS_PATH, "data_drift_report.html"))
 
+# Deployment with FastAPI
 app = FastAPI()
 
 @app.post("/predict/")
@@ -124,37 +122,23 @@ def predict(data: dict):
 
 # Main Workflow
 def main():
-    mlflow.set_experiment("Boston Housing Experiment")
-    with mlflow.start_run():
-        df = load_data(os.path.join(DATA_PATH, "BostonHousing.csv"))
-        if df is not None:
-            if TARGET_COLUMN not in df.columns:
-                print(f"Target column '{TARGET_COLUMN}' not found in the dataset.")
-                return
-            df = clean_data(df)
-            X, y = preprocess_data(df, TARGET_COLUMN, degree=DEGREE)
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    df = load_data(os.path.join(DATA_PATH, "BostonHousing.csv"))
+    if df is not None:
+        df = clean_data(df)
+        X, y = preprocess_data(df, TARGET_COLUMN, degree=DEGREE)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-            # Log parameters
-            mlflow.log_param("degree", DEGREE)
-            mlflow.log_param("alpha", ALPHA)
+        # Run H2O AutoML
+        best_model = run_h2o_automl(X_train, y_train, X_test)
 
-            # Run H2O AutoML
-            best_model = run_h2o_automl(pd.DataFrame(X_train), pd.DataFrame(y_train), pd.DataFrame(X_test))
+        # Evaluate the model
+        feature_columns = [f"feature_{i}" for i in range(X_train.shape[1])]
+        h2o_test = h2o.H2OFrame(pd.DataFrame(X_test, columns=feature_columns))
+        y_pred = best_model.predict(h2o_test).as_data_frame().values.ravel()
+        evaluate_model(y_test, y_pred, problem_type="regression")
 
-            # Evaluate the model
-            y_pred = best_model.predict(h2o.H2OFrame(X_test)).as_data_frame().values.ravel()
-            mae, r2 = evaluate_model(y_test, y_pred, problem_type="regression")
-
-            # Log metrics
-            mlflow.log_metric("mae", mae)
-            mlflow.log_metric("r2", r2)
-
-            # Log model
-            mlflow.h2o.log_model(best_model, "model")
-
-            # Monitor Data Drift
-            monitor_data_drift(pd.DataFrame(X_train), pd.DataFrame(X_test))
+        # Monitor Data Drift
+        monitor_data_drift(pd.DataFrame(X_train, columns=feature_columns), pd.DataFrame(X_test, columns=feature_columns))
 
 if __name__ == "__main__":
     main()
