@@ -12,12 +12,14 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor
 from scipy.stats import jarque_bera
 from pandas_profiling import ProfileReport
 
-# Define paths
-DATA_PATH = "c:/Users/yashu/Desktop/SAVYMINDS/ML Ops/YS_MVP/data/BostonHousing.csv"
-REPORTS_PATH = "c:/Users/yashu/Desktop/SAVYMINDS/ML Ops/YS_MVP/Reports"
-TARGET_COLUMN = "medv"  # Target column for prediction
+# Constants
+DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/ML Ops/YS_MVP/data/BostonHousing.csv"
+TARGET_COLUMN = "medv"
+DEGREE = 2
+ALPHA = 1.0
 
 # Create Reports directory if it doesn't exist
+REPORTS_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/ML Ops/YS_MVP/ML Scripts/Linear Regression/Reports"
 os.makedirs(REPORTS_PATH, exist_ok=True)
 
 # Load dataset
@@ -51,7 +53,7 @@ def clean_data(df):
     return df
 
 # EDA
-def perform_eda(df):
+def perform_eda(df, target_column):
     """Perform exploratory data analysis."""
     print("\n--- Exploratory Data Analysis ---")
     
@@ -69,9 +71,9 @@ def perform_eda(df):
     # Target variable distribution
     print("\n### Target Variable Distribution ###")
     plt.figure(figsize=(8, 6))
-    sns.histplot(df[TARGET_COLUMN], kde=True, bins=30)
-    plt.title(f"Distribution of {TARGET_COLUMN}")
-    plt.xlabel(TARGET_COLUMN)
+    sns.histplot(df[target_column], kde=True, bins=30)
+    plt.title(f"Distribution of {target_column}")
+    plt.xlabel(target_column)
     plt.ylabel("Frequency")
     plt.savefig(os.path.join(REPORTS_PATH, "Target_Variable_Distribution.png"))
     plt.show()
@@ -79,10 +81,10 @@ def perform_eda(df):
     # Pandas profiling
     print("\n### Generating Profiling Report ###")
     profile = ProfileReport(df, title="Pandas Profiling Report", explorative=True)
-    profile.to_file(os.path.join(REPORTS_PATH, "Linear_Regression_EDA_Report.html"))
+    profile.to_file(os.path.join(REPORTS_PATH, "EDA_Report.html"))
 
 # Preprocessing
-def preprocess_data(df, target_column, degree=2, n_components=0.95):
+def preprocess_data(df, target_column, degree=2):
     """Preprocess the dataset."""
     # Select numeric features
     num_df = df.select_dtypes(include=[np.number])
@@ -134,23 +136,9 @@ def train_and_evaluate(X, y, model_type="linear", alpha=1.0):
     
     return model, mse, r2
 
-# Narrative Generator
-def generate_narrative(mse, r2, cross_val_scores, stats_summary):
-    """Generate narratives based on model performance."""
-    print("\n--- Key Observations ---")
-    print(f"Model Performance:")
-    print(f"- The R-squared value on the test set is {r2:.4f}, indicating that the model explains a moderate-to-high proportion of the variance.")
-    print(f"- The Mean Squared Error (MSE) is {mse:.4f}, indicating the average squared difference between actual and predicted values.")
-    
-    print("\nRecommendations for Improvement:")
-    if r2 < 0.7:
-        print("- Consider adding more features or improving feature selection.")
-    print("- Use Ridge or Lasso regression to handle multicollinearity.")
-    print("- Perform PCA to reduce dimensionality and improve generalization.")
-
 # Main workflow
 def main():
-    print("Boston Housing Price Prediction")
+    print("Automated Machine Learning Workflow")
     
     # Load dataset
     df = load_data(DATA_PATH)
@@ -159,16 +147,30 @@ def main():
         df = clean_data(df)
         
         # Perform EDA
-        perform_eda(df)
+        perform_eda(df, TARGET_COLUMN)
         
         # Preprocess data
-        X, y = preprocess_data(df, TARGET_COLUMN)
+        X, y = preprocess_data(df, TARGET_COLUMN, degree=DEGREE)
         
-        # Train and evaluate model
-        model, mse, r2 = train_and_evaluate(X, y, model_type="ridge", alpha=1.0)
+        # Train and evaluate models
+        models = ["linear", "ridge", "lasso"]
+        results = {}
+        for model_type in models:
+            model, mse, r2 = train_and_evaluate(X, y, model_type=model_type, alpha=ALPHA)
+            results[model_type] = {"model": model, "mse": mse, "r2": r2}
         
-        # Generate narrative
-        generate_narrative(mse, r2, None, None)
+        # Display results
+        print("\n--- Model Comparison ---")
+        for model_type, metrics in results.items():
+            print(f"Model: {model_type.capitalize()}")
+            print(f"Mean Squared Error: {metrics['mse']:.4f}")
+            print(f"R-squared: {metrics['r2']:.4f}")
+            print("-" * 30)
+        
+        # Let user choose the best model
+        best_model_type = input("Enter the model type to use for prediction (linear, ridge, lasso): ")
+        best_model = results[best_model_type]["model"]
+        print(f"Selected Model: {best_model_type.capitalize()}")
 
 if __name__ == "__main__":
     main()
