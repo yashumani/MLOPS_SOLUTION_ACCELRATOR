@@ -14,7 +14,11 @@ from pandas_profiling import ProfileReport
 
 # Define paths
 DATA_PATH = "c:/Users/yashu/Desktop/SAVYMINDS/ML Ops/YS_MVP/data/BostonHousing.csv"
+REPORTS_PATH = "c:/Users/yashu/Desktop/SAVYMINDS/ML Ops/YS_MVP/Reports"
 TARGET_COLUMN = "medv"  # Target column for prediction
+
+# Create Reports directory if it doesn't exist
+os.makedirs(REPORTS_PATH, exist_ok=True)
 
 # Load dataset
 def load_data(filepath):
@@ -59,6 +63,7 @@ def perform_eda(df):
     print("\n### Correlation Heatmap ###")
     plt.figure(figsize=(10, 8))
     sns.heatmap(df.corr(), annot=True, cmap="coolwarm")
+    plt.savefig(os.path.join(REPORTS_PATH, "Correlation_Heatmap.png"))
     plt.show()
     
     # Target variable distribution
@@ -68,12 +73,13 @@ def perform_eda(df):
     plt.title(f"Distribution of {TARGET_COLUMN}")
     plt.xlabel(TARGET_COLUMN)
     plt.ylabel("Frequency")
+    plt.savefig(os.path.join(REPORTS_PATH, "Target_Variable_Distribution.png"))
     plt.show()
     
     # Pandas profiling
     print("\n### Generating Profiling Report ###")
     profile = ProfileReport(df, title="Pandas Profiling Report", explorative=True)
-    profile.to_file("Enhanced_EDA_Report.html")
+    profile.to_file(os.path.join(REPORTS_PATH, "Linear_Regression_EDA_Report.html"))
 
 # Preprocessing
 def preprocess_data(df, target_column, degree=2, n_components=0.95):
