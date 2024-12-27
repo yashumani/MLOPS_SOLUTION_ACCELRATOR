@@ -1,9 +1,12 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pycaret.regression import setup, compare_models, pull, create_model, tune_model
+from pycaret.regression import setup, compare_models, pull, create_model, tune_model, predict_model
 from flaml import AutoML
 import optuna
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, mean_squared_error
+import numpy as np
 
 # Constants
 DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/BostonHousing.csv"
@@ -27,10 +30,10 @@ def clean_data(df):
     return df
 
 # Step 2: PyCaret Linear Regression with Hyperparameter Tuning
-def pycaret_linear_regression(df):
+def pycaret_linear_regression(train_df, test_df):
     print("\n--- PyCaret Linear Regression ---")
     # Setup PyCaret
-    setup(data=df, target=TARGET_COLUMN, session_id=123, verbose=False)
+    setup(data=train_df, target=TARGET_COLUMN, session_id=123, verbose=False)
     best_model = compare_models()
     print("\nBest Model from PyCaret (Pre-Tuning):")
     print(best_model)
@@ -40,44 +43,43 @@ def pycaret_linear_regression(df):
     print("\nTuned Model from PyCaret:")
     print(tuned_model)
     
-    return tuned_model
+    # Predict on test set
+    predictions = predict_model(tuned_model, data=test_df)
+    r2 = r2_score(test_df[TARGET_COLUMN], predictions['prediction_label'])
+    rmse = np.sqrt(mean_squared_error(test_df[TARGET_COLUMN], predictions['prediction_label']))
+    
+    print(f"PyCaret R²: {r2}")
+    print(f"PyCaret RMSE: {rmse}")
+    
+    return tuned_model, r2, rmse
 
 # Step 3: FLAML Linear Regression with Hyperparameter Tuning
-def flaml_linear_regression(df):
+def flaml_linear_regression(train_df, test_df):
     print("\n--- FLAML Linear Regression ---")
-    X = df.drop(columns=[TARGET_COLUMN])
-    y = df[TARGET_COLUMN]
+    X_train = train_df.drop(columns=[TARGET_COLUMN])
+    y_train = train_df[TARGET_COLUMN]
+    X_test = test_df.drop(columns=[TARGET_COLUMN])
+    y_test = test_df[TARGET_COLUMN]
     
     # Initialize AutoML
     automl = AutoML()
     
     # Fit the AutoML model
-    automl.fit(X_train=X, y_train=y, task="regression", time_budget=300)
+    automl.fit(X_train=X_train, y_train=y_train, task="regression", time_budget=300)
     print("\nBest Model from FLAML (Pre-Tuning):")
     print(automl.best_estimator)
     print(f"Best Config: {automl.best_config}")
     print(f"Best Loss: {automl.best_loss}")
     
-    # Hyperparameter Optimization with Optuna
-    def objective(trial):
-        params = {
-            "n_estimators": trial.suggest_int("n_estimators", 50, 300),
-            "max_depth": trial.suggest_int("max_depth", 3, 20),
-            "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-1, log=True),
-            "subsample": trial.suggest_float("subsample", 0.6, 1.0),
-            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
-        }
-        
-        # Fit FLAML with custom parameters
-        automl.fit(X_train=X, y_train=y, task="regression", estimator_list=["lgbm"], time_budget=30, **params)
-        return automl.best_loss
+    # Predict on test set
+    predictions = automl.predict(X_test)
+    r2 = r2_score(y_test, predictions)
+    rmse = np.sqrt(mean_squared_error(y_test, predictions))
     
-    study = optuna.create_study(direction="minimize")
-    study.optimize(objective, n_trials=50)
+    print(f"FLAML R²: {r2}")
+    print(f"FLAML RMSE: {rmse}")
     
-    print("\nBest Parameters from Optuna:")
-    print(study.best_params)
-    return automl
+    return automl, r2, rmse
 
 # Main Function
 def main():
@@ -85,11 +87,24 @@ def main():
     df = pd.read_csv(DATA_PATH)
     df = clean_data(df)
     
+    # Split dataset into training and testing subsets
+    train_df, test_df = train_test_split(df, test_size=0.2, random_state=123)
+    
     # PyCaret Linear Regression
-    pycaret_model = pycaret_linear_regression(df)
+    pycaret_model, pycaret_r2, pycaret_rmse = pycaret_linear_regression(train_df, test_df)
     
     # FLAML Linear Regression
-    flaml_model = flaml_linear_regression(df)
+    flaml_model, flaml_r2, flaml_rmse = flaml_linear_regression(train_df, test_df)
+    
+    # Model Comparison
+    print("\n--- Model Comparison ---")
+    print(f"PyCaret R²: {pycaret_r2}, RMSE: {pycaret_rmse}")
+    print(f"FLAML R²: {flaml_r2}, RMSE: {flaml_rmse}")
+    
+    if pycaret_r2 > flaml_r2:
+        print("\nWinner: PyCaret")
+    else:
+        print("\nWinner: FLAML")
 
 if __name__ == "__main__":
     main()
