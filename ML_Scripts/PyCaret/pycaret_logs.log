@@ -1,0 +1,27 @@
+2024-12-27 12:53:46,835 [INFO]: Dataset loaded: 506 rows, 14 columns.
+2024-12-27 12:53:46,835 [INFO]: Starting data cleaning.
+2024-12-27 12:53:46,837 [INFO]: Missing values before cleaning: 0
+2024-12-27 12:53:46,850 [INFO]: Missing values after cleaning: 0
+2024-12-27 12:53:46,858 [INFO]: Dataset shape after cleaning: (506, 14)
+2024-12-27 12:53:46,858 [INFO]: Starting EDA.
+2024-12-27 12:53:46,876 [INFO]: Dataset Info: 
+None
+2024-12-27 12:53:46,960 [INFO]: Statistical Summary: 
+             crim          zn       indus        chas         nox  ...         tax     ptratio           b       lstat        medv
+count  506.000000  506.000000  506.000000  506.000000  506.000000  ...  506.000000  506.000000  506.000000  506.000000  506.000000
+mean     3.613524   11.363636   11.136779    0.069170    0.554695  ...  408.237154   18.455534  356.674032   12.653063   22.532806
+std      8.601545   23.322453    6.860353    0.253994    0.115878  ...  168.537116    2.164946   91.294864    7.141062    9.197104
+min      0.006320    0.000000    0.460000    0.000000    0.385000  ...  187.000000   12.600000    0.320000    1.730000    5.000000
+25%      0.082045    0.000000    5.190000    0.000000    0.449000  ...  279.000000   17.400000  375.377500    6.950000   17.025000
+50%      0.256510    0.000000    9.690000    0.000000    0.538000  ...  330.000000   19.050000  391.440000   11.360000   21.200000
+75%      3.677083   12.500000   18.100000    0.000000    0.624000  ...  666.000000   20.200000  396.225000   16.955000   25.000000
+max     88.976200  100.000000   27.740000    1.000000    0.871000  ...  711.000000   22.000000  396.900000   37.970000   50.000000
+
+[8 rows x 14 columns]
+2024-12-27 12:53:51,699 [INFO]: EDA completed successfully.
+2024-12-27 12:53:51,699 [INFO]: Starting PyCaret Workflow.
+2024-12-27 12:53:55,766 [INFO]: HTTP Request: GET https://api.gradio.app/gradio-messaging/en "HTTP/1.1 200 OK"
+2024-12-27 12:53:59,403 [INFO]: PyCaret setup completed.
+2024-12-27 12:54:32,259 [INFO]: Model comparison completed.
+2024-12-27 12:54:32,285 [INFO]: Model comparison results saved to 'model_comparison_results.csv'.
+2024-12-27 12:54:32,286 [INFO]: Best Model Selected by PyCaret: LGBMRegressor(n_jobs=-1, random_state=123)

@@ -1,8 +1,0 @@
-pandas==1.5.3
-scikit-learn==1.2.2
-featurewiz==0.5.7
-lazytransform==1.16
-fsspec[http]==2024.9.0
-pillow==10.0.0
-pydantic>=2
-ydata-profiling

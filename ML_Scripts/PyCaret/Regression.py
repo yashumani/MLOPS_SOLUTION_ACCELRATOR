@@ -1,18 +1,23 @@
 import pandas as pd
-import numpy as np
-import featuretools as ft
-from tsfresh import extract_features
-from featurewiz import featurewiz
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
+import logging
+from pycaret.regression import setup, compare_models, pull
 
 # Constants
 DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/BostonHousing.csv"
 TARGET_COLUMN = "medv"  # Replace with the target column name in your dataset
+LOG_FILE_PATH = "pycaret_logs.log"  # Path to save logs
 
-# Step 1: Data Collection
+# Configure logging
+logging.basicConfig(
+    filename=LOG_FILE_PATH,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s]: %(message)s",
+    filemode="w",
+)
+
+# Step 1: Data Loading
 def load_data(filepath):
     """
     Load dataset from a specified file path.
@@ -20,112 +25,123 @@ def load_data(filepath):
     try:
         df = pd.read_csv(filepath)
         print(f"Dataset loaded: {df.shape[0]} rows, {df.shape[1]} columns.")
+        logging.info(f"Dataset loaded: {df.shape[0]} rows, {df.shape[1]} columns.")
         return df
     except FileNotFoundError:
         print("File not found. Please check the filepath.")
+        logging.error("File not found. Please check the filepath.")
         return None
 
 # Step 2: Data Cleaning
 def clean_data(df):
     """
-    Clean the dataset by handling missing values and removing outliers.
+    Clean the dataset by handling missing values and duplicate rows.
     """
     print("\n--- Data Cleaning ---")
-    
-    # Handling missing values
+    logging.info("Starting data cleaning.")
+
+    # Handle missing values
     print(f"Missing values before cleaning: {df.isnull().sum().sum()}")
+    logging.info(f"Missing values before cleaning: {df.isnull().sum().sum()}")
     df = df.fillna(df.median())
     print(f"Missing values after cleaning: {df.isnull().sum().sum()}")
+    logging.info(f"Missing values after cleaning: {df.isnull().sum().sum()}")
 
-    # Removing outliers
-    for col in df.select_dtypes(include=[np.number]).columns:
-        lower_bound = df[col].quantile(0.01)
-        upper_bound = df[col].quantile(0.99)
-        df = df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]
+    # Remove duplicate rows
+    duplicates = df.duplicated().sum()
+    if duplicates > 0:
+        print(f"Found {duplicates} duplicate rows. Removing...")
+        logging.info(f"Found {duplicates} duplicate rows. Removing...")
+        df = df.drop_duplicates()
 
-    print(f"Dataset shape after outlier removal: {df.shape}")
+    print(f"Dataset shape after cleaning: {df.shape}")
+    logging.info(f"Dataset shape after cleaning: {df.shape}")
     return df
 
-# Step 3: Exploratory Data Analysis (EDA)
-def perform_eda(df):
+# Step 3: EDA
+def perform_eda(df, target_column):
     """
-    Perform exploratory data analysis to uncover insights.
+    Perform Exploratory Data Analysis (EDA) on the dataset.
     """
-    print("\n--- EDA ---")
-    print("Dataset Overview:")
+    print("\n--- Exploratory Data Analysis ---")
+    logging.info("Starting EDA.")
+
+    # Summary Statistics
+    print("\nDataset Overview:")
     print(df.info())
-    
+    logging.info(f"Dataset Info: \n{df.info()}")
+
     print("\nStatistical Summary:")
     print(df.describe())
+    logging.info(f"Statistical Summary: \n{df.describe()}")
 
+    # Target Variable Distribution
     print("\nTarget Variable Distribution:")
-    sns.histplot(data=df, x=TARGET_COLUMN, kde=True)
+    sns.histplot(data=df, x=target_column, kde=True)
     plt.title("Target Variable Distribution")
     plt.show()
 
-    # Correlation heatmap
+    # Correlation Heatmap
+    print("\nCorrelation Heatmap:")
     corr_matrix = df.corr()
     plt.figure(figsize=(10, 8))
-    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm")
+    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f")
     plt.title("Correlation Heatmap")
     plt.show()
+    logging.info("EDA completed successfully.")
 
-# Step 4: Feature Engineering with FeatureTools
-def feature_engineering_with_featuretools(df):
+# Step 4: PyCaret Workflow
+def run_pycaret_workflow(df, target_column):
     """
-    Generate features using FeatureTools.
+    Use PyCaret for automated feature engineering and regression model comparison.
     """
-    print("\n--- Feature Engineering with FeatureTools ---")
-    entity_set = ft.EntitySet(id="boston_data")
-    entity_set = entity_set.entity_from_dataframe(entity_id="data", dataframe=df, index="index")
-    feature_matrix, feature_defs = ft.dfs(entityset=entity_set, target_entity="data", agg_primitives=["mean", "sum", "max", "min", "std"], trans_primitives=["multiply_numeric"])
-    print("Feature matrix shape:", feature_matrix.shape)
-    return feature_matrix
+    print("\n--- PyCaret Workflow ---")
+    logging.info("Starting PyCaret Workflow.")
 
-# Step 5: Feature Engineering with TSFresh
-def feature_engineering_with_tsfresh(df):
-    """
-    Generate features using TSFresh.
-    """
-    print("\n--- Feature Engineering with TSFresh ---")
-    df["id"] = range(len(df))
-    df["time"] = df.index
-    extracted_features = extract_features(df, column_id="id", column_sort="time", default_fc_parameters="efficient")
-    print("TSFresh features shape:", extracted_features.shape)
-    return extracted_features
+    try:
+        # Set up PyCaret
+        print("\nSetting up PyCaret...")
+        setup(data=df, target=target_column, session_id=123, verbose=False, feature_selection=True)
+        logging.info("PyCaret setup completed.")
 
-# Step 6: Feature Engineering with Featurewiz
-def feature_engineering_with_featurewiz(df):
-    """
-    Generate features using Featurewiz.
-    """
-    print("\n--- Feature Engineering with Featurewiz ---")
-    features, train_df = featurewiz(df, target=TARGET_COLUMN, corr_limit=0.7, verbose=2)
-    print("Featurewiz selected features:", features)
-    return train_df
+        # Compare models
+        print("\nComparing models...")
+        best_model = compare_models()
+        logging.info("Model comparison completed.")
+
+        # Save model comparison results
+        results = pull()
+        print("\nModel Comparison Results:")
+        print(results)
+        results.to_csv("model_comparison_results.csv", index=False)
+        logging.info("Model comparison results saved to 'model_comparison_results.csv'.")
+
+        return best_model
+    except Exception as e:
+        logging.error(f"An error occurred during PyCaret Workflow: {e}")
+        print(f"An error occurred during PyCaret Workflow: {e}")
+        return None
 
 # Main Workflow
 def main():
     # Load dataset
     df = load_data(DATA_PATH)
     if df is not None:
-        df = df.reset_index()  # Add index column for feature engineering
+        # Clean data
         df = clean_data(df)
-        perform_eda(df)
-
-        # Feature Engineering
-        print("\nPerforming Feature Engineering with FeatureTools...")
-        feature_matrix = feature_engineering_with_featuretools(df)
-
-        print("\nPerforming Feature Engineering with TSFresh...")
-        tsfresh_features = feature_engineering_with_tsfresh(df)
-
-        print("\nPerforming Feature Engineering with Featurewiz...")
-        featurewiz_features = feature_engineering_with_featurewiz(df)
-
-        # Combine features for final dataset
-        final_features = pd.concat([feature_matrix, tsfresh_features, featurewiz_features], axis=1, join="inner")
-        print("\nFinal Feature Set Shape:", final_features.shape)
+        
+        # Perform EDA
+        perform_eda(df, TARGET_COLUMN)
+        
+        # Run PyCaret workflow
+        print("\nRunning PyCaret workflow for automated model selection and training...")
+        best_model = run_pycaret_workflow(df, TARGET_COLUMN)
+        if best_model:
+            print(f"\nBest Model Selected by PyCaret: {best_model}")
+            logging.info(f"Best Model Selected by PyCaret: {best_model}")
+        else:
+            print("\nPyCaret workflow failed.")
+            logging.error("PyCaret workflow failed.")
 
 if __name__ == "__main__":
     main()
