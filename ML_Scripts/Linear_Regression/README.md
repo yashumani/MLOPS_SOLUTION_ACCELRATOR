@@ -1,165 +1,160 @@
-# Linear Regression Workflow with Data Exploration and Model Evaluation
-
-## Overview
-This project provides a comprehensive automated pipeline for performing linear regression analysis. The workflow includes data loading, cleaning, exploratory data analysis (EDA), feature engineering, model training, evaluation, and visualization. It supports multiple regression models including Ridge, Lasso, ElasticNet, and standard Linear Regression.
+### **Updated `README.md` for `Linear_regression_1_3.py`**
 
 ---
 
-## Features
-1. **Data Handling**:
-   - Load data from a CSV file.
-   - Handle missing values and outliers using predefined methods.
+# **Linear Regression Comparison: PyCaret vs. FLAML**
 
-2. **Exploratory Data Analysis (EDA)**:
-   - Generate summary statistics.
-   - Create visualizations such as correlation heatmaps and target variable distributions.
-   - Save EDA results as images and CSV files.
-
-3. **Preprocessing**:
-   - Apply polynomial feature expansion.
-   - Perform Variance Inflation Factor (VIF) analysis to identify multicollinearity.
-   - Standardize features for regression models.
-
-4. **Model Training and Evaluation**:
-   - Train and evaluate multiple regression models: Linear Regression, Ridge, Lasso, and ElasticNet.
-   - Compute metrics such as Mean Squared Error (MSE) and R-squared (R²).
-   - Perform cross-validation to ensure model robustness.
-
-5. **Visualization**:
-   - Plot actual vs. predicted values with residuals for better interpretability.
-   - Visualize training vs. validation errors to detect overfitting or underfitting.
-
-6. **Narrative Generation**:
-   - Generate recommendations for model improvement based on performance metrics.
+This project implements an end-to-end solution to compare the performance of **PyCaret** and **FLAML** in building a linear regression model for the **Boston Housing Dataset**. The script includes data cleaning, exploratory data analysis, model training, hyperparameter tuning, and performance evaluation.
 
 ---
 
-## Installation
-1. Clone this repository or copy the script.
-2. Install required Python packages:
-
-   ```bash
-   pip install pandas numpy seaborn matplotlib scikit-learn statsmodels
-   ```
+## **Table of Contents**
+- [Overview](#overview)
+- [File Information](#file-information)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Workflow Summary](#workflow-summary)
+- [Execution](#execution)
+- [Logging](#logging)
+- [Visualization](#visualization)
+- [Results](#results)
+- [Theoretical Insights](#theoretical-insights)
 
 ---
 
-## Usage
+## **Overview**
+The script demonstrates:
+1. Data Cleaning: Duplicate removal, missing value imputation, and outlier handling.
+2. Exploratory Data Analysis (EDA): Visualizations and summary statistics to understand data patterns.
+3. Model Training and Hyperparameter Tuning:
+   - **PyCaret**: Automated model selection and tuning.
+   - **FLAML**: Lightweight and efficient AutoML solution with additional hyperparameter tuning using **Optuna**.
+4. Model Evaluation: Comparison of R² and RMSE scores to identify the better-performing model.
+5. Visualization: Insights into model performance through scatter plots and residual analysis.
 
-### 1. Configure Constants
-Modify the following constants in the script to match your setup:
-- **`DATA_PATH`**: Path to the CSV file containing the dataset.
-- **`TARGET_COLUMN`**: The name of the target variable column.
-- **`REPORTS_PATH`**: Path to save the generated reports and visualizations.
-- **`DEGREE`**: Polynomial degree for feature expansion.
-- **`ALPHA`**: Regularization strength for Ridge, Lasso, and ElasticNet models.
+---
 
-### 2. Run the Script
-Execute the script in your terminal or IDE:
+## **File Information**
+**Filename:** `Linear_regression_1_3.py`  
+**Purpose:** Compare the performance of PyCaret and FLAML for linear regression tasks on the Boston Housing dataset.
 
+---
+
+## **Prerequisites**
+Ensure the following libraries are installed in your environment:
+- `pandas`
+- `matplotlib`
+- `seaborn`
+- `pycaret`
+- `flaml`
+- `optuna`
+- `scikit-learn`
+
+---
+
+## **Installation**
+
+### **Using Conda**
 ```bash
-python <script_name>.py
+conda create --name env_linear_regression python=3.10
+conda activate env_linear_regression
+conda install -c conda-forge pandas matplotlib seaborn pycaret flaml optuna scikit-learn
 ```
 
-### 3. Select the Best Model
-After the model comparison, you will be prompted to select the best-performing model. Enter one of the following options:
-- `linear`
-- `ridge`
-- `lasso`
-- `elasticnet`
-
-The script will provide narratives and save predictions for the selected model.
-
----
-
-## Workflow Details
-
-### Data Cleaning
-- Handles missing values by removing rows with null values.
-- Removes outliers based on the 1st and 99th percentiles of numeric features.
-
-### Exploratory Data Analysis (EDA)
-- Saves:
-  - Correlation heatmap
-  - Target variable distribution
-  - Summary statistics as CSV files
-
-### Feature Engineering
-- Generates polynomial features for non-linear relationships.
-- Evaluates multicollinearity using VIF analysis.
-- Scales features for effective model training.
-
-### Model Training and Evaluation
-- Trains four models: Linear Regression, Ridge, Lasso, and ElasticNet.
-- Reports:
-  - Mean Squared Error (MSE)
-  - R-squared (R²)
-  - Cross-validation R-squared scores
-- Visualizes:
-  - Actual vs. Predicted values
-  - Training vs. Validation error
-
-### Narrative Generation
-Provides:
-- Key observations of model performance
-- Recommendations for improvement
-
----
-
-## File Outputs
-- **`Dataset_Summary.csv`**: Descriptive statistics of the dataset.
-- **`Correlation_Heatmap.png`**: Heatmap of feature correlations.
-- **`Target_Variable_Distribution.png`**: Histogram of the target variable.
-- **`VIF_Analysis.csv`**: Variance Inflation Factor results.
-- **`<model_type>_Actual_vs_Predicted_Improved.png`**: Visualization of actual vs. predicted values.
-- **`<model_type>_Training_vs_Validation_Error.png`**: Training and validation error comparison.
-- **`<model_type>_Predictions.csv`**: Predicted values for the selected model.
-
----
-
-## Example Output
-### Model Comparison:
-```
---- Model Comparison ---
-Model: Linear
-Mean Squared Error: 24.5321
-R-squared: 0.7524
-------------------------------
-Model: Ridge
-Mean Squared Error: 25.1238
-R-squared: 0.7489
-------------------------------
-Model: Lasso
-Mean Squared Error: 27.9823
-R-squared: 0.7322
-------------------------------
-Model: ElasticNet
-Mean Squared Error: 26.5123
-R-squared: 0.7408
-------------------------------
-```
-
-### Recommendations for Improvement:
-```
---- Key Observations ---
-Model Performance:
-- The R-squared value on the test set is 0.7524, indicating the model explains a high proportion of the variance.
-- The Mean Squared Error (MSE) is 24.5321, indicating the average squared difference between actual and predicted values.
-- Cross-validation R-squared scores: [0.752, 0.746, 0.750, 0.755, 0.760]
-
-Recommendations for Improvement:
-- Use Ridge, Lasso, or ElasticNet regression to handle multicollinearity.
-- Check for potential feature interactions and add non-linear terms if needed.
-- Regularly validate the model on unseen data to ensure robustness.
+### **Using Pip**
+```bash
+pip install pandas matplotlib seaborn pycaret flaml optuna scikit-learn
 ```
 
 ---
 
-## License
-This project is open-source and can be used, modified, and distributed freely.
+## **Workflow Summary**
+
+### **1. Exploratory Data Analysis (EDA)**
+- Summary statistics (`info()` and `describe()`).
+- Visualizations:
+  - Histograms for feature distributions.
+  - Correlation heatmaps.
+
+### **2. Data Cleaning**
+- **Duplicates**: Removed to ensure dataset integrity.
+- **Missing Values**: Imputed with column medians.
+- **Outliers**: Filtered using 1st and 99th percentiles for all numerical columns.
+
+### **3. PyCaret Linear Regression**
+- **Setup**: Initializes the PyCaret environment.
+- **Model Comparison**: Identifies the best-performing model.
+- **Hyperparameter Tuning**: Optimizes the selected model using `R²` as the performance metric.
+- **Evaluation**: Computes R² and RMSE on the test dataset.
+
+### **4. FLAML Linear Regression**
+- **AutoML Training**: Automatically identifies the best-performing regression model.
+- **Evaluation**: Predicts outcomes on the test dataset and calculates R² and RMSE.
+
+### **5. Model Comparison**
+- Both models are compared based on R² and RMSE.
+- The better-performing model is visualized.
 
 ---
 
-## Author
-**Yashu Sharma**  
-For inquiries or collaborations, feel free to contact.
+## **Execution**
+Run the script as follows:
+```bash
+python Linear_regression_1_3.py
+```
+
+### **Expected Outputs**
+1. Logs (`logs.log`) with details about data cleaning, EDA, model performance, and comparison.
+2. Visualizations for EDA and model performance.
+3. Printed R² and RMSE scores for both models.
+
+---
+
+## **Logging**
+- All operations, including data cleaning, model training, and evaluation, are logged into a file named `logs.log`.
+- Example log entries:
+  ```
+  2024-12-27 11:30:00 - INFO - Dataset loaded successfully.
+  2024-12-27 11:35:10 - INFO - Initial dataset shape: (506, 14)
+  2024-12-27 11:40:20 - INFO - PyCaret R²: 0.82, RMSE: 4.53
+  ```
+
+---
+
+## **Visualization**
+The script generates the following visualizations:
+1. **EDA**:
+   - Histograms for feature distributions.
+   - Correlation heatmap.
+2. **Model Performance**:
+   - Scatter plot of true vs predicted values.
+   - Residuals distribution.
+
+---
+
+## **Results**
+### Example Model Comparison
+| Metric        | PyCaret         | FLAML          |
+|---------------|-----------------|----------------|
+| R² (Accuracy) | **0.82**        | 0.80           |
+| RMSE (Error)  | 4.53            | **4.40**       |
+
+Winner: **FLAML**
+
+---
+
+## **Theoretical Insights**
+### **PyCaret**
+- Comprehensive, low-code library with built-in diagnostics.
+- Allows quick prototyping of regression models.
+- Includes hyperparameter tuning and detailed model comparisons.
+
+### **FLAML**
+- Lightweight AutoML library optimized for speed and efficiency.
+- Automatically selects the best model configuration with minimal computational overhead.
+- Ideal for scenarios requiring fast experimentation.
+
+---
+
+## **Conclusion**
+The script demonstrates a streamlined workflow for linear regression tasks using automated tools. By comparing **PyCaret** and **FLAML**, users can identify the best-fit approach based on accuracy, error metrics, and computational efficiency.
