@@ -94,7 +94,7 @@ DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/BostonHousing.cs
 ## **Execution**
 Run the Python script:
 ```bash
-python Linear_regression.py
+python Linear_regression_1_3.py
 ```
 
 ### **Expected Output**
