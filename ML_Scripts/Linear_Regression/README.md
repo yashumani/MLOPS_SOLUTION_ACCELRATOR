@@ -1,143 +1,145 @@
-### **README.md**
+Below is the **`README.md`** file for the provided Python script:
 
 ---
 
-# **Linear Regression with PyCaret and FLAML**
+# **Linear Regression Comparison: PyCaret vs. FLAML**
 
-## **Overview**
-This project demonstrates the use of **PyCaret** and **FLAML** for linear regression to predict housing prices using the Boston Housing dataset. The script implements a complete workflow that includes:
+This project aims to demonstrate an end-to-end comparison between **PyCaret** and **FLAML** for linear regression tasks. The dataset used is the **Boston Housing dataset**, which contains information about house prices and associated features.
 
-1. **Data Cleaning**: Handles missing values, removes duplicates, and identifies outliers using percentile-based thresholds.
-2. **Model Training**:
-   - **PyCaret** for automated regression model comparison and hyperparameter tuning.
-   - **FLAML** for efficient and lightweight AutoML with hyperparameter tuning using **Optuna**.
-3. **Model Evaluation**: Compares the performance of the two frameworks using metrics like R² (coefficient of determination) and RMSE (root mean squared error).
-4. **Model Comparison**: Identifies the best-performing framework.
+---
+
+## **Table of Contents**
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Features](#features)
+- [Code Workflow](#code-workflow)
+- [Execution](#execution)
+- [Results](#results)
+- [Theoretical Summary](#theoretical-summary)
 
 ---
 
 ## **Prerequisites**
-
-1. **Python**: Version 3.10 or higher.
-2. **Required Libraries**:
-   - pandas
-   - matplotlib
-   - seaborn
-   - pycaret
-   - flaml
-   - optuna
-   - scikit-learn
-   - numpy
+Ensure you have Python 3.10+ installed. You will also need the following libraries:
+- **PyCaret**: For automated regression modeling and hyperparameter tuning.
+- **FLAML**: For lightweight and fast automated machine learning.
+- **Scikit-learn**: For metric evaluation and data splitting.
+- **Matplotlib** and **Seaborn**: For visualization.
 
 ---
 
-## **Setup**
-
-### **Conda Environment**
-
+## **Installation**
+### **Using Conda**
 ```bash
-# Create a new conda environment
-conda create -n env_linear_regression python=3.10 -y
-
-# Activate the environment
+conda create --name env_linear_regression python=3.10
 conda activate env_linear_regression
+conda install --file requirements.txt
+```
 
-# Install dependencies
-pip install pandas matplotlib seaborn pycaret flaml optuna scikit-learn numpy
+### **Using Pip**
+```bash
+pip install -r requirements.txt
 ```
 
 ---
 
-## **How to Run the Script**
+## **Features**
+1. **Data Cleaning**:
+   - Duplicate removal.
+   - Filling missing values using the median.
+   - Outlier removal using the 1st and 99th percentiles.
 
-1. **Download the Dataset**:
-   - Place the `BostonHousing.csv` file in the specified path in the script (`C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/BostonHousing.csv`).
-   - Ensure the target column (`medv`) matches the dataset.
+2. **Modeling and Tuning**:
+   - **PyCaret**: Automated model selection, hyperparameter tuning, and predictions.
+   - **FLAML**: Lightweight automated machine learning with fast execution and custom hyperparameter tuning.
 
-2. **Execute the Script**:
-   ```bash
-   python Linear_regression_1_3.py
-   ```
+3. **Evaluation Metrics**:
+   - **R²** (Coefficient of Determination): Measures model accuracy.
+   - **RMSE** (Root Mean Squared Error): Measures error magnitude.
 
-3. **Output**:
-   - The script will clean the dataset, train models using PyCaret and FLAML, and display the R² and RMSE for both frameworks.
-   - A summary of the winning model based on R² will be displayed.
+4. **Comparison**:
+   - Both models are compared based on R² and RMSE to identify the better-performing approach.
+
+---
+
+## **Code Workflow**
+### **1. Data Loading**
+The dataset is loaded from the specified CSV path:
+```python
+DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/BostonHousing.csv"
+```
+
+### **2. Data Cleaning**
+- Remove duplicates.
+- Handle missing values by replacing them with the median.
+- Remove outliers using percentile thresholds.
+
+### **3. PyCaret Linear Regression**
+- Setup the PyCaret environment using the training data.
+- Identify the best model using `compare_models()`.
+- Tune the best model using `tune_model()`.
+- Evaluate the model on the test data.
+
+### **4. FLAML Linear Regression**
+- Use the `AutoML` class from FLAML to train a regression model.
+- Evaluate the best model on the test data.
+- Perform hyperparameter optimization using custom configurations.
+
+### **5. Model Comparison**
+- Compare the results of PyCaret and FLAML based on R² and RMSE.
+- Determine the better-performing model.
+
+---
+
+## **Execution**
+Run the Python script:
+```bash
+python Linear_regression.py
+```
+
+### **Expected Output**
+1. Data Cleaning Summary:
+   - Initial and post-cleaning dataset shapes.
+2. PyCaret Results:
+   - Best model (pre-tuning and post-tuning).
+   - Evaluation metrics (R² and RMSE).
+3. FLAML Results:
+   - Best model details.
+   - Evaluation metrics (R² and RMSE).
+4. Model Comparison:
+   - Final comparison of PyCaret and FLAML with winner identification.
+
+---
+
+## **Results**
+- **PyCaret**:
+  - Tuned model performance on the test dataset.
+  - Provides insights into model comparison and evaluation.
+
+- **FLAML**:
+  - Offers fast and efficient model training with optimal configurations.
+  - Competitive performance with lightweight execution.
 
 ---
 
 ## **Theoretical Summary**
+1. **PyCaret**:
+   - A low-code machine learning library designed to simplify regression workflows.
+   - Includes robust built-in hyperparameter tuning and model comparison features.
+   - Ideal for users seeking quick and accurate model training with minimal coding.
 
-### **Linear Regression**
-Linear regression is a supervised learning technique used for predicting continuous outcomes. It fits a linear equation to the observed data. The goal is to minimize the sum of squared residuals between the predicted and actual values.
+2. **FLAML**:
+   - Lightweight AutoML library focused on fast and efficient model training.
+   - Optimized for scenarios with limited computational resources.
+   - Provides flexibility with customizable hyperparameter tuning through integration with **Optuna**.
 
----
-
-### **Steps in the Script**
-
-1. **Data Cleaning**:
-   - Handles missing values by replacing them with the median.
-   - Removes duplicates.
-   - Identifies and removes outliers based on the 1st and 99th percentiles of feature distributions.
-
-2. **PyCaret Workflow**:
-   - **Setup**: Configures the dataset for model comparison.
-   - **Model Comparison**: Selects the best regression model.
-   - **Hyperparameter Tuning**: Optimizes the selected model's performance.
-   - **Prediction and Evaluation**: Evaluates the tuned model on the test set using R² and RMSE.
-
-3. **FLAML Workflow**:
-   - **Model Training**: Automatically selects and trains the best-performing regression model within a specified time budget.
-   - **Prediction and Evaluation**: Evaluates the selected model on the test set using R² and RMSE.
-   - **Hyperparameter Optimization**: Uses Optuna to further optimize hyperparameters.
-
-4. **Comparison**:
-   - Compares R² and RMSE for models trained using PyCaret and FLAML.
-   - Declares the winner based on the highest R².
-
----
-
-### **Metrics**
-1. **R² (Coefficient of Determination)**:
-   Measures how well the model explains the variability of the target variable.
-   - **Range**: 0 to 1 (higher is better).
-
-2. **RMSE (Root Mean Squared Error)**:
-   Measures the average prediction error.
-   - **Lower RMSE indicates better model performance.**
-
----
-
-## **Example Output**
-
-```plaintext
---- Data Cleaning ---
-Dataset shape after cleaning: (490, 14)
-
---- PyCaret Linear Regression ---
-Best Model from PyCaret (Pre-Tuning):
-<LinearRegression object>
-Tuned Model from PyCaret:
-<LinearRegression object>
-PyCaret R²: 0.82
-PyCaret RMSE: 3.45
-
---- FLAML Linear Regression ---
-Best Model from FLAML (Pre-Tuning):
-lgbm
-Best Config: {'n_estimators': 100, ...}
-Best Loss: 0.32
-FLAML R²: 0.81
-FLAML RMSE: 3.48
-
---- Model Comparison ---
-PyCaret R²: 0.82, RMSE: 3.45
-FLAML R²: 0.81, RMSE: 3.48
-
-Winner: PyCaret
-```
+3. **Comparison**:
+   - **PyCaret** is more comprehensive with rich diagnostic outputs, while **FLAML** focuses on efficiency.
+   - PyCaret’s built-in tuning can yield better models for complex datasets, whereas FLAML excels in speed and simplicity.
 
 ---
 
 ## **Conclusion**
+This script provides a streamlined approach to comparing **PyCaret** and **FLAML** for linear regression tasks. By integrating automated workflows with detailed metrics, users can efficiently determine the best-performing model for their dataset.
 
-This script showcases the power of automated machine learning frameworks like **PyCaret** and **FLAML** for solving regression problems. Both frameworks offer efficient model selection and tuning capabilities. The side-by-side comparison provides insights into their strengths and weaknesses.
+---
