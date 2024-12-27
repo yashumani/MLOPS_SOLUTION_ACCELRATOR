@@ -66,7 +66,7 @@ pip install -r requirements.txt
 ### **1. Data Loading**
 The dataset is loaded from the specified CSV path:
 ```python
-DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/BostonHousing.csv"
+DATA_PATH = "<prefix>/data/BostonHousing.csv"
 ```
 
 ### **2. Data Cleaning**
