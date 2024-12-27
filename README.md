@@ -51,12 +51,16 @@
      - Deep learning models for text, image, and time-series data.
   2. Integrate tools for **hyperparameter optimization** (e.g., Optuna).
   3. Track experiments using **MLFlow** or **Weights & Biases**.
-  4. Validate models against defined performance metrics.
+  4. Implement advanced AutoML capabilities for benchmarking:
+     - Use **PyCaret** for user-friendly model prototyping and comparisons.
+     - Use **FLAML** for efficient and resource-optimized model training.
+     - Optimize pipelines based on key parameters (e.g., `time_budget`, `metric`, `setup` configurations).
+  5. Validate models against defined performance metrics.
 
 - **Deliverables**:
   - Modular training scripts for reproducible experiments.
   - Performance evaluation reports.
-  - Experiment tracking dashboard.
+  - Experiment tracking dashboard with MLFlow.
 
 ---
 
@@ -90,4 +94,20 @@
 
 ---
 
-Let me know if you’d like further refinements or specific guidance on any phase!S
+### **Key Updates in Model Development and Training**
+- Enhanced AutoML Integration:
+  - **PyCaret** and **FLAML** are now core components for building and benchmarking machine learning pipelines.
+  - **PyCaret**: Simplifies prototyping and comparisons of classification, regression, and clustering models.
+  - **FLAML**: Optimized for fast and low-resource model training.
+  - Tasks include:
+    - Classification (e.g., Titanic dataset).
+    - Regression (e.g., House Prices dataset).
+    - Clustering (e.g., Customer Segmentation dataset).
+  - MLFlow tracks all experiments, parameters, and metrics to identify the best-performing pipelines.
+
+- Benchmarking:
+  - Comprehensive evaluation of AutoML pipelines for different datasets and problem types.
+  - Iterative experiments to optimize parameters and achieve state-of-the-art accuracy.
+
+Let me know if you’d like further refinements or specific guidance on any phase!
+
