@@ -313,3 +313,103 @@ extra_tree
 2024-12-27 21:10:20,139 - INFO - Visualizing FLAML Model Performance
 2024-12-27 21:10:20,556 - INFO - Best Model: FLAML
 2024-12-27 21:10:20,556 - INFO - Visualizing Best (FLAML) Model Performance
+2024-12-27 22:21:34,614 - INFO - Loading dataset...
+2024-12-27 22:21:34,636 - INFO - Dataset loaded successfully.
+2024-12-27 22:21:34,636 - INFO - Performing EDA before cleaning...
+2024-12-27 22:21:34,636 - INFO - --- EDA Before Cleaning ---
+2024-12-27 22:21:34,637 - INFO - Dataset Head:
+   longitude  latitude  housing_median_age  total_rooms  total_bedrooms  population  households  median_income  median_house_value
+0    -114.31     34.19                  15         5612            1283        1015         472         1.4936               66900
+1    -114.47     34.40                  19         7650            1901        1129         463         1.8200               80100
+2    -114.56     33.69                  17          720             174         333         117         1.6509               85700
+3    -114.57     33.64                  14         1501             337         515         226         3.1917               73400
+4    -114.57     33.57                  20         1454             326         624         262         1.9250               65500
+2024-12-27 22:21:34,650 - INFO - Dataset Info:
+2024-12-27 22:21:34,680 - INFO - Dataset Description:
+          longitude      latitude  housing_median_age   total_rooms  total_bedrooms    population    households  median_income  median_house_value
+count  17000.000000  17000.000000        17000.000000  17000.000000    17000.000000  17000.000000  17000.000000   17000.000000        17000.000000
+mean    -119.562108     35.625225           28.589353   2643.664412      539.410824   1429.573941    501.221941       3.883578       207300.912353
+std        2.005166      2.137340           12.586937   2179.947071      421.499452   1147.852959    384.520841       1.908157       115983.764387
+min     -124.350000     32.540000            1.000000      2.000000        1.000000      3.000000      1.000000       0.499900        14999.000000
+25%     -121.790000     33.930000           18.000000   1462.000000      297.000000    790.000000    282.000000       2.566375       119400.000000
+50%     -118.490000     34.250000           29.000000   2127.000000      434.000000   1167.000000    409.000000       3.544600       180400.000000
+75%     -118.000000     37.720000           37.000000   3151.250000      648.250000   1721.000000    605.250000       4.767000       265000.000000
+max     -114.310000     41.950000           52.000000  37937.000000     6445.000000  35682.000000   6082.000000      15.000100       500001.000000
+2024-12-27 22:21:37,887 - INFO - Cleaning the dataset...
+2024-12-27 22:21:37,887 - INFO - --- Data Cleaning ---
+2024-12-27 22:21:37,887 - INFO - Initial dataset shape: (17000, 9)
+2024-12-27 22:21:37,894 - INFO - Shape after removing duplicates: (17000, 9)
+2024-12-27 22:21:37,903 - INFO - Shape after filling missing values: (17000, 9)
+2024-12-27 22:21:37,907 - INFO - Shape after removing outliers in longitude: (16661, 9)
+2024-12-27 22:21:37,909 - INFO - Shape after removing outliers in latitude: (16340, 9)
+2024-12-27 22:21:37,911 - INFO - Shape after removing outliers in housing_median_age: (16246, 9)
+2024-12-27 22:21:37,914 - INFO - Shape after removing outliers in total_rooms: (15920, 9)
+2024-12-27 22:21:37,917 - INFO - Shape after removing outliers in total_bedrooms: (15603, 9)
+2024-12-27 22:21:37,919 - INFO - Shape after removing outliers in population: (15290, 9)
+2024-12-27 22:21:37,922 - INFO - Shape after removing outliers in households: (14985, 9)
+2024-12-27 22:21:37,924 - INFO - Shape after removing outliers in median_income: (14685, 9)
+2024-12-27 22:21:37,926 - INFO - Shape after removing outliers in median_house_value: (14539, 9)
+2024-12-27 22:21:37,926 - INFO - Dataset shape after cleaning: (14539, 9)
+2024-12-27 22:21:37,926 - INFO - Performing EDA after cleaning...
+2024-12-27 22:21:37,926 - INFO - --- EDA After Cleaning ---
+2024-12-27 22:21:37,926 - INFO - Dataset Head:
+     longitude  latitude  housing_median_age  total_rooms  total_bedrooms  population  households  median_income  median_house_value
+169    -116.25     33.81                  24          880             187         507         169         3.4583               67500
+171    -116.25     33.69                   5         1664             444         907         374         2.7667               92900
+173    -116.26     33.07                  17          934             284         452         184         1.9875               83700
+176    -116.29     33.72                   5         3584             760        1097         470         3.1771              167400
+177    -116.30     33.68                  10         2387             481         863         304         2.8882              137500
+2024-12-27 22:21:37,940 - INFO - Dataset Info:
+2024-12-27 22:21:37,964 - INFO - Dataset Description:
+          longitude      latitude  housing_median_age   total_rooms  total_bedrooms    population    households  median_income  median_house_value
+count  14539.000000  14539.000000        14539.000000  14539.000000    14539.000000  14539.000000  14539.000000   14539.000000        14539.000000
+mean    -119.554661     35.551164           29.330422   2452.257514      499.959144   1332.311920    468.003095       3.894105       211907.270032
+std        1.923952      2.019206           12.318437   1335.977213      262.702373    703.183219    239.230273       1.661233       112213.091426
+min     -123.230000     32.680000            4.000000    210.000000       87.000000    236.000000    105.000000       1.164500        52100.000000
+25%     -121.750000     33.940000           19.000000   1525.500000      309.000000    824.000000    295.000000       2.663500       128100.000000
+50%     -118.460000     34.230000           30.000000   2149.000000      437.000000   1175.000000    413.000000       3.608300       185700.000000
+75%     -118.030000     37.680000           37.000000   3068.000000      630.000000   1675.000000    589.000000       4.793150       267900.000000
+max     -116.250000     40.290000           52.000000  10098.000000     1719.000000   4276.000000   1338.000000      10.553600       500001.000000
+2024-12-27 22:21:40,505 - INFO - Splitting dataset into training and testing subsets...
+2024-12-27 22:21:40,508 - INFO - Dataset split completed.
+2024-12-27 22:21:40,508 - INFO - Running PyCaret Linear Regression...
+2024-12-27 22:21:40,508 - INFO - --- PyCaret Linear Regression ---
+2024-12-27 22:21:40,508 - INFO - Setting up PyCaret...
+2024-12-27 22:21:44,823 - INFO - Comparing models to find the best one...
+2024-12-27 22:23:22,790 - INFO - Best Model from PyCaret (Pre-Tuning):
+<catboost.core.CatBoostRegressor object at 0x00000270813B59F0>
+2024-12-27 22:23:22,791 - INFO - Tuning the best model...
+2024-12-27 22:24:07,151 - INFO - Tuned Model from PyCaret:
+<catboost.core.CatBoostRegressor object at 0x0000027081DF9120>
+2024-12-27 22:24:07,151 - INFO - Predicting on test set...
+2024-12-27 22:24:07,432 - INFO - PyCaret R²: 0.8324992206324268
+2024-12-27 22:24:07,434 - INFO - PyCaret RMSE: 45463.51479422048
+2024-12-27 22:24:07,435 - INFO - Running FLAML Linear Regression...
+2024-12-27 22:24:07,435 - INFO - --- FLAML Linear Regression ---
+2024-12-27 22:24:07,438 - INFO - Initializing AutoML...
+2024-12-27 22:24:07,438 - INFO - Fitting the AutoML model...
+2024-12-27 22:29:17,082 - INFO - Best Model from FLAML (Pre-Tuning):
+catboost
+2024-12-27 22:29:17,082 - INFO - Best Config: {'early_stopping_rounds': 13, 'learning_rate': 0.04171721859304757, 'n_estimators': 774}
+2024-12-27 22:29:17,082 - INFO - Best Loss: 0.16705603517305878
+2024-12-27 22:29:17,083 - INFO - Predicting on test set...
+2024-12-27 22:29:17,095 - INFO - FLAML R²: 0.8279811280897951
+2024-12-27 22:29:17,095 - INFO - FLAML RMSE: 46072.59133469271
+2024-12-27 22:29:17,096 - INFO - --- Initial Model Comparison ---
+2024-12-27 22:29:17,096 - INFO - PyCaret Model: <catboost.core.CatBoostRegressor object at 0x0000027081DF9120>
+2024-12-27 22:29:17,096 - INFO - PyCaret R²: 0.8324992206324268, RMSE: 45463.51479422048
+2024-12-27 22:29:17,096 - INFO - FLAML Model: AutoML(append_log=False, auto_augment=True, custom_hp={},
+       cv_score_agg_func=None, early_stop=False, ensemble=False,
+       estimator_list='auto', eval_method='auto', fit_kwargs_by_estimator={},
+       force_cancel=False, free_mem_ratio=0, hpo_method='auto',
+       keep_search_state=False, learner_selector='sample', log_file_name='',
+       log_training_metric=False, log_type='better', max_iter=None,
+       mem_thres=4294967296, metric='auto', metric_constraints=[],
+       min_sample_size=10000, mlflow_logging=True, model_history=False,
+       n_concurrent_trials=1, n_jobs=-1, n_splits=5, pred_time_limit=inf,
+       preserve_checkpoint=True, retrain_full=True, ...)
+2024-12-27 22:29:17,098 - INFO - FLAML R²: 0.8279811280897951, RMSE: 46072.59133469271
+2024-12-27 22:29:17,099 - INFO - Visualizing PyCaret Model Performance
+2024-12-27 22:29:18,148 - INFO - Visualizing FLAML Model Performance
+2024-12-27 22:29:18,617 - INFO - Best Model: PyCaret
+2024-12-27 22:29:18,618 - INFO - Visualizing Best (PyCaret) Model Performance

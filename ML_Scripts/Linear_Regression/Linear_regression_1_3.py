@@ -19,8 +19,8 @@ logging.basicConfig(
 )
 
 # Constants
-DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/BostonHousing.csv"
-TARGET_COLUMN = "medv"  # Replace with the target column name in your dataset
+DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/california_housing_train.csv"
+TARGET_COLUMN = "median_house_value"  # Replace with the target column name in your dataset
 REPORTS_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/Reports"
 
 # Ensure the reports directory exists
