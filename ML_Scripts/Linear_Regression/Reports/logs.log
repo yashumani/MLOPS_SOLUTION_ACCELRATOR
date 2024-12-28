@@ -1,0 +1,105 @@
+2024-12-27 20:03:46,131 - INFO - Loading dataset...
+2024-12-27 20:03:46,143 - INFO - Dataset loaded successfully.
+2024-12-27 20:03:46,143 - INFO - Performing EDA before cleaning...
+2024-12-27 20:03:46,143 - INFO - --- EDA Before Cleaning ---
+2024-12-27 20:03:46,144 - INFO - Dataset Head:
+      crim    zn  indus  chas    nox     rm   age     dis  rad  tax  ptratio       b  lstat  medv
+0  0.00632  18.0   2.31     0  0.538  6.575  65.2  4.0900    1  296     15.3  396.90   4.98  24.0
+1  0.02731   0.0   7.07     0  0.469  6.421  78.9  4.9671    2  242     17.8  396.90   9.14  21.6
+2  0.02729   0.0   7.07     0  0.469  7.185  61.1  4.9671    2  242     17.8  392.83   4.03  34.7
+3  0.03237   0.0   2.18     0  0.458  6.998  45.8  6.0622    3  222     18.7  394.63   2.94  33.4
+4  0.06905   0.0   2.18     0  0.458  7.147  54.2  6.0622    3  222     18.7  396.90   5.33  36.2
+2024-12-27 20:03:46,164 - INFO - Dataset Info:
+2024-12-27 20:03:46,200 - INFO - Dataset Description:
+             crim          zn       indus        chas         nox          rm         age         dis         rad         tax     ptratio           b       lstat        medv
+count  506.000000  506.000000  506.000000  506.000000  506.000000  506.000000  506.000000  506.000000  506.000000  506.000000  506.000000  506.000000  506.000000  506.000000
+mean     3.613524   11.363636   11.136779    0.069170    0.554695    6.284634   68.574901    3.795043    9.549407  408.237154   18.455534  356.674032   12.653063   22.532806
+std      8.601545   23.322453    6.860353    0.253994    0.115878    0.702617   28.148861    2.105710    8.707259  168.537116    2.164946   91.294864    7.141062    9.197104
+min      0.006320    0.000000    0.460000    0.000000    0.385000    3.561000    2.900000    1.129600    1.000000  187.000000   12.600000    0.320000    1.730000    5.000000
+25%      0.082045    0.000000    5.190000    0.000000    0.449000    5.885500   45.025000    2.100175    4.000000  279.000000   17.400000  375.377500    6.950000   17.025000
+50%      0.256510    0.000000    9.690000    0.000000    0.538000    6.208500   77.500000    3.207450    5.000000  330.000000   19.050000  391.440000   11.360000   21.200000
+75%      3.677083   12.500000   18.100000    0.000000    0.624000    6.623500   94.075000    5.188425   24.000000  666.000000   20.200000  396.225000   16.955000   25.000000
+max     88.976200  100.000000   27.740000    1.000000    0.871000    8.780000  100.000000   12.126500   24.000000  711.000000   22.000000  396.900000   37.970000   50.000000
+2024-12-27 20:03:55,162 - INFO - Cleaning the dataset...
+2024-12-27 20:03:55,162 - INFO - --- Data Cleaning ---
+2024-12-27 20:03:55,163 - INFO - Initial dataset shape: (506, 14)
+2024-12-27 20:03:55,167 - INFO - Shape after removing duplicates: (506, 14)
+2024-12-27 20:03:55,179 - INFO - Shape after filling missing values: (506, 14)
+2024-12-27 20:03:55,184 - INFO - Shape after removing outliers in crim: (494, 14)
+2024-12-27 20:03:55,187 - INFO - Shape after removing outliers in zn: (489, 14)
+2024-12-27 20:03:55,189 - INFO - Shape after removing outliers in indus: (479, 14)
+2024-12-27 20:03:55,192 - INFO - Shape after removing outliers in chas: (479, 14)
+2024-12-27 20:03:55,194 - INFO - Shape after removing outliers in nox: (475, 14)
+2024-12-27 20:03:55,197 - INFO - Shape after removing outliers in rm: (465, 14)
+2024-12-27 20:03:55,199 - INFO - Shape after removing outliers in age: (461, 14)
+2024-12-27 20:03:55,200 - INFO - Shape after removing outliers in dis: (451, 14)
+2024-12-27 20:03:55,202 - INFO - Shape after removing outliers in rad: (451, 14)
+2024-12-27 20:03:55,204 - INFO - Shape after removing outliers in tax: (451, 14)
+2024-12-27 20:03:55,206 - INFO - Shape after removing outliers in ptratio: (448, 14)
+2024-12-27 20:03:55,208 - INFO - Shape after removing outliers in b: (443, 14)
+2024-12-27 20:03:55,211 - INFO - Shape after removing outliers in lstat: (434, 14)
+2024-12-27 20:03:55,213 - INFO - Shape after removing outliers in medv: (426, 14)
+2024-12-27 20:03:55,213 - INFO - Dataset shape after cleaning: (426, 14)
+2024-12-27 20:03:55,213 - INFO - Performing EDA after cleaning...
+2024-12-27 20:03:55,213 - INFO - --- EDA After Cleaning ---
+2024-12-27 20:03:55,213 - INFO - Dataset Head:
+      crim   zn  indus  chas    nox     rm   age     dis  rad  tax  ptratio       b  lstat  medv
+1  0.02731  0.0   7.07     0  0.469  6.421  78.9  4.9671    2  242     17.8  396.90   9.14  21.6
+2  0.02729  0.0   7.07     0  0.469  7.185  61.1  4.9671    2  242     17.8  392.83   4.03  34.7
+3  0.03237  0.0   2.18     0  0.458  6.998  45.8  6.0622    3  222     18.7  394.63   2.94  33.4
+4  0.06905  0.0   2.18     0  0.458  7.147  54.2  6.0622    3  222     18.7  396.90   5.33  36.2
+5  0.02985  0.0   2.18     0  0.458  6.430  58.7  6.0622    3  222     18.7  394.12   5.21  28.7
+2024-12-27 20:03:55,234 - INFO - Dataset Info:
+2024-12-27 20:03:55,262 - INFO - Dataset Description:
+             crim          zn       indus        chas         nox          rm         age         dis         rad         tax     ptratio           b      lstat        medv
+count  426.000000  426.000000  426.000000  426.000000  426.000000  426.000000  426.000000  426.000000  426.000000  426.000000  426.000000  426.000000  426.00000  426.000000
+mean     2.673140    8.103286   11.096972    0.065728    0.556245    6.258157   69.314085    3.707973    9.244131  396.673709   18.514789  361.131573   12.70223   21.684742
+std      5.099785   17.568853    6.456752    0.248097    0.114845    0.564759   27.000988    1.828563    8.401206  162.244490    2.065741   83.279820    6.32365    7.287774
+min      0.014390    0.000000    1.380000    0.000000    0.398000    4.652000    6.600000    1.316300    1.000000  188.000000   13.000000    7.680000    2.94000    7.200000
+25%      0.088400    0.000000    5.695000    0.000000    0.460000    5.895250   47.550000    2.197550    4.000000  277.000000   17.400000  376.782500    7.61750   17.200000
+50%      0.256510    0.000000    9.690000    0.000000    0.535000    6.189000   76.950000    3.275900    5.000000  311.000000   19.000000  392.015000   11.73000   20.950000
+75%      2.709347    0.000000   18.100000    0.000000    0.624000    6.545750   93.800000    4.812200    8.000000  437.000000   20.200000  396.780000   16.57000   24.400000
+max     37.661900   85.000000   25.650000    1.000000    0.871000    8.266000  100.000000    9.222900   24.000000  666.000000   21.200000  396.900000   30.81000   48.300000
+2024-12-27 20:04:00,870 - INFO - Splitting dataset into training and testing subsets...
+2024-12-27 20:04:00,873 - INFO - Dataset split completed.
+2024-12-27 20:04:00,873 - INFO - Running PyCaret Linear Regression...
+2024-12-27 20:04:00,874 - INFO - --- PyCaret Linear Regression ---
+2024-12-27 20:04:00,874 - INFO - Setting up PyCaret...
+2024-12-27 20:04:02,838 - INFO - Comparing models to find the best one...
+2024-12-27 20:04:53,056 - INFO - Best Model from PyCaret (Pre-Tuning):
+GradientBoostingRegressor(random_state=123)
+2024-12-27 20:04:53,057 - INFO - Tuning the best model...
+2024-12-27 20:05:17,482 - INFO - Tuned Model from PyCaret:
+GradientBoostingRegressor(random_state=123)
+2024-12-27 20:05:17,482 - INFO - Predicting on test set...
+2024-12-27 20:05:17,748 - INFO - PyCaret R²: 0.8348087481573044
+2024-12-27 20:05:17,749 - INFO - PyCaret RMSE: 2.355617792915046
+2024-12-27 20:05:17,750 - INFO - Running FLAML Linear Regression...
+2024-12-27 20:05:17,750 - INFO - --- FLAML Linear Regression ---
+2024-12-27 20:05:17,751 - INFO - Initializing AutoML...
+2024-12-27 20:05:17,751 - INFO - Fitting the AutoML model...
+2024-12-27 20:10:17,557 - INFO - Best Model from FLAML (Pre-Tuning):
+extra_tree
+2024-12-27 20:10:17,557 - INFO - Best Config: {'n_estimators': 105, 'max_features': 0.6063047901569558, 'max_leaves': 169}
+2024-12-27 20:10:17,557 - INFO - Best Loss: 0.12517211732503716
+2024-12-27 20:10:17,557 - INFO - Predicting on test set...
+2024-12-27 20:10:17,590 - INFO - FLAML R²: 0.848879106987582
+2024-12-27 20:10:17,590 - INFO - FLAML RMSE: 2.2530641616877545
+2024-12-27 20:10:17,590 - INFO - --- Initial Model Comparison ---
+2024-12-27 20:10:17,591 - INFO - PyCaret Model: GradientBoostingRegressor(random_state=123)
+2024-12-27 20:10:17,591 - INFO - PyCaret R²: 0.8348087481573044, RMSE: 2.355617792915046
+2024-12-27 20:10:17,591 - INFO - FLAML Model: AutoML(append_log=False, auto_augment=True, custom_hp={},
+       cv_score_agg_func=None, early_stop=False, ensemble=False,
+       estimator_list='auto', eval_method='auto', fit_kwargs_by_estimator={},
+       force_cancel=False, free_mem_ratio=0, hpo_method='auto',
+       keep_search_state=False, learner_selector='sample', log_file_name='',
+       log_training_metric=False, log_type='better', max_iter=None,
+       mem_thres=4294967296, metric='auto', metric_constraints=[],
+       min_sample_size=10000, mlflow_logging=True, model_history=False,
+       n_concurrent_trials=1, n_jobs=-1, n_splits=5, pred_time_limit=inf,
+       preserve_checkpoint=True, retrain_full=True, ...)
+2024-12-27 20:10:17,592 - INFO - FLAML R²: 0.848879106987582, RMSE: 2.2530641616877545
+2024-12-27 20:10:17,594 - INFO - Visualizing PyCaret Model Performance
+2024-12-27 20:10:24,694 - INFO - Visualizing FLAML Model Performance
+2024-12-27 20:10:26,079 - INFO - Best Model: FLAML
+2024-12-27 20:10:26,079 - INFO - Visualizing Best (FLAML) Model Performance
