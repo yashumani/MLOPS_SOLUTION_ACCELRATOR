@@ -1,16 +1,19 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pycaret.regression import setup, compare_models, tune_model, predict_model
+from pycaret.regression import setup as reg_setup, compare_models as reg_compare_models, tune_model as reg_tune_model, predict_model as reg_predict_model
 from flaml import AutoML
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
 import numpy as np
 import logging
+import os
+
 
 # Configure logging
+log_path = 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/Reports/logs.log'
 logging.basicConfig(
-    filename='C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/Reports/logs.log', 
+    filename=log_path, 
     level=logging.INFO, 
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
@@ -18,6 +21,10 @@ logging.basicConfig(
 # Constants
 DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/BostonHousing.csv"
 TARGET_COLUMN = "medv"  # Replace with the target column name in your dataset
+REPORTS_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/Reports"
+
+# Ensure the reports directory exists
+os.makedirs(REPORTS_PATH, exist_ok=True)
 
 # Step 1: Exploratory Data Analysis (EDA)
 def perform_eda(df, title="EDA"):
@@ -31,13 +38,31 @@ def perform_eda(df, title="EDA"):
     plt.figure(figsize=(20, 15))
     df.hist(bins=30, figsize=(20, 15), layout=(5, 3))
     plt.tight_layout()
-    plt.show()
+    plt.savefig(os.path.join(REPORTS_PATH, f"{title}_distributions.png"))
+    plt.close()
 
     # Correlation heatmap
     plt.figure(figsize=(12, 8))
     sns.heatmap(df.corr(), annot=True, cmap='coolwarm')
     plt.title('Correlation Heatmap')
-    plt.show()
+    plt.savefig(os.path.join(REPORTS_PATH, f"{title}_correlation_heatmap.png"))
+    plt.close()
+
+    # EDA for target column
+    plt.figure(figsize=(10, 6))
+    sns.histplot(df[TARGET_COLUMN], kde=True)
+    plt.title(f'Distribution of {TARGET_COLUMN}')
+    plt.xlabel(TARGET_COLUMN)
+    plt.ylabel('Frequency')
+    plt.savefig(os.path.join(REPORTS_PATH, f"{title}_{TARGET_COLUMN}_distribution.png"))
+    plt.close()
+
+    plt.figure(figsize=(10, 6))
+    sns.boxplot(x=df[TARGET_COLUMN])
+    plt.title(f'Boxplot of {TARGET_COLUMN}')
+    plt.xlabel(TARGET_COLUMN)
+    plt.savefig(os.path.join(REPORTS_PATH, f"{title}_{TARGET_COLUMN}_boxplot.png"))
+    plt.close()
 
 # Step 2: Data Cleaning
 def clean_data(df):
@@ -69,21 +94,21 @@ def pycaret_linear_regression(train_df, test_df):
     logging.info("Setting up PyCaret...")
 
     # Setup PyCaret
-    reg_setup = setup(data=train_df, target=TARGET_COLUMN, session_id=123, verbose=False)
+    reg_setup(data=train_df, target=TARGET_COLUMN, session_id=123, verbose=False)
     logging.info("Comparing models to find the best one...")
 
     # Compare models to find the best one
-    best_model = compare_models()
+    best_model = reg_compare_models()
     logging.info("Best Model from PyCaret (Pre-Tuning):\n%s", best_model)
 
     logging.info("Tuning the best model...")
     # Tune the best model
-    tuned_model = tune_model(best_model, optimize="R2")
+    tuned_model = reg_tune_model(best_model, optimize="R2")
     logging.info("Tuned Model from PyCaret:\n%s", tuned_model)
 
     logging.info("Predicting on test set...")
     # Predict on test set
-    predictions = predict_model(tuned_model, data=test_df)
+    predictions = reg_predict_model(tuned_model, data=test_df)
     r2 = r2_score(test_df[TARGET_COLUMN], predictions['prediction_label'])
     rmse = np.sqrt(mean_squared_error(test_df[TARGET_COLUMN], predictions['prediction_label']))
 
@@ -129,7 +154,7 @@ def visualize_model_performance(model, test_df, model_name):
     logging.info("Visualizing %s Model Performance", model_name)
 
     if model_name == "PyCaret":
-        predictions = predict_model(model, data=test_df)
+        predictions = reg_predict_model(model, data=test_df)
         y_true = test_df[TARGET_COLUMN]
         y_pred = predictions['prediction_label']
     else:
@@ -144,7 +169,8 @@ def visualize_model_performance(model, test_df, model_name):
     plt.xlabel('True Values')
     plt.ylabel('Predicted Values')
     plt.title(f'{model_name} Model: True vs Predicted Values')
-    plt.show()
+    plt.savefig(os.path.join(REPORTS_PATH, f"{model_name}_true_vs_predicted.png"))
+    plt.close()
 
     # Residual plot
     residuals = y_true - y_pred
@@ -152,7 +178,8 @@ def visualize_model_performance(model, test_df, model_name):
     sns.histplot(residuals, kde=True)
     plt.xlabel('Residuals')
     plt.title(f'{model_name} Model: Residuals Distribution')
-    plt.show()
+    plt.savefig(os.path.join(REPORTS_PATH, f"{model_name}_residuals_distribution.png"))
+    plt.close()
 
 # Main Function
 def main():
