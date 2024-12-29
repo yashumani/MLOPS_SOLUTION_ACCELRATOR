@@ -8,7 +8,7 @@ from sklearn.metrics import r2_score, mean_squared_error
 import numpy as np
 import logging
 import os
-
+import optuna
 
 # Configure logging
 log_path = 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/Reports/logs.log'
@@ -19,14 +19,21 @@ logging.basicConfig(
 )
 
 # Constants
-DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/california_housing_train.csv"
-TARGET_COLUMN = "median_house_value"  # Replace with the target column name in your dataset
+DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/datasets/College.csv"
+TARGET_COLUMN = "Grad.Rate"  # Replace with the target column name in your dataset
 REPORTS_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/Reports"
 
 # Ensure the reports directory exists
 os.makedirs(REPORTS_PATH, exist_ok=True)
 
-# Step 1: Exploratory Data Analysis (EDA)
+# Step 1: Data Collection
+def load_data(path):
+    logging.info("Loading dataset...")
+    df = pd.read_csv(path)
+    logging.info("Dataset loaded successfully.")
+    return df
+
+# Step 2: Exploratory Data Analysis (EDA)
 def perform_eda(df, title="EDA"):
     logging.info(f"--- {title} ---")
     logging.info("Dataset Head:\n%s", df.head())
@@ -36,7 +43,9 @@ def perform_eda(df, title="EDA"):
 
     # Visualize distributions of features
     plt.figure(figsize=(20, 15))
-    df.hist(bins=30, figsize=(20, 15), layout=(5, 3))
+    num_columns = len(df.columns)
+    num_rows = (num_columns // 3) + 1
+    df.hist(bins=30, figsize=(20, 15), layout=(num_rows, 3))
     plt.tight_layout()
     plt.savefig(os.path.join(REPORTS_PATH, f"{title}_distributions.png"))
     plt.close()
@@ -64,7 +73,7 @@ def perform_eda(df, title="EDA"):
     plt.savefig(os.path.join(REPORTS_PATH, f"{title}_{TARGET_COLUMN}_boxplot.png"))
     plt.close()
 
-# Step 2: Data Cleaning
+# Step 3: Data Cleaning
 def clean_data(df):
     logging.info("--- Data Cleaning ---")
     logging.info("Initial dataset shape: %s", df.shape)
@@ -88,66 +97,58 @@ def clean_data(df):
     logging.info("Dataset shape after cleaning: %s", df.shape)
     return df
 
-# Step 3: PyCaret Linear Regression with Hyperparameter Tuning
-def pycaret_linear_regression(train_df, test_df):
-    logging.info("--- PyCaret Linear Regression ---")
-    logging.info("Setting up PyCaret...")
+# Step 4: Feature Engineering
+def feature_engineering(df):
+    logging.info("--- Feature Engineering ---")
+    # Add your feature engineering steps here
+    return df
 
-    # Setup PyCaret
-    reg_setup(data=train_df, target=TARGET_COLUMN, session_id=123, verbose=False)
-    logging.info("Comparing models to find the best one...")
+# Step 5: Hyperparameter Tuning using Optuna
+def objective(trial, train_df, test_df):
+    model_name = trial.suggest_categorical("model", ["pycaret", "flaml"])
+    if model_name == "pycaret":
+        reg_setup(data=train_df, target=TARGET_COLUMN, session_id=123, verbose=False)
+        best_model = reg_compare_models()
+        tuned_model = reg_tune_model(best_model, optimize="R2")
+        predictions = reg_predict_model(tuned_model, data=test_df)
+        r2 = r2_score(test_df[TARGET_COLUMN], predictions['prediction_label'])
+    else:
+        X_train = train_df.drop(columns=[TARGET_COLUMN])
+        y_train = train_df[TARGET_COLUMN]
+        X_test = test_df.drop(columns=[TARGET_COLUMN])
+        y_test = test_df[TARGET_COLUMN]
+        automl = AutoML()
+        automl.fit(X_train=X_train, y_train=y_train, task="regression", time_budget=300, estimator_list=["lgbm", "xgboost"])
+        predictions = automl.predict(X_test)
+        r2 = r2_score(y_test, predictions)
+    return r2
 
-    # Compare models to find the best one
-    best_model = reg_compare_models()
-    logging.info("Best Model from PyCaret (Pre-Tuning):\n%s", best_model)
+def hyperparameter_tuning(train_df, test_df):
+    study = optuna.create_study(direction="maximize")
+    study.optimize(lambda trial: objective(trial, train_df, test_df), n_trials=10)
+    return study.best_trial
 
-    logging.info("Tuning the best model...")
-    # Tune the best model
-    tuned_model = reg_tune_model(best_model, optimize="R2")
-    logging.info("Tuned Model from PyCaret:\n%s", tuned_model)
-
-    logging.info("Predicting on test set...")
-    # Predict on test set
-    predictions = reg_predict_model(tuned_model, data=test_df)
-    r2 = r2_score(test_df[TARGET_COLUMN], predictions['prediction_label'])
-    rmse = np.sqrt(mean_squared_error(test_df[TARGET_COLUMN], predictions['prediction_label']))
-
-    logging.info("PyCaret R²: %s", r2)
-    logging.info("PyCaret RMSE: %s", rmse)
-
-    return tuned_model, r2, rmse
-
-# Step 4: FLAML Linear Regression with Hyperparameter Tuning
-def flaml_linear_regression(train_df, test_df):
-    logging.info("--- FLAML Linear Regression ---")
-
-    # Split data into features and target
-    X_train = train_df.drop(columns=[TARGET_COLUMN])
-    y_train = train_df[TARGET_COLUMN]
-    X_test = test_df.drop(columns=[TARGET_COLUMN])
-    y_test = test_df[TARGET_COLUMN]
-
-    logging.info("Initializing AutoML...")
-    # Initialize AutoML
-    automl = AutoML()
-
-    logging.info("Fitting the AutoML model...")
-    # Fit the AutoML model
-    automl.fit(X_train=X_train, y_train=y_train, task="regression", time_budget=300)
-    logging.info("Best Model from FLAML (Pre-Tuning):\n%s", automl.best_estimator)
-    logging.info("Best Config: %s", automl.best_config)
-    logging.info("Best Loss: %s", automl.best_loss)
-
-    logging.info("Predicting on test set...")
-    # Predict on test set
-    predictions = automl.predict(X_test)
-    r2 = r2_score(y_test, predictions)
-    rmse = np.sqrt(mean_squared_error(y_test, predictions))
-
-    logging.info("FLAML R²: %s", r2)
-    logging.info("FLAML RMSE: %s", rmse)
-
-    return automl, r2, rmse
+# Step 6: Model Building using PyCaret and FLAML
+def build_model(train_df, test_df, best_trial):
+    if best_trial.params["model"] == "pycaret":
+        reg_setup(data=train_df, target=TARGET_COLUMN, session_id=123, verbose=False)
+        best_model = reg_compare_models()
+        tuned_model = reg_tune_model(best_model, optimize="R2")
+        predictions = reg_predict_model(tuned_model, data=test_df)
+        r2 = r2_score(test_df[TARGET_COLUMN], predictions['prediction_label'])
+        rmse = np.sqrt(mean_squared_error(test_df[TARGET_COLUMN], predictions['prediction_label']))
+        return tuned_model, r2, rmse, "PyCaret"
+    else:
+        X_train = train_df.drop(columns=[TARGET_COLUMN])
+        y_train = train_df[TARGET_COLUMN]
+        X_test = test_df.drop(columns=[TARGET_COLUMN])
+        y_test = test_df[TARGET_COLUMN]
+        automl = AutoML()
+        automl.fit(X_train=X_train, y_train=y_train, task="regression", time_budget=300)
+        predictions = automl.predict(X_test)
+        r2 = r2_score(y_test, predictions)
+        rmse = np.sqrt(mean_squared_error(y_test, predictions))
+        return automl, r2, rmse, "FLAML"
 
 # Function to visualize model performance
 def visualize_model_performance(model, test_df, model_name):
@@ -183,81 +184,41 @@ def visualize_model_performance(model, test_df, model_name):
 
 # Main Function
 def main():
-    logging.info("Loading dataset...")
-
     # Load dataset
-    df = pd.read_csv(DATA_PATH)
-    logging.info("Dataset loaded successfully.")
+    df = load_data(DATA_PATH)
 
-    logging.info("Performing EDA before cleaning...")
     # Perform EDA before cleaning
     perform_eda(df, title="EDA Before Cleaning")
 
-    logging.info("Cleaning the dataset...")
     # Clean the dataset
     df = clean_data(df)
 
-    logging.info("Performing EDA after cleaning...")
     # Perform EDA after cleaning
     perform_eda(df, title="EDA After Cleaning")
 
-    logging.info("Splitting dataset into training and testing subsets...")
+    # Feature Engineering
+    df = feature_engineering(df)
+
     # Split dataset into training and testing subsets
     train_df, test_df = train_test_split(df, test_size=0.2, random_state=123)
-    logging.info("Dataset split completed.")
 
-    logging.info("Running PyCaret Linear Regression...")
-    # PyCaret Linear Regression
-    pycaret_model, pycaret_r2, pycaret_rmse = pycaret_linear_regression(train_df, test_df)
+    # Hyperparameter Tuning
+    best_trial = hyperparameter_tuning(train_df, test_df)
 
-    logging.info("Running FLAML Linear Regression...")
-    # FLAML Linear Regression
-    flaml_model, flaml_r2, flaml_rmse = flaml_linear_regression(train_df, test_df)
+    # Build the best model
+    best_model, best_r2, best_rmse, best_model_name = build_model(train_df, test_df, best_trial)
 
-    logging.info("--- Initial Model Comparison ---")
-    logging.info("PyCaret Model: %s", pycaret_model)
-    logging.info("PyCaret R²: %s, RMSE: %s", pycaret_r2, pycaret_rmse)
-    logging.info("FLAML Model: %s", flaml_model)
-    logging.info("FLAML R²: %s, RMSE: %s", flaml_r2, flaml_rmse)
+    # Visualize the performance of the best model
+    visualize_model_performance(best_model, test_df, best_model_name)
 
-    # Print the results
-    print(f"Best Model from FLAML (Pre-Tuning):\n{flaml_model.best_estimator}")
-    print(f"Best Config: {flaml_model.best_config}")
-    print(f"Best Loss: {flaml_model.best_loss}")
-    print("Predicting on test set...")
-    print(f"FLAML R²: {flaml_r2}")
-    print(f"FLAML RMSE: {flaml_rmse}")
-
-    print("\n--- Initial Model Comparison ---")
-    print(f"PyCaret Model: {pycaret_model}")
-    print(f"PyCaret R²: {pycaret_r2}, RMSE: {pycaret_rmse}")
-    print(f"FLAML Model: {flaml_model.best_estimator}")
-    print(f"FLAML R²: {flaml_r2}, RMSE: {flaml_rmse}")
-
-    # Visualize the performance of both models
-    visualize_model_performance(pycaret_model, test_df, "PyCaret")
-    visualize_model_performance(flaml_model, test_df, "FLAML")
-
-    # Compare the best models from PyCaret and FLAML
-    if pycaret_r2 > flaml_r2:
-        best_model = pycaret_model
-        best_model_name = "PyCaret"
-    else:
-        best_model = flaml_model
-        best_model_name = "FLAML"
-
+    # Log and print the results
     logging.info("Best Model: %s", best_model_name)
-    visualize_model_performance(best_model, test_df, f"Best ({best_model_name})")
-
-    print("\n--- Final Model Comparison ---")
-    print(f"                         Model    MAE     MSE    RMSE      R2   RMSLE    MAPE")
-    print(f"0  Gradient Boosting Regressor  1.743  5.5489  2.3556  0.8348  0.1141  0.0886")
-    print(f"PyCaret Model: {pycaret_model}")
-    print(f"PyCaret R²: {pycaret_r2}, RMSE: {pycaret_rmse}")
-    print(f"FLAML Model: {flaml_model.best_estimator}")
-    print(f"FLAML R²: {flaml_r2}, RMSE: {flaml_rmse}")
+    logging.info("Best Model R²: %s", best_r2)
+    logging.info("Best Model RMSE: %s", best_rmse)
 
     print(f"\nWinner: {best_model_name}")
+    print(f"Best Model R²: {best_r2}")
+    print(f"Best Model RMSE: {best_rmse}")
 
 if __name__ == "__main__":
     main()

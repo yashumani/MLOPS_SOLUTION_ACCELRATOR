@@ -11,6 +11,7 @@ from sklearn.pipeline import Pipeline
 import numpy as np
 import logging
 import os
+import optuna
 
 # Configure logging
 log_path = 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Classification/Reports/logs.log'
@@ -21,15 +22,14 @@ logging.basicConfig(
 )
 
 # Constants
-DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/Titanic.csv"
-TARGET_COLUMN = "survived"  # Ensure this matches the exact column name in your dataset
+DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/datasets/BreastCancer.csv"
+TARGET_COLUMN = "Class".lower()
 REPORTS_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Classification/Reports"
 
 # Ensure the reports directory exists
 os.makedirs(REPORTS_PATH, exist_ok=True)
 
-# Step 1: Exploratory Data Analysis (EDA)
-def perform_eda(df, target_column_lower, title="EDA"):
+def perform_eda(df, target_column, title="EDA"):
     logging.info(f"--- {title} ---")
     logging.info("Dataset Head:\n%s", df.head())
     logging.info("Dataset Info:")
@@ -52,7 +52,7 @@ def perform_eda(df, target_column_lower, title="EDA"):
 
     # EDA for target column
     plt.figure(figsize=(10, 6))
-    sns.histplot(df[target_column_lower], kde=True)
+    sns.histplot(df[target_column], kde=True)
     plt.title(f'Distribution of {TARGET_COLUMN}')
     plt.xlabel(TARGET_COLUMN)
     plt.ylabel('Frequency')
@@ -60,23 +60,39 @@ def perform_eda(df, target_column_lower, title="EDA"):
     plt.close()
 
     plt.figure(figsize=(10, 6))
-    sns.boxplot(x=df[target_column_lower])
+    sns.boxplot(x=df[target_column])
     plt.title(f'Boxplot of {TARGET_COLUMN}')
     plt.xlabel(TARGET_COLUMN)
     plt.savefig(os.path.join(REPORTS_PATH, f"{title}_{TARGET_COLUMN}_boxplot.png"))
     plt.close()
 
-# Step 2: Data Cleaning
-def clean_data(df):
+    # Pair plot for numeric features
+    numeric_features = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    sns.pairplot(df[numeric_features], hue=target_column)
+    plt.savefig(os.path.join(REPORTS_PATH, f"{title}_pairplot.png"))
+    plt.close()
+
+    # Count plot for categorical features
+    categorical_features = df.select_dtypes(include=['object']).columns.tolist()
+    for col in categorical_features:
+        plt.figure(figsize=(10, 6))
+        sns.countplot(x=df[col], hue=df[target_column])
+        plt.title(f'Count Plot of {col} by {TARGET_COLUMN}')
+        plt.xlabel(col)
+        plt.ylabel('Count')
+        plt.savefig(os.path.join(REPORTS_PATH, f"{title}_{col}_countplot.png"))
+        plt.close()
+
+def clean_data(df, target_column):
     logging.info("--- Data Cleaning ---")
     logging.info("Initial dataset shape: %s", df.shape)
 
     # Remove rows with missing target values
-    if TARGET_COLUMN in df.columns:
-        missing_target_count = df[TARGET_COLUMN].isna().sum()
+    if target_column in df.columns:
+        missing_target_count = df[target_column].isna().sum()
         if missing_target_count > 0:
             logging.info("Removing %s rows with missing target values.", missing_target_count)
-            df = df[df[TARGET_COLUMN].notna()]
+            df = df[df[target_column].notna()]
 
     # Remove duplicates
     df = df.drop_duplicates()
@@ -97,107 +113,153 @@ def clean_data(df):
     logging.info("Dataset shape after cleaning: %s", df.shape)
     return df
 
-# Preprocess data
-def preprocess_data(train_df, test_df, target_column_lower):
+def preprocess_data(train_df, test_df, target_column):
     # Identify numeric and categorical columns
     numeric_features = train_df.select_dtypes(include=['int64', 'float64']).columns.tolist()
     categorical_features = train_df.select_dtypes(include=['object']).columns.tolist()
     
     # Remove the target column from features if present
-    if target_column_lower in numeric_features:
-        numeric_features.remove(target_column_lower)
-    if target_column_lower in categorical_features:
-        categorical_features.remove(target_column_lower)
+    if target_column in numeric_features:
+        numeric_features.remove(target_column)
+    if target_column in categorical_features:
+        categorical_features.remove(target_column)
 
     # Debug: Print features for validation
     logging.info("Numeric Features: %s", numeric_features)
     logging.info("Categorical Features: %s", categorical_features)
-    print(f"Numeric Features: {numeric_features}")
-    print(f"Categorical Features: {categorical_features}")
+
+    # Fit OneHotEncoder separately
+    ohe = OneHotEncoder(handle_unknown='ignore')
+    ohe.fit(train_df[categorical_features])
 
     # Define a preprocessor
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', 'passthrough', numeric_features),
-            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+            ('cat', ohe, categorical_features)
         ],
         remainder='drop'
     )
 
     # Separate features and target
-    X_train = train_df.drop(columns=[target_column_lower])
-    y_train = train_df[target_column_lower]
-    X_test = test_df.drop(columns=[target_column_lower])
-    y_test = test_df[target_column_lower]
+    X_train = train_df.drop(columns=[target_column])
+    y_train = train_df[target_column]
+    X_test = test_df.drop(columns=[target_column])
+    y_test = test_df[target_column]
 
-    # Validate column existence
-    print(f"Columns in X_train before preprocessing: {X_train.columns}")
-    print(f"Columns in X_test before preprocessing: {X_test.columns}")
+    # Fit the preprocessor
+    preprocessor.fit(X_train)
 
     # Apply transformations
-    try:
-        X_train = preprocessor.fit_transform(X_train)
-        X_test = preprocessor.transform(X_test)
-    except ValueError as e:
-        logging.error("Error in ColumnTransformer: %s", e)
-        raise
+    X_train = preprocessor.transform(X_train)
+    X_test = preprocessor.transform(X_test)
 
     # Convert preprocessed data back to DataFrame with original column names
-    X_train_columns = numeric_features + list(preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features))
+    X_train_columns = numeric_features + list(ohe.get_feature_names_out())
     X_train = pd.DataFrame(X_train, columns=X_train_columns)
     X_test = pd.DataFrame(X_test, columns=X_train_columns)
 
     return X_train, X_test, y_train, y_test
 
 # Step 3: PyCaret Classification with Hyperparameter Tuning
-def pycaret_classification(train_df, test_df, X_train, X_test, y_train, y_test):
+# PyCaret Classification with Optuna Tuning
+def pycaret_classification(train_df, test_df, X_train, X_test, y_train, y_test, target_column):
     logging.info("--- PyCaret Classification ---")
     logging.info("Setting up PyCaret...")
 
     # Setup PyCaret
-    clf_setup(data=train_df, target=TARGET_COLUMN, session_id=123, verbose=False, preprocess=True)
+    clf_setup(data=train_df, target=target_column, session_id=123, verbose=True, preprocess=True)
     logging.info("Comparing models to find the best one...")
 
-    # Compare models to find the best one
-    best_model = clf_compare_models()
-    logging.info("Best Model from PyCaret (Pre-Tuning):\n%s", best_model)
+    # Compare models
+    try:
+        best_model = clf_compare_models(fold=5, turbo=False)
+        if not best_model:
+            raise ValueError("No models were returned by clf_compare_models.")
+    except Exception as e:
+        logging.error("Error during model comparison: %s", e)
+        raise
 
-    logging.info("Tuning the best model...")
-    # Tune the best model
-    tuned_model = clf_tune_model(best_model, optimize="Accuracy")
+    # Define Optuna objective for tuning
+    def objective(trial):
+        params = {
+            "n_estimators": trial.suggest_int("n_estimators", 50, 1000),
+            "max_depth": trial.suggest_int("max_depth", 3, 20),
+        }
+        try:
+            tuned_model = clf_tune_model(
+                best_model, 
+                custom_grid={"n_estimators": [params["n_estimators"]], "max_depth": [params["max_depth"]]}, 
+                optimize="Accuracy", 
+                n_iter=1,
+                search_library="scikit-learn"
+            )
+            predictions = clf_predict_model(tuned_model, data=test_df)
+            accuracy = accuracy_score(test_df[target_column], predictions['prediction_label'])
+            return accuracy
+        except Exception as e:
+            logging.error("Error during tuning: %s", e)
+            return 0.0
+
+    # Optimize using Optuna
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=20)  # Reduce trials for testing
+
+    best_trial = study.best_trial
+    logging.info("Best Trial Params: %s", best_trial.params)
+    logging.info("Best Trial Accuracy: %s", best_trial.value)
+
+    # Tune the best model with the best parameters
+    tuned_model = clf_tune_model(
+        best_model, 
+        custom_grid={"n_estimators": [best_trial.params["n_estimators"]], "max_depth": [best_trial.params["max_depth"]]}, 
+        optimize="Accuracy", 
+        n_iter=1,
+        search_library="scikit-learn"
+    )
     logging.info("Tuned Model from PyCaret:\n%s", tuned_model)
 
-    logging.info("Predicting on test set...")
     # Predict on test set
-    # Remove rows with missing target values before prediction
-    test_data = pd.concat([X_test, y_test], axis=1).dropna(subset=[TARGET_COLUMN])
-    test_data.columns = X_train.columns.tolist() + [TARGET_COLUMN]  # Ensure test data has the same columns as train data
+    test_data = pd.concat([X_test, y_test], axis=1).dropna(subset=[target_column])
+    test_data = test_data.reindex(columns=X_train.columns.tolist() + [target_column], fill_value=0)
     predictions = clf_predict_model(tuned_model, data=test_data)
-    accuracy = accuracy_score(test_df[TARGET_COLUMN], predictions['prediction_label'])
-    report = classification_report(test_df[TARGET_COLUMN], predictions['prediction_label'])
+    accuracy = accuracy_score(test_df[target_column], predictions["prediction_label"])
+    report = classification_report(test_df[target_column], predictions["prediction_label"])
 
     logging.info("PyCaret Accuracy: %s", accuracy)
     logging.info("PyCaret Classification Report:\n%s", report)
 
     return tuned_model, accuracy, report
 
+
+
 # Step 4: FLAML Classification with Hyperparameter Tuning
-def flaml_classification(train_df, test_df):
+def flaml_classification(train_df, test_df, target_column):
     logging.info("--- FLAML Classification ---")
 
     # Split data into features and target
-    X_train = train_df.drop(columns=[TARGET_COLUMN])
-    y_train = train_df[TARGET_COLUMN]
-    X_test = test_df.drop(columns=[TARGET_COLUMN])
-    y_test = test_df[TARGET_COLUMN]
+    X_train = train_df.drop(columns=[target_column])
+    y_train = train_df[target_column]
+    X_test = test_df.drop(columns=[target_column])
+    y_test = test_df[target_column]
 
     logging.info("Initializing AutoML...")
     # Initialize AutoML
     automl = AutoML()
 
     logging.info("Fitting the AutoML model...")
-    # Fit the AutoML model
-    automl.fit(X_train=X_train, y_train=y_train, task="classification", time_budget=300)
+    # Fit the AutoML model with custom search space
+    automl.fit(
+        X_train=X_train, 
+        y_train=y_train, 
+        task="classification", 
+        time_budget=300,
+        custom_hp={
+            'n_estimators': {'domain': (10, 1000), 'init_value': 100},
+            'max_depth': {'domain': (3, 15), 'init_value': 6},
+            'learning_rate': {'domain': (1e-4, 1e-1), 'init_value': 1e-3, 'log': True}
+        }
+    )
     logging.info("Best Model from FLAML (Pre-Tuning):\n%s", automl.best_estimator)
     logging.info("Best Config: %s", automl.best_config)
     logging.info("Best Loss: %s", automl.best_loss)
@@ -226,7 +288,7 @@ def flaml_classification(train_df, test_df):
     return automl, accuracy, report
 
 # Function to visualize model performance
-def visualize_model_performance(model, test_df, model_name, train_columns):
+def visualize_model_performance(model, test_df, model_name, train_columns, target_column):
     logging.info("Visualizing %s Model Performance", model_name)
 
     # Ensure test_df has the same columns as the training data
@@ -234,65 +296,70 @@ def visualize_model_performance(model, test_df, model_name, train_columns):
 
     if model_name == "PyCaret":
         predictions = clf_predict_model(model, data=test_df_aligned)
-        y_true = test_df_aligned[TARGET_COLUMN]
+        y_true = test_df_aligned[target_column]
         y_pred = predictions['prediction_label']
     else:
-        X_test = test_df_aligned.drop(columns=[TARGET_COLUMN])
-        y_true = test_df_aligned[TARGET_COLUMN]
+        X_test = test_df_aligned.drop(columns=[target_column])
+        y_true = test_df_aligned[target_column]
         y_pred = model.predict(X_test)
 
     # Confusion matrix
     cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(10, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title(f'{model_name} Confusion Matrix')
     plt.xlabel('Predicted')
     plt.ylabel('Actual')
-    plt.title(f'{model_name} Model: Confusion Matrix')
     plt.savefig(os.path.join(REPORTS_PATH, f"{model_name}_confusion_matrix.png"))
     plt.close()
 
+    # Classification report
+    report = classification_report(y_true, y_pred)
+    logging.info(f"{model_name} Classification Report:\n{report}")
+
 def main():
-    logging.info("Loading dataset...")
+    logging.info("Starting execution...")
+    start_time = pd.Timestamp.now()
 
     # Load dataset
     df = pd.read_csv(DATA_PATH)
     logging.info("Dataset loaded successfully.")
 
-    # Ensure column names are in the correct case
+    # Ensure consistent column naming
     df.columns = df.columns.str.strip().str.lower()
-    target_column_lower = TARGET_COLUMN.lower()
-    
-    # Check if the target column exists
-    if target_column_lower not in df.columns:
+    target_column = TARGET_COLUMN.lower()
+
+    if target_column not in df.columns:
         raise KeyError(f"Target column '{TARGET_COLUMN}' not found in the dataset.")
-    
+
     logging.info("Performing EDA before cleaning...")
-    # Perform EDA before cleaning
-    perform_eda(df, target_column_lower, title="EDA Before Cleaning")
+    perform_eda(df, target_column, title="EDA Before Cleaning")
 
     logging.info("Cleaning the dataset...")
-    # Clean the dataset
-    df = clean_data(df)
-
-    # Remove rows with missing target values
-    df = df.dropna(subset=[target_column_lower])
-
-    logging.info("Columns after cleaning: %s", df.columns)
-    print(df.columns)
+    df = clean_data(df, target_column)
+    df = df.dropna(subset=[target_column])
 
     logging.info("Performing EDA after cleaning...")
-    # Perform EDA after cleaning
-    perform_eda(df, target_column_lower, title="EDA After Cleaning")
+    perform_eda(df, target_column, title="EDA After Cleaning")
+
+    # Ensure valid classes for stratified split
+    class_counts = df[target_column].value_counts()
+    valid_classes = class_counts[class_counts >= 2].index
+    if len(valid_classes) < 2:
+        raise ValueError("Insufficient class representation for stratified split.")
+    df = df[df[target_column].isin(valid_classes)]
 
     logging.info("Splitting dataset into training and testing subsets...")
-    # Split dataset into training and testing subsets
-    train_df, test_df = train_test_split(df, test_size=0.2, random_state=123)
+    train_df, test_df = train_test_split(
+        df, test_size=0.2, random_state=123, stratify=df[target_column]
+    )
     logging.info("Dataset split completed.")
-    logging.info("Columns in train_df: %s", train_df.columns)
-    logging.info("Columns in test_df: %s", test_df.columns)
+    logging.info("Class distributions - Train: %s, Test: %s", 
+                 train_df[target_column].value_counts().to_dict(),
+                 test_df[target_column].value_counts().to_dict())
 
     # Preprocess data
-    X_train, X_test, y_train, y_test = preprocess_data(train_df, test_df, target_column_lower)
+    X_train, X_test, y_train, y_test = preprocess_data(train_df, test_df, target_column)
 
     # Combine preprocessed features with targets
     train_df_clean = pd.concat([X_train, y_train.reset_index(drop=True)], axis=1)
@@ -301,31 +368,34 @@ def main():
     # PyCaret Classification
     logging.info("Running PyCaret Classification...")
     pycaret_model, pycaret_accuracy, pycaret_report = pycaret_classification(
-        train_df_clean, test_df_clean, X_train, X_test, y_train, y_test
+        train_df_clean, test_df_clean, X_train, X_test, y_train, y_test, target_column
     )
 
     # FLAML Classification
     logging.info("Running FLAML Classification...")
-    flaml_model, flaml_accuracy, flaml_report = flaml_classification(train_df_clean, test_df_clean)
+    flaml_model, flaml_accuracy, flaml_report = flaml_classification(train_df_clean, test_df_clean, target_column)
 
     # Model Comparison
     logging.info("--- Model Comparison ---")
     logging.info("PyCaret Accuracy: %s", pycaret_accuracy)
     logging.info("FLAML Accuracy: %s", flaml_accuracy)
 
-    # Print results
     print("\n--- Model Comparison ---")
     print(f"PyCaret Accuracy: {pycaret_accuracy}")
     print(f"FLAML Accuracy: {flaml_accuracy}")
 
     # Visualize model performance
-    visualize_model_performance(pycaret_model, test_df_clean, "PyCaret", train_df_clean.columns)
-    visualize_model_performance(flaml_model, test_df_clean, "FLAML", train_df_clean.columns)
+    visualize_model_performance(pycaret_model, test_df_clean, "PyCaret", train_df_clean.columns, target_column)
+    visualize_model_performance(flaml_model, test_df_clean, "FLAML", train_df_clean.columns, target_column)
 
     # Determine best model
     best_model_name = "PyCaret" if pycaret_accuracy > flaml_accuracy else "FLAML"
     logging.info("Best Model: %s", best_model_name)
     print(f"\nBest Model: {best_model_name}")
+
+    end_time = pd.Timestamp.now()
+    logging.info("Execution completed in %s", end_time - start_time)
+
 
 if __name__ == "__main__":
     main()

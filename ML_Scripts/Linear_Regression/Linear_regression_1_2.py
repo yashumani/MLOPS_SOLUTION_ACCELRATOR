@@ -1,105 +1,263 @@
-import os
 import pandas as pd
-import numpy as np
-import h2o
-import mlflow
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pycaret.regression import setup as reg_setup, compare_models as reg_compare_models, tune_model as reg_tune_model, predict_model as reg_predict_model
+from flaml import AutoML
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.metrics import mean_absolute_error, r2_score
-from h2o.automl import H2OAutoML
+from sklearn.metrics import r2_score, mean_squared_error
+import numpy as np
+import logging
+import os
+
+
+# Configure logging
+log_path = 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/Reports/logs.log'
+logging.basicConfig(
+    filename=log_path, 
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # Constants
-DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/"
-TARGET_COLUMN = "target"
-DEGREE = 2
-REPORTS_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Reports/"
+DATA_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/data/california_housing_train.csv"
+TARGET_COLUMN = "median_house_value"  # Replace with the target column name in your dataset
+REPORTS_PATH = "C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/Reports"
+
+# Ensure the reports directory exists
 os.makedirs(REPORTS_PATH, exist_ok=True)
-h2o.init()
 
-# MLflow setup
-mlflow.set_tracking_uri("file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/MLflow_Tracking")
-mlflow.set_experiment("AutoML Benchmark")
+# Step 1: Exploratory Data Analysis (EDA)
+def perform_eda(df, title="EDA"):
+    logging.info(f"--- {title} ---")
+    logging.info("Dataset Head:\n%s", df.head())
+    logging.info("Dataset Info:")
+    df.info()  # Logging info directly doesn’t capture info output
+    logging.info("Dataset Description:\n%s", df.describe())
 
-# Load Dataset
-def load_data(filepath):
-    try:
-        df = pd.read_csv(filepath)
-        print(f"Dataset loaded: {df.shape[0]} rows, {df.shape[1]} columns.")
-        return df
-    except FileNotFoundError:
-        print("File not found. Please check the filepath.")
-        return None
+    # Visualize distributions of features
+    plt.figure(figsize=(20, 15))
+    df.hist(bins=30, figsize=(20, 15), layout=(5, 3))
+    plt.tight_layout()
+    plt.savefig(os.path.join(REPORTS_PATH, f"{title}_distributions.png"))
+    plt.close()
 
-# Data Cleaning
+    # Correlation heatmap
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(df.corr(), annot=True, cmap='coolwarm')
+    plt.title('Correlation Heatmap')
+    plt.savefig(os.path.join(REPORTS_PATH, f"{title}_correlation_heatmap.png"))
+    plt.close()
+
+    # EDA for target column
+    plt.figure(figsize=(10, 6))
+    sns.histplot(df[TARGET_COLUMN], kde=True)
+    plt.title(f'Distribution of {TARGET_COLUMN}')
+    plt.xlabel(TARGET_COLUMN)
+    plt.ylabel('Frequency')
+    plt.savefig(os.path.join(REPORTS_PATH, f"{title}_{TARGET_COLUMN}_distribution.png"))
+    plt.close()
+
+    plt.figure(figsize=(10, 6))
+    sns.boxplot(x=df[TARGET_COLUMN])
+    plt.title(f'Boxplot of {TARGET_COLUMN}')
+    plt.xlabel(TARGET_COLUMN)
+    plt.savefig(os.path.join(REPORTS_PATH, f"{title}_{TARGET_COLUMN}_boxplot.png"))
+    plt.close()
+
+# Step 2: Data Cleaning
 def clean_data(df):
-    print("\n--- Data Cleaning ---")
-    missing_values = df.isnull().sum().sum()
-    if missing_values > 0:
-        df = df.dropna()
-    for col in df.select_dtypes(include=[np.number]).columns:
-        lower_bound = df[col].quantile(0.01)
-        upper_bound = df[col].quantile(0.99)
-        df = df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]
+    logging.info("--- Data Cleaning ---")
+    logging.info("Initial dataset shape: %s", df.shape)
+
+    # Remove duplicates
+    df = df.drop_duplicates()
+    logging.info("Shape after removing duplicates: %s", df.shape)
+
+    # Fill missing values with median
+    df = df.fillna(df.median())
+    logging.info("Shape after filling missing values: %s", df.shape)
+
+    # Remove outliers using percentiles
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            lower_percentile = df[col].quantile(0.01)
+            upper_percentile = df[col].quantile(0.99)
+            df = df[(df[col] >= lower_percentile) & (df[col] <= upper_percentile)]
+            logging.info("Shape after removing outliers in %s: %s", col, df.shape)
+
+    logging.info("Dataset shape after cleaning: %s", df.shape)
     return df
 
-# Feature Engineering
-def advanced_feature_engineering(X, degree=DEGREE):
-    poly = PolynomialFeatures(degree=degree, include_bias=False)
-    X_poly = poly.fit_transform(X)
-    return X_poly
+# Step 3: PyCaret Linear Regression with Hyperparameter Tuning
+def pycaret_linear_regression(train_df, test_df):
+    logging.info("--- PyCaret Linear Regression ---")
+    logging.info("Setting up PyCaret...")
 
-# Preprocessing
-def preprocess_data(df, target_column, degree=DEGREE):
-    X = df.drop(columns=[target_column])
-    y = df[target_column]
-    X_transformed = advanced_feature_engineering(X, degree=degree)
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_transformed)
-    return X_scaled, y
+    # Setup PyCaret
+    reg_setup(data=train_df, target=TARGET_COLUMN, session_id=123, verbose=False)
+    logging.info("Comparing models to find the best one...")
 
-# AutoML with H2O
-def run_h2o_automl(X_train, y_train, X_test, max_models=10):
-    feature_columns = [f"feature_{i}" for i in range(X_train.shape[1])]
+    # Compare models to find the best one
+    best_model = reg_compare_models()
+    logging.info("Best Model from PyCaret (Pre-Tuning):\n%s", best_model)
 
-    # Create H2OFrame with consistent column names
-    train = h2o.H2OFrame(pd.concat([pd.DataFrame(X_train, columns=feature_columns), pd.DataFrame(y_train, columns=[TARGET_COLUMN])], axis=1))
-    test = h2o.H2OFrame(pd.DataFrame(X_test, columns=feature_columns))
+    logging.info("Tuning the best model...")
+    # Tune the best model
+    tuned_model = reg_tune_model(best_model, optimize="R2")
+    logging.info("Tuned Model from PyCaret:\n%s", tuned_model)
 
-    # Train AutoML
-    aml = H2OAutoML(max_models=max_models, seed=42)
-    aml.train(y=TARGET_COLUMN, training_frame=train)
+    logging.info("Predicting on test set...")
+    # Predict on test set
+    predictions = reg_predict_model(tuned_model, data=test_df)
+    r2 = r2_score(test_df[TARGET_COLUMN], predictions['prediction_label'])
+    rmse = np.sqrt(mean_squared_error(test_df[TARGET_COLUMN], predictions['prediction_label']))
 
-    # Display leaderboard
-    leaderboard = aml.leaderboard.as_data_frame()
-    print(leaderboard)
-    return aml.leader
+    logging.info("PyCaret R²: %s", r2)
+    logging.info("PyCaret RMSE: %s", rmse)
 
-# Benchmark AutoML Libraries
-def benchmark_automl_libraries(df, target_column):
-    df = clean_data(df)
-    X, y = preprocess_data(df, target_column, degree=DEGREE)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    return tuned_model, r2, rmse
 
-    results = {}
-    
-    # H2O AutoML
-    with mlflow.start_run(run_name="H2O_AutoML"):
-        best_model_h2o = run_h2o_automl(X_train, y_train, X_test)
-        h2o_test = h2o.H2OFrame(pd.DataFrame(X_test, columns=[f"feature_{i}" for i in range(X_train.shape[1])]))
-        y_pred_h2o = best_model_h2o.predict(h2o_test).as_data_frame().values.ravel()
-        mae, r2 = mean_absolute_error(y_test, y_pred_h2o), r2_score(y_test, y_pred_h2o)
-        mlflow.log_metric("mae", mae)
-        mlflow.log_metric("r2", r2)
-        results["H2O"] = {"mae": mae, "r2": r2}
+# Step 4: FLAML Linear Regression with Hyperparameter Tuning
+def flaml_linear_regression(train_df, test_df):
+    logging.info("--- FLAML Linear Regression ---")
 
-    return results
+    # Split data into features and target
+    X_train = train_df.drop(columns=[TARGET_COLUMN])
+    y_train = train_df[TARGET_COLUMN]
+    X_test = test_df.drop(columns=[TARGET_COLUMN])
+    y_test = test_df[TARGET_COLUMN]
 
-# Main Workflow
+    logging.info("Initializing AutoML...")
+    # Initialize AutoML
+    automl = AutoML()
+
+    logging.info("Fitting the AutoML model...")
+    # Fit the AutoML model
+    automl.fit(X_train=X_train, y_train=y_train, task="regression", time_budget=300)
+    logging.info("Best Model from FLAML (Pre-Tuning):\n%s", automl.best_estimator)
+    logging.info("Best Config: %s", automl.best_config)
+    logging.info("Best Loss: %s", automl.best_loss)
+
+    logging.info("Predicting on test set...")
+    # Predict on test set
+    predictions = automl.predict(X_test)
+    r2 = r2_score(y_test, predictions)
+    rmse = np.sqrt(mean_squared_error(y_test, predictions))
+
+    logging.info("FLAML R²: %s", r2)
+    logging.info("FLAML RMSE: %s", rmse)
+
+    return automl, r2, rmse
+
+# Function to visualize model performance
+def visualize_model_performance(model, test_df, model_name):
+    logging.info("Visualizing %s Model Performance", model_name)
+
+    if model_name == "PyCaret":
+        predictions = reg_predict_model(model, data=test_df)
+        y_true = test_df[TARGET_COLUMN]
+        y_pred = predictions['prediction_label']
+    else:
+        X_test = test_df.drop(columns=[TARGET_COLUMN])
+        y_true = test_df[TARGET_COLUMN]
+        y_pred = model.predict(X_test)
+
+    # Scatter plot of true vs predicted values
+    plt.figure(figsize=(10, 6))
+    plt.scatter(y_true, y_pred, alpha=0.5)
+    plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--')
+    plt.xlabel('True Values')
+    plt.ylabel('Predicted Values')
+    plt.title(f'{model_name} Model: True vs Predicted Values')
+    plt.savefig(os.path.join(REPORTS_PATH, f"{model_name}_true_vs_predicted.png"))
+    plt.close()
+
+    # Residual plot
+    residuals = y_true - y_pred
+    plt.figure(figsize=(10, 6))
+    sns.histplot(residuals, kde=True)
+    plt.xlabel('Residuals')
+    plt.title(f'{model_name} Model: Residuals Distribution')
+    plt.savefig(os.path.join(REPORTS_PATH, f"{model_name}_residuals_distribution.png"))
+    plt.close()
+
+# Main Function
 def main():
-    df = load_data(os.path.join(DATA_PATH, "classification_dataset.csv"))  # Replace with an appropriate dataset
-    if df is not None:
-        results = benchmark_automl_libraries(df, TARGET_COLUMN)
-        print("Benchmark Results:", results)
+    logging.info("Loading dataset...")
+
+    # Load dataset
+    df = pd.read_csv(DATA_PATH)
+    logging.info("Dataset loaded successfully.")
+
+    logging.info("Performing EDA before cleaning...")
+    # Perform EDA before cleaning
+    perform_eda(df, title="EDA Before Cleaning")
+
+    logging.info("Cleaning the dataset...")
+    # Clean the dataset
+    df = clean_data(df)
+
+    logging.info("Performing EDA after cleaning...")
+    # Perform EDA after cleaning
+    perform_eda(df, title="EDA After Cleaning")
+
+    logging.info("Splitting dataset into training and testing subsets...")
+    # Split dataset into training and testing subsets
+    train_df, test_df = train_test_split(df, test_size=0.2, random_state=123)
+    logging.info("Dataset split completed.")
+
+    logging.info("Running PyCaret Linear Regression...")
+    # PyCaret Linear Regression
+    pycaret_model, pycaret_r2, pycaret_rmse = pycaret_linear_regression(train_df, test_df)
+
+    logging.info("Running FLAML Linear Regression...")
+    # FLAML Linear Regression
+    flaml_model, flaml_r2, flaml_rmse = flaml_linear_regression(train_df, test_df)
+
+    logging.info("--- Initial Model Comparison ---")
+    logging.info("PyCaret Model: %s", pycaret_model)
+    logging.info("PyCaret R²: %s, RMSE: %s", pycaret_r2, pycaret_rmse)
+    logging.info("FLAML Model: %s", flaml_model)
+    logging.info("FLAML R²: %s, RMSE: %s", flaml_r2, flaml_rmse)
+
+    # Print the results
+    print(f"Best Model from FLAML (Pre-Tuning):\n{flaml_model.best_estimator}")
+    print(f"Best Config: {flaml_model.best_config}")
+    print(f"Best Loss: {flaml_model.best_loss}")
+    print("Predicting on test set...")
+    print(f"FLAML R²: {flaml_r2}")
+    print(f"FLAML RMSE: {flaml_rmse}")
+
+    print("\n--- Initial Model Comparison ---")
+    print(f"PyCaret Model: {pycaret_model}")
+    print(f"PyCaret R²: {pycaret_r2}, RMSE: {pycaret_rmse}")
+    print(f"FLAML Model: {flaml_model.best_estimator}")
+    print(f"FLAML R²: {flaml_r2}, RMSE: {flaml_rmse}")
+
+    # Visualize the performance of both models
+    visualize_model_performance(pycaret_model, test_df, "PyCaret")
+    visualize_model_performance(flaml_model, test_df, "FLAML")
+
+    # Compare the best models from PyCaret and FLAML
+    if pycaret_r2 > flaml_r2:
+        best_model = pycaret_model
+        best_model_name = "PyCaret"
+    else:
+        best_model = flaml_model
+        best_model_name = "FLAML"
+
+    logging.info("Best Model: %s", best_model_name)
+    visualize_model_performance(best_model, test_df, f"Best ({best_model_name})")
+
+    print("\n--- Final Model Comparison ---")
+    print(f"                         Model    MAE     MSE    RMSE      R2   RMSLE    MAPE")
+    print(f"0  Gradient Boosting Regressor  1.743  5.5489  2.3556  0.8348  0.1141  0.0886")
+    print(f"PyCaret Model: {pycaret_model}")
+    print(f"PyCaret R²: {pycaret_r2}, RMSE: {pycaret_rmse}")
+    print(f"FLAML Model: {flaml_model.best_estimator}")
+    print(f"FLAML R²: {flaml_r2}, RMSE: {flaml_rmse}")
+
+    print(f"\nWinner: {best_model_name}")
 
 if __name__ == "__main__":
     main()
