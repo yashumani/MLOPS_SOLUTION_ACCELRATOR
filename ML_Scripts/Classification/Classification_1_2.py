@@ -191,15 +191,15 @@ def pycaret_classification(train_df, test_df, X_train, X_test, y_train, y_test, 
                 best_model, 
                 custom_grid={"n_estimators": [params["n_estimators"]], "max_depth": [params["max_depth"]]}, 
                 optimize="Accuracy", 
-                n_iter=1,
-                search_library="scikit-learn"
+                n_iter=1  # Single iteration as we're manually specifying grid
             )
             predictions = clf_predict_model(tuned_model, data=test_df)
-            accuracy = accuracy_score(test_df[target_column], predictions['prediction_label'])
+            accuracy = accuracy_score(test_df[target_column], predictions["prediction_label"])
             return accuracy
         except Exception as e:
-            logging.error("Error during tuning: %s", e)
+            logging.error("Error during model tuning: %s", e)
             return 0.0
+
 
     # Optimize using Optuna
     study = optuna.create_study(direction="maximize")
@@ -257,7 +257,7 @@ def flaml_classification(train_df, test_df, target_column):
         custom_hp={
             'n_estimators': {'domain': (10, 1000), 'init_value': 100},
             'max_depth': {'domain': (3, 15), 'init_value': 6},
-            'learning_rate': {'domain': (1e-4, 1e-1), 'init_value': 1e-3, 'log': True}
+            'learning_rate': {'domain': (1e-4, 1e-1), 'init_value': 0.01, 'log': True}
         }
     )
     logging.info("Best Model from FLAML (Pre-Tuning):\n%s", automl.best_estimator)
@@ -329,8 +329,10 @@ def main():
     df.columns = df.columns.str.strip().str.lower()
     target_column = TARGET_COLUMN.lower()
 
+    # Validate the target column
     if target_column not in df.columns:
-        raise KeyError(f"Target column '{TARGET_COLUMN}' not found in the dataset.")
+        raise KeyError(f"Target column '{TARGET_COLUMN}' not found in the dataset. Available columns: {df.columns.tolist()}")
+
 
     logging.info("Performing EDA before cleaning...")
     perform_eda(df, target_column, title="EDA Before Cleaning")
@@ -343,11 +345,13 @@ def main():
     perform_eda(df, target_column, title="EDA After Cleaning")
 
     # Ensure valid classes for stratified split
+    # Ensure valid classes for stratified split
     class_counts = df[target_column].value_counts()
-    valid_classes = class_counts[class_counts >= 2].index
-    if len(valid_classes) < 2:
-        raise ValueError("Insufficient class representation for stratified split.")
-    df = df[df[target_column].isin(valid_classes)]
+    if class_counts.min() < 2:
+        logging.warning("Some classes have fewer than 2 samples. Consider oversampling or removing these classes.")
+        df = df[df[target_column].isin(class_counts[class_counts >= 2].index)]
+
+    #df = df[df[target_column].isin(valid_classes)]
 
     logging.info("Splitting dataset into training and testing subsets...")
     train_df, test_df = train_test_split(
