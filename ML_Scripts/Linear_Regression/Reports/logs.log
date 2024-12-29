@@ -1,0 +1,35 @@
+2024-12-29 13:51:58,017 - INFO - Loading dataset...
+2024-12-29 13:51:58,048 - INFO - Dataset loaded successfully.
+2024-12-29 13:51:58,049 - INFO - --- EDA Before Cleaning ---
+2024-12-29 13:51:58,049 - INFO - Generating Sweetviz report...
+2024-12-29 13:52:15,152 - INFO - Sweetviz report generated successfully.
+2024-12-29 13:52:15,153 - INFO - --- Data Cleaning ---
+2024-12-29 13:52:15,155 - INFO - Initial dataset shape: (777, 18)
+2024-12-29 13:52:15,157 - INFO - Shape after removing duplicates: (777, 18)
+2024-12-29 13:52:15,164 - INFO - Shape after filling missing values: (777, 18)
+2024-12-29 13:52:15,169 - INFO - Shape after removing outliers in Apps: (761, 18)
+2024-12-29 13:52:15,175 - INFO - Shape after removing outliers in Accept: (745, 18)
+2024-12-29 13:52:15,181 - INFO - Shape after removing outliers in Enroll: (729, 18)
+2024-12-29 13:52:15,185 - INFO - Shape after removing outliers in Top10perc: (717, 18)
+2024-12-29 13:52:15,189 - INFO - Shape after removing outliers in Top25perc: (702, 18)
+2024-12-29 13:52:15,193 - INFO - Shape after removing outliers in F.Undergrad: (687, 18)
+2024-12-29 13:52:15,195 - INFO - Shape after removing outliers in P.Undergrad: (674, 18)
+2024-12-29 13:52:15,198 - INFO - Shape after removing outliers in Outstate: (660, 18)
+2024-12-29 13:52:15,202 - INFO - Shape after removing outliers in Room.Board: (646, 18)
+2024-12-29 13:52:15,204 - INFO - Shape after removing outliers in Books: (632, 18)
+2024-12-29 13:52:15,208 - INFO - Shape after removing outliers in Personal: (619, 18)
+2024-12-29 13:52:15,210 - INFO - Shape after removing outliers in PhD: (606, 18)
+2024-12-29 13:52:15,212 - INFO - Shape after removing outliers in Terminal: (595, 18)
+2024-12-29 13:52:15,215 - INFO - Shape after removing outliers in S.F.Ratio: (585, 18)
+2024-12-29 13:52:15,218 - INFO - Shape after removing outliers in perc.alumni: (574, 18)
+2024-12-29 13:52:15,220 - INFO - Shape after removing outliers in Expend: (562, 18)
+2024-12-29 13:52:15,222 - INFO - Shape after removing outliers in Grad.Rate: (551, 18)
+2024-12-29 13:52:15,222 - INFO - Dataset shape after cleaning: (551, 18)
+2024-12-29 13:52:15,222 - INFO - --- EDA After Cleaning ---
+2024-12-29 13:52:15,222 - INFO - Generating Sweetviz report...
+2024-12-29 13:52:31,956 - INFO - Sweetviz report generated successfully.
+2024-12-29 13:52:31,961 - INFO - --- Feature Engineering ---
+2024-12-29 15:07:21,478 - INFO - Visualizing PyCaret Model Performance
+2024-12-29 15:07:22,295 - INFO - Best Model: PyCaret
+2024-12-29 15:07:22,295 - INFO - Best Model R²: 0.5704748136167128
+2024-12-29 15:07:22,296 - INFO - Best Model RMSE: 10.149884581198576
