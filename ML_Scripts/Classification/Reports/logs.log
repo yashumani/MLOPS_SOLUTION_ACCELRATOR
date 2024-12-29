@@ -65,3 +65,81 @@ min    1.454470e+05      1.000000    1.000000    1.000000  ...     1.000000     
 max    1.368267e+06     10.000000   10.000000   10.000000  ...    10.000000        10.000000   10.000000    1.000000
 
 [8 rows x 11 columns]
+2024-12-29 09:55:51,623 - INFO - Splitting dataset into training and testing subsets...
+2024-12-29 09:55:51,634 - INFO - Dataset split completed.
+2024-12-29 09:55:51,635 - INFO - Class distributions - Train: {0: 356, 1: 185}, Test: {0: 90, 1: 46}
+2024-12-29 09:55:51,635 - INFO - Numeric Features: ['id', 'cl.thickness', 'cell.size', 'cell.shape', 'marg.adhesion', 'epith.c.size', 'bare.nuclei', 'bl.cromatin', 'normal.nucleoli', 'mitoses']
+2024-12-29 09:55:51,635 - INFO - Categorical Features: []
+2024-12-29 09:55:51,646 - INFO - Running PyCaret Classification...
+2024-12-29 09:55:51,646 - INFO - --- PyCaret Classification ---
+2024-12-29 09:55:51,646 - INFO - Setting up PyCaret...
+2024-12-29 09:55:56,454 - INFO - Comparing models to find the best one...
+2024-12-29 10:09:44,972 - INFO - Best Trial Params: {'n_estimators': 365, 'max_depth': 11}
+2024-12-29 10:09:44,972 - INFO - Best Trial Accuracy: 0.9632352941176471
+2024-12-29 10:10:18,683 - INFO - Tuned Model from PyCaret:
+ExtraTreesClassifier(bootstrap=False, ccp_alpha=0.0, class_weight=None,
+                     criterion='gini', max_depth=None, max_features='sqrt',
+                     max_leaf_nodes=None, max_samples=None,
+                     min_impurity_decrease=0.0, min_samples_leaf=1,
+                     min_samples_split=2, min_weight_fraction_leaf=0.0,
+                     n_estimators=100, n_jobs=-1, oob_score=False,
+                     random_state=123, verbose=0, warm_start=False)
+2024-12-29 10:10:19,570 - INFO - PyCaret Accuracy: 0.6323529411764706
+2024-12-29 10:10:19,570 - INFO - PyCaret Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.66      0.91      0.77        90
+           1       0.33      0.09      0.14        46
+
+    accuracy                           0.63       136
+   macro avg       0.50      0.50      0.45       136
+weighted avg       0.55      0.63      0.55       136
+
+2024-12-29 10:10:19,583 - INFO - Running FLAML Classification...
+2024-12-29 10:10:19,583 - INFO - --- FLAML Classification ---
+2024-12-29 10:10:19,585 - INFO - Initializing AutoML...
+2024-12-29 10:10:19,586 - INFO - Fitting the AutoML model...
+2024-12-29 10:13:00,346 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 10:15:19,611 - INFO - Best Model from FLAML (Pre-Tuning):
+extra_tree
+2024-12-29 10:15:19,612 - INFO - Best Config: {'n_estimators': 20, 'max_features': 0.13753704083452398, 'max_leaves': 19, 'criterion': 'entropy'}
+2024-12-29 10:15:19,612 - INFO - Best Loss: 0.005398003637440229
+2024-12-29 10:15:19,617 - INFO - Predicting on test set...
+2024-12-29 10:15:19,660 - INFO - FLAML Accuracy: 0.9558823529411765
+2024-12-29 10:15:19,661 - INFO - FLAML Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.98      0.96      0.97        90
+           1       0.92      0.96      0.94        46
+
+    accuracy                           0.96       136
+   macro avg       0.95      0.96      0.95       136
+weighted avg       0.96      0.96      0.96       136
+
+2024-12-29 10:15:19,661 - INFO - --- Model Comparison ---
+2024-12-29 10:15:19,661 - INFO - PyCaret Accuracy: 0.6323529411764706
+2024-12-29 10:15:19,661 - INFO - FLAML Accuracy: 0.9558823529411765
+2024-12-29 10:15:19,661 - INFO - Visualizing PyCaret Model Performance
+2024-12-29 10:15:21,485 - INFO - PyCaret Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.99      0.96      0.97        90
+           1       0.92      0.98      0.95        46
+
+    accuracy                           0.96       136
+   macro avg       0.95      0.97      0.96       136
+weighted avg       0.96      0.96      0.96       136
+
+2024-12-29 10:15:21,486 - INFO - Visualizing FLAML Model Performance
+2024-12-29 10:15:21,809 - INFO - FLAML Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.98      0.96      0.97        90
+           1       0.92      0.96      0.94        46
+
+    accuracy                           0.96       136
+   macro avg       0.95      0.96      0.95       136
+weighted avg       0.96      0.96      0.96       136
+
+2024-12-29 10:15:21,810 - INFO - Best Model: FLAML
+2024-12-29 10:15:21,817 - INFO - Execution completed in 0 days 00:20:39.620142
