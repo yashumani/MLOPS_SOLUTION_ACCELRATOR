@@ -33,3 +33,57 @@
 2024-12-29 15:07:22,295 - INFO - Best Model: PyCaret
 2024-12-29 15:07:22,295 - INFO - Best Model R²: 0.5704748136167128
 2024-12-29 15:07:22,296 - INFO - Best Model RMSE: 10.149884581198576
+2024-12-29 22:32:14,994 - INFO - Loading dataset...
+2024-12-29 22:32:15,020 - INFO - Dataset loaded successfully.
+2024-12-29 22:32:15,020 - INFO - --- EDA Before Cleaning ---
+2024-12-29 22:32:15,020 - INFO - Generating Sweetviz report...
+2024-12-29 22:32:25,890 - INFO - Sweetviz report generated successfully.
+2024-12-29 22:32:25,891 - INFO - --- Data Cleaning ---
+2024-12-29 22:32:25,891 - INFO - Initial dataset shape: (777, 18)
+2024-12-29 22:32:25,894 - INFO - Shape after removing duplicates: (777, 18)
+2024-12-29 22:32:51,316 - INFO - Loading dataset...
+2024-12-29 22:32:51,323 - INFO - Dataset loaded successfully.
+2024-12-29 22:32:51,323 - INFO - --- EDA Before Cleaning ---
+2024-12-29 22:32:51,323 - INFO - Generating Sweetviz report...
+2024-12-29 22:33:02,823 - INFO - Sweetviz report generated successfully.
+2024-12-29 22:33:02,824 - INFO - --- Data Cleaning ---
+2024-12-29 22:33:02,824 - INFO - Initial dataset shape: (777, 18)
+2024-12-29 22:33:02,826 - INFO - Shape after removing duplicates: (777, 18)
+2024-12-29 22:33:02,834 - INFO - Shape after encoding categorical variables: (777, 18)
+2024-12-29 22:33:02,919 - INFO - Shape after advanced imputation: (777, 18)
+2024-12-29 22:33:02,922 - INFO - Shape after removing outliers in Apps: (761, 18)
+2024-12-29 22:33:02,924 - INFO - Shape after removing outliers in Accept: (745, 18)
+2024-12-29 22:33:02,927 - INFO - Shape after removing outliers in Enroll: (729, 18)
+2024-12-29 22:33:02,931 - INFO - Shape after removing outliers in Top10perc: (717, 18)
+2024-12-29 22:33:02,936 - INFO - Shape after removing outliers in Top25perc: (702, 18)
+2024-12-29 22:33:02,939 - INFO - Shape after removing outliers in F.Undergrad: (687, 18)
+2024-12-29 22:33:02,943 - INFO - Shape after removing outliers in P.Undergrad: (674, 18)
+2024-12-29 22:33:02,948 - INFO - Shape after removing outliers in Outstate: (660, 18)
+2024-12-29 22:33:02,952 - INFO - Shape after removing outliers in Room.Board: (646, 18)
+2024-12-29 22:33:02,955 - INFO - Shape after removing outliers in Books: (632, 18)
+2024-12-29 22:33:02,958 - INFO - Shape after removing outliers in Personal: (619, 18)
+2024-12-29 22:33:02,964 - INFO - Shape after removing outliers in PhD: (606, 18)
+2024-12-29 22:33:02,967 - INFO - Shape after removing outliers in Terminal: (595, 18)
+2024-12-29 22:33:02,973 - INFO - Shape after removing outliers in S.F.Ratio: (585, 18)
+2024-12-29 22:33:02,976 - INFO - Shape after removing outliers in perc.alumni: (574, 18)
+2024-12-29 22:33:02,980 - INFO - Shape after removing outliers in Expend: (562, 18)
+2024-12-29 22:33:02,983 - INFO - Shape after removing outliers in Grad.Rate: (551, 18)
+2024-12-29 22:33:02,987 - INFO - Shape after removing outliers in Private_Yes: (551, 18)
+2024-12-29 22:33:02,988 - INFO - Dataset shape after cleaning: (551, 18)
+2024-12-29 22:33:02,988 - INFO - --- EDA After Cleaning ---
+2024-12-29 22:33:02,988 - INFO - Generating Sweetviz report...
+2024-12-29 22:33:15,541 - INFO - Sweetviz report generated successfully.
+2024-12-29 22:33:15,543 - INFO - --- Feature Engineering ---
+2024-12-29 22:33:16,517 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 22:38:16,920 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 22:43:17,067 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 22:48:17,908 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 22:53:17,281 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 23:11:46,661 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 23:16:46,714 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 23:21:46,558 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 23:26:46,929 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-29 23:31:46,521 - INFO - Visualizing FLAML Model Performance
+2024-12-29 23:31:46,978 - INFO - Best Model: FLAML
+2024-12-29 23:31:46,978 - INFO - Best Model R²: 0.5471364764374487
+2024-12-29 23:31:46,978 - INFO - Best Model RMSE: 10.421985315292485
