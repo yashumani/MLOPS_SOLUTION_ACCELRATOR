@@ -135,3 +135,71 @@ weighted avg       0.96      0.96      0.96       136
 
 2024-12-29 13:49:20,370 - INFO - Best Model: FLAML
 2024-12-29 13:49:20,378 - INFO - Execution completed in 0 days 00:26:05.935169
+2024-12-30 06:01:40,941 - INFO - Loading dataset...
+2024-12-30 06:01:40,968 - INFO - Dataset loaded successfully.
+2024-12-30 06:01:40,968 - INFO - --- EDA Before Cleaning ---
+2024-12-30 06:01:40,968 - INFO - Generating Sweetviz report...
+2024-12-30 06:01:52,080 - INFO - Sweetviz report generated successfully.
+2024-12-30 06:01:52,082 - INFO - --- Data Cleaning ---
+2024-12-30 06:01:52,082 - INFO - Initial dataset shape: (777, 18)
+2024-12-30 06:01:52,085 - INFO - Shape after removing duplicates: (777, 18)
+2024-12-30 06:01:52,093 - INFO - Shape after encoding categorical variables: (777, 18)
+2024-12-30 06:01:52,161 - INFO - Shape after advanced imputation: (777, 18)
+2024-12-30 06:01:52,163 - INFO - Shape after removing outliers in Apps: (761, 18)
+2024-12-30 06:01:52,166 - INFO - Shape after removing outliers in Accept: (745, 18)
+2024-12-30 06:01:52,168 - INFO - Shape after removing outliers in Enroll: (729, 18)
+2024-12-30 06:01:52,171 - INFO - Shape after removing outliers in Top10perc: (717, 18)
+2024-12-30 06:01:52,173 - INFO - Shape after removing outliers in Top25perc: (702, 18)
+2024-12-30 06:01:52,175 - INFO - Shape after removing outliers in F.Undergrad: (687, 18)
+2024-12-30 06:01:52,176 - INFO - Shape after removing outliers in P.Undergrad: (674, 18)
+2024-12-30 06:01:52,178 - INFO - Shape after removing outliers in Outstate: (660, 18)
+2024-12-30 06:01:52,180 - INFO - Shape after removing outliers in Room.Board: (646, 18)
+2024-12-30 06:01:52,183 - INFO - Shape after removing outliers in Books: (632, 18)
+2024-12-30 06:01:52,187 - INFO - Shape after removing outliers in Personal: (619, 18)
+2024-12-30 06:01:52,190 - INFO - Shape after removing outliers in PhD: (606, 18)
+2024-12-30 06:01:52,191 - INFO - Shape after removing outliers in Terminal: (595, 18)
+2024-12-30 06:01:52,194 - INFO - Shape after removing outliers in S.F.Ratio: (585, 18)
+2024-12-30 06:01:52,196 - INFO - Shape after removing outliers in perc.alumni: (574, 18)
+2024-12-30 06:01:52,199 - INFO - Shape after removing outliers in Expend: (562, 18)
+2024-12-30 06:01:52,202 - INFO - Shape after removing outliers in Grad.Rate: (551, 18)
+2024-12-30 06:01:52,203 - INFO - Shape after removing outliers in Private_Yes: (551, 18)
+2024-12-30 06:01:52,203 - INFO - Dataset shape after cleaning: (551, 18)
+2024-12-30 06:01:52,203 - INFO - --- EDA After Cleaning ---
+2024-12-30 06:01:52,203 - INFO - Generating Sweetviz report...
+2024-12-30 06:02:03,499 - INFO - Sweetviz report generated successfully.
+2024-12-30 06:02:03,501 - INFO - --- Feature Engineering ---
+2024-12-30 06:05:12,913 - INFO - Loading dataset...
+2024-12-30 06:05:12,931 - INFO - Dataset loaded successfully.
+2024-12-30 06:05:12,931 - INFO - --- EDA Before Cleaning ---
+2024-12-30 06:05:12,931 - INFO - Generating Sweetviz report...
+2024-12-30 06:05:17,057 - INFO - Sweetviz report generated successfully.
+2024-12-30 06:05:17,058 - INFO - --- Data Cleaning ---
+2024-12-30 06:05:17,058 - INFO - Initial dataset shape: (699, 11)
+2024-12-30 06:05:17,060 - INFO - Shape after removing duplicates: (691, 11)
+2024-12-30 06:05:17,063 - INFO - Shape after encoding categorical variables: (691, 11)
+2024-12-30 06:05:17,108 - INFO - Shape after advanced imputation: (691, 11)
+2024-12-30 06:05:17,111 - INFO - Shape after removing outliers in Id: (677, 11)
+2024-12-30 06:05:17,115 - INFO - Shape after removing outliers in Cl.thickness: (677, 11)
+2024-12-30 06:05:17,118 - INFO - Shape after removing outliers in Cell.size: (677, 11)
+2024-12-30 06:05:17,119 - INFO - Shape after removing outliers in Cell.shape: (677, 11)
+2024-12-30 06:05:17,121 - INFO - Shape after removing outliers in Marg.adhesion: (677, 11)
+2024-12-30 06:05:17,122 - INFO - Shape after removing outliers in Epith.c.size: (677, 11)
+2024-12-30 06:05:17,125 - INFO - Shape after removing outliers in Bare.nuclei: (677, 11)
+2024-12-30 06:05:17,126 - INFO - Shape after removing outliers in Bl.cromatin: (677, 11)
+2024-12-30 06:05:17,128 - INFO - Shape after removing outliers in Normal.nucleoli: (677, 11)
+2024-12-30 06:05:17,131 - INFO - Shape after removing outliers in Mitoses: (677, 11)
+2024-12-30 06:05:17,134 - INFO - Shape after removing outliers in Class: (677, 11)
+2024-12-30 06:05:17,136 - INFO - Dataset shape after cleaning: (677, 11)
+2024-12-30 06:05:17,136 - INFO - --- EDA After Cleaning ---
+2024-12-30 06:05:17,136 - INFO - Generating Sweetviz report...
+2024-12-30 06:05:21,037 - INFO - Sweetviz report generated successfully.
+2024-12-30 06:05:21,038 - INFO - --- Feature Engineering ---
+2024-12-30 06:11:53,454 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-30 06:15:14,541 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-30 06:23:25,537 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-30 06:26:17,707 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-30 06:53:21,421 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-30 06:56:40,115 - INFO - No low-cost partial config given to the search algorithm. For cost-frugal search, consider providing low-cost values for cost-related hps via 'low_cost_partial_config'. More info can be found at https://microsoft.github.io/FLAML/docs/FAQ#about-low_cost_partial_config-in-tune
+2024-12-30 07:10:53,628 - INFO - Visualizing PyCaret Model Performance
+2024-12-30 07:10:54,207 - INFO - Best Model: PyCaret
+2024-12-30 07:10:54,207 - INFO - Best Model Accuracy: 0.9705882352941176
