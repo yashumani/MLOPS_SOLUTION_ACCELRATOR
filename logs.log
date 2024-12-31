@@ -30,3 +30,1075 @@ This will raise in a future version.
 'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
 2024-12-27 18:38:02,622:WARNING:
 'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2024-12-30 18:49:37,387:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2024-12-30 18:49:37,388:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2024-12-30 18:49:37,388:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2024-12-30 18:49:37,388:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2024-12-30 18:52:04,123:INFO:PyCaret ClusteringExperiment
+2024-12-30 18:52:04,123:INFO:Logging name: cluster-default-name
+2024-12-30 18:52:04,123:INFO:ML Usecase: MLUsecase.CLUSTERING
+2024-12-30 18:52:04,125:INFO:version 3.0.4
+2024-12-30 18:52:04,125:INFO:Initializing setup()
+2024-12-30 18:52:04,125:INFO:self.USI: 1e3b
+2024-12-30 18:52:04,125:INFO:self._variable_keys: {'USI', 'log_plots_param', 'X', 'n_jobs_param', 'memory', 'exp_name_log', 'seed', '_ml_usecase', 'pipeline', 'html_param', 'exp_id', '_available_plots', 'data', 'idx', 'gpu_param', 'gpu_n_jobs_param', 'logging_param'}
+2024-12-30 18:52:04,125:INFO:Checking environment
+2024-12-30 18:52:04,126:INFO:python_version: 3.10.16
+2024-12-30 18:52:04,126:INFO:python_build: ('main', 'Dec  5 2024 14:07:43')
+2024-12-30 18:52:04,126:INFO:machine: AMD64
+2024-12-30 18:52:04,141:INFO:platform: Windows-10-10.0.26100-SP0
+2024-12-30 18:52:04,150:INFO:Memory: svmem(total=7893946368, available=686759936, percent=91.3, used=7207186432, free=686759936)
+2024-12-30 18:52:04,150:INFO:Physical Core: 6
+2024-12-30 18:52:04,150:INFO:Logical Core: 12
+2024-12-30 18:52:04,151:INFO:Checking libraries
+2024-12-30 18:52:04,151:INFO:System:
+2024-12-30 18:52:04,151:INFO:    python: 3.10.16 | packaged by conda-forge | (main, Dec  5 2024, 14:07:43) [MSC v.1942 64 bit (AMD64)]
+2024-12-30 18:52:04,151:INFO:executable: C:\Users\yashu\anaconda3\envs\env_MLOps\python.exe
+2024-12-30 18:52:04,151:INFO:   machine: Windows-10-10.0.26100-SP0
+2024-12-30 18:52:04,151:INFO:PyCaret required dependencies:
+2024-12-30 18:52:04,217:INFO:                 pip: 24.3.1
+2024-12-30 18:52:04,217:INFO:          setuptools: 75.6.0
+2024-12-30 18:52:04,217:INFO:             pycaret: 3.0.4
+2024-12-30 18:52:04,217:INFO:             IPython: 8.31.0
+2024-12-30 18:52:04,217:INFO:          ipywidgets: 8.1.5
+2024-12-30 18:52:04,217:INFO:                tqdm: 4.67.1
+2024-12-30 18:52:04,217:INFO:               numpy: 1.23.5
+2024-12-30 18:52:04,217:INFO:              pandas: 1.5.3
+2024-12-30 18:52:04,217:INFO:              jinja2: 3.1.5
+2024-12-30 18:52:04,217:INFO:               scipy: 1.7.3
+2024-12-30 18:52:04,217:INFO:              joblib: 1.2.0
+2024-12-30 18:52:04,217:INFO:             sklearn: 1.2.2
+2024-12-30 18:52:04,217:INFO:                pyod: 2.0.2
+2024-12-30 18:52:04,217:INFO:            imblearn: 0.12.4
+2024-12-30 18:52:04,218:INFO:   category_encoders: 2.6.4
+2024-12-30 18:52:04,218:INFO:            lightgbm: 4.5.0
+2024-12-30 18:52:04,218:INFO:               numba: 0.60.0
+2024-12-30 18:52:04,218:INFO:            requests: 2.32.3
+2024-12-30 18:52:04,218:INFO:          matplotlib: 3.8.4
+2024-12-30 18:52:04,218:INFO:          scikitplot: 0.3.7
+2024-12-30 18:52:04,218:INFO:         yellowbrick: 1.5
+2024-12-30 18:52:04,218:INFO:              plotly: 5.24.1
+2024-12-30 18:52:04,218:INFO:    plotly-resampler: Not installed
+2024-12-30 18:52:04,218:INFO:             kaleido: 0.2.1
+2024-12-30 18:52:04,218:INFO:           schemdraw: 0.15
+2024-12-30 18:52:04,218:INFO:         statsmodels: 0.14.4
+2024-12-30 18:52:04,218:INFO:              sktime: 0.21.1
+2024-12-30 18:52:04,218:INFO:               tbats: 1.1.3
+2024-12-30 18:52:04,218:INFO:            pmdarima: 2.0.4
+2024-12-30 18:52:04,218:INFO:              psutil: 6.1.0
+2024-12-30 18:52:04,218:INFO:          markupsafe: 3.0.2
+2024-12-30 18:52:04,218:INFO:             pickle5: Not installed
+2024-12-30 18:52:04,218:INFO:         cloudpickle: 3.1.0
+2024-12-30 18:52:04,218:INFO:         deprecation: 2.1.0
+2024-12-30 18:52:04,218:INFO:              xxhash: 3.5.0
+2024-12-30 18:52:04,218:INFO:           wurlitzer: 3.1.1
+2024-12-30 18:52:04,219:INFO:PyCaret optional dependencies:
+2024-12-30 18:52:04,311:INFO:                shap: Not installed
+2024-12-30 18:52:04,311:INFO:           interpret: Not installed
+2024-12-30 18:52:04,311:INFO:                umap: 0.5.7
+2024-12-30 18:52:04,311:INFO:    pandas_profiling: Not installed
+2024-12-30 18:52:04,311:INFO:  explainerdashboard: Not installed
+2024-12-30 18:52:04,311:INFO:             autoviz: Not installed
+2024-12-30 18:52:04,311:INFO:           fairlearn: Not installed
+2024-12-30 18:52:04,311:INFO:          deepchecks: Not installed
+2024-12-30 18:52:04,311:INFO:             xgboost: 2.0.3
+2024-12-30 18:52:04,312:INFO:            catboost: Not installed
+2024-12-30 18:52:04,312:INFO:              kmodes: Not installed
+2024-12-30 18:52:04,312:INFO:             mlxtend: Not installed
+2024-12-30 18:52:04,312:INFO:       statsforecast: Not installed
+2024-12-30 18:52:04,312:INFO:        tune_sklearn: Not installed
+2024-12-30 18:52:04,312:INFO:                 ray: Not installed
+2024-12-30 18:52:04,312:INFO:            hyperopt: Not installed
+2024-12-30 18:52:04,312:INFO:              optuna: 4.1.0
+2024-12-30 18:52:04,312:INFO:               skopt: Not installed
+2024-12-30 18:52:04,312:INFO:              mlflow: 2.19.0
+2024-12-30 18:52:04,312:INFO:              gradio: Not installed
+2024-12-30 18:52:04,312:INFO:             fastapi: Not installed
+2024-12-30 18:52:04,312:INFO:             uvicorn: Not installed
+2024-12-30 18:52:04,312:INFO:              m2cgen: Not installed
+2024-12-30 18:52:04,312:INFO:           evidently: Not installed
+2024-12-30 18:52:04,312:INFO:               fugue: Not installed
+2024-12-30 18:52:04,313:INFO:           streamlit: Not installed
+2024-12-30 18:52:04,313:INFO:             prophet: Not installed
+2024-12-30 18:52:04,313:INFO:None
+2024-12-30 18:52:04,313:INFO:Set up data.
+2024-12-30 18:52:04,337:INFO:Set up index.
+2024-12-30 18:52:04,337:INFO:Assigning column types.
+2024-12-30 18:52:04,345:INFO:Engine successfully changes for model 'kmeans' to 'sklearn'.
+2024-12-30 18:52:04,347:INFO:Engine for model 'dbscan' has not been set explicitly, hence returning None.
+2024-12-30 18:52:04,347:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-30 18:52:04,347:INFO:Engine for model 'dbscan' has not been set explicitly, hence returning None.
+2024-12-30 18:52:04,348:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-30 18:52:04,348:INFO:Engine successfully changes for model 'dbscan' to 'sklearn'.
+2024-12-30 18:52:04,348:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-30 18:52:04,348:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-30 18:52:04,351:INFO:Preparing preprocessing pipeline...
+2024-12-30 18:52:04,351:INFO:Set up simple imputation.
+2024-12-30 18:52:04,401:INFO:Finished creating preprocessing pipeline.
+2024-12-30 18:52:04,415:INFO:Pipeline: Pipeline(memory=FastMemory(location=C:\Users\yashu\AppData\Local\Temp\joblib),
+         steps=[('numerical_imputer',
+                 TransformerWrapper(include=['Unit price', 'Quantity', 'Tax 5%',
+                                             'Total', 'cogs',
+                                             'gross margin percentage',
+                                             'gross income', 'Rating',
+                                             'Unit price^2',
+                                             'Unit price Quantity',
+                                             'Unit price Tax 5%',
+                                             'Unit price Total',
+                                             'Unit price cogs',
+                                             'Unit price gross margin '
+                                             'percentage',
+                                             'Uni...
+                                             'Quantity Total', 'Quantity cogs',
+                                             'Quantity gross margin percentage',
+                                             'Quantity gross income',
+                                             'Quantity Rating', 'Tax 5%^2',
+                                             'Tax 5% Total', 'Tax 5% cogs',
+                                             'Tax 5% gross margin percentage',
+                                             'Tax 5% gross income',
+                                             'Tax 5% Rating', 'Total^2', ...],
+                                    transformer=SimpleImputer())),
+                ('categorical_imputer',
+                 TransformerWrapper(include=[],
+                                    transformer=SimpleImputer(strategy='most_frequent')))])
+2024-12-30 18:52:04,415:INFO:Creating final display dataframe.
+2024-12-30 18:52:04,475:INFO:Setup _display_container:                Description                 Value
+0               Session id                   123
+1      Original data shape            (1000, 44)
+2   Transformed data shape            (1000, 44)
+3         Numeric features                    44
+4               Preprocess                  True
+5          Imputation type                simple
+6       Numeric imputation                  mean
+7   Categorical imputation                  mode
+8                 CPU Jobs                    -1
+9                  Use GPU                 False
+10          Log Experiment                 False
+11         Experiment Name  cluster-default-name
+12                     USI                  1e3b
+2024-12-30 18:52:04,475:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-30 18:52:04,475:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-30 18:52:04,476:INFO:setup() successfully completed in 2.53s...............
+2024-12-30 18:52:04,476:INFO:Initializing create_model()
+2024-12-30 18:52:04,476:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=4, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:04,476:INFO:Checking exceptions
+2024-12-30 18:52:04,525:INFO:Importing untrained model
+2024-12-30 18:52:04,526:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:04,527:INFO:Fitting Model
+2024-12-30 18:52:04,618:INFO:KMeans(n_clusters=4, random_state=123)
+2024-12-30 18:52:04,618:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:04,618:INFO:Uploading results into container
+2024-12-30 18:52:04,621:INFO:Uploading model into container now
+2024-12-30 18:52:04,632:INFO:_master_model_container: 1
+2024-12-30 18:52:04,632:INFO:_display_container: 2
+2024-12-30 18:52:04,632:INFO:KMeans(n_clusters=4, random_state=123)
+2024-12-30 18:52:04,632:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:06,657:INFO:Initializing assign_model()
+2024-12-30 18:52:06,657:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=4, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:06,658:INFO:Checking exceptions
+2024-12-30 18:52:06,661:INFO:Determining Trained Model
+2024-12-30 18:52:06,662:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:06,662:INFO:Copying data
+2024-12-30 18:52:06,668:INFO:(1000, 45)
+2024-12-30 18:52:06,669:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:06,677:INFO:Initializing create_model()
+2024-12-30 18:52:06,677:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=10, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:06,678:INFO:Checking exceptions
+2024-12-30 18:52:06,739:INFO:Importing untrained model
+2024-12-30 18:52:06,740:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:06,741:INFO:Fitting Model
+2024-12-30 18:52:06,807:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:07,027:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:09,641:INFO:KMeans(n_clusters=10, random_state=123)
+2024-12-30 18:52:09,641:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:09,643:INFO:Uploading results into container
+2024-12-30 18:52:09,644:INFO:Uploading model into container now
+2024-12-30 18:52:09,657:INFO:_master_model_container: 2
+2024-12-30 18:52:09,657:INFO:_display_container: 3
+2024-12-30 18:52:09,657:INFO:KMeans(n_clusters=10, random_state=123)
+2024-12-30 18:52:09,657:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:11,146:INFO:Initializing assign_model()
+2024-12-30 18:52:11,146:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=10, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:11,146:INFO:Checking exceptions
+2024-12-30 18:52:11,146:INFO:Determining Trained Model
+2024-12-30 18:52:11,146:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:11,146:INFO:Copying data
+2024-12-30 18:52:11,149:INFO:(1000, 45)
+2024-12-30 18:52:11,149:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:11,170:INFO:Initializing create_model()
+2024-12-30 18:52:11,170:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=6, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:11,170:INFO:Checking exceptions
+2024-12-30 18:52:11,206:INFO:Importing untrained model
+2024-12-30 18:52:11,207:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:11,208:INFO:Fitting Model
+2024-12-30 18:52:11,242:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:11,243:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:11,364:INFO:KMeans(n_clusters=6, random_state=123)
+2024-12-30 18:52:11,364:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:11,365:INFO:Uploading results into container
+2024-12-30 18:52:11,366:INFO:Uploading model into container now
+2024-12-30 18:52:11,375:INFO:_master_model_container: 3
+2024-12-30 18:52:11,375:INFO:_display_container: 4
+2024-12-30 18:52:11,375:INFO:KMeans(n_clusters=6, random_state=123)
+2024-12-30 18:52:11,376:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:12,782:INFO:Initializing assign_model()
+2024-12-30 18:52:12,782:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=6, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:12,782:INFO:Checking exceptions
+2024-12-30 18:52:12,782:INFO:Determining Trained Model
+2024-12-30 18:52:12,782:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:12,782:INFO:Copying data
+2024-12-30 18:52:12,785:INFO:(1000, 45)
+2024-12-30 18:52:12,785:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:12,808:INFO:Initializing create_model()
+2024-12-30 18:52:12,808:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=8, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:12,808:INFO:Checking exceptions
+2024-12-30 18:52:12,838:INFO:Importing untrained model
+2024-12-30 18:52:12,839:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:12,840:INFO:Fitting Model
+2024-12-30 18:52:12,879:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:12,879:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:13,007:INFO:KMeans(random_state=123)
+2024-12-30 18:52:13,007:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:13,008:INFO:Uploading results into container
+2024-12-30 18:52:13,008:INFO:Uploading model into container now
+2024-12-30 18:52:13,017:INFO:_master_model_container: 4
+2024-12-30 18:52:13,017:INFO:_display_container: 5
+2024-12-30 18:52:13,018:INFO:KMeans(random_state=123)
+2024-12-30 18:52:13,018:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:14,441:INFO:Initializing assign_model()
+2024-12-30 18:52:14,441:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:14,441:INFO:Checking exceptions
+2024-12-30 18:52:14,441:INFO:Determining Trained Model
+2024-12-30 18:52:14,442:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:14,442:INFO:Copying data
+2024-12-30 18:52:14,444:INFO:(1000, 45)
+2024-12-30 18:52:14,444:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:14,471:INFO:Initializing create_model()
+2024-12-30 18:52:14,471:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=10, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:14,471:INFO:Checking exceptions
+2024-12-30 18:52:14,502:INFO:Importing untrained model
+2024-12-30 18:52:14,503:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:14,504:INFO:Fitting Model
+2024-12-30 18:52:14,584:INFO:KMeans(n_clusters=10, random_state=123)
+2024-12-30 18:52:14,584:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:14,584:INFO:Uploading results into container
+2024-12-30 18:52:14,586:INFO:Uploading model into container now
+2024-12-30 18:52:14,593:INFO:_master_model_container: 5
+2024-12-30 18:52:14,593:INFO:_display_container: 6
+2024-12-30 18:52:14,594:INFO:KMeans(n_clusters=10, random_state=123)
+2024-12-30 18:52:14,594:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:16,057:INFO:Initializing assign_model()
+2024-12-30 18:52:16,057:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=10, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:16,057:INFO:Checking exceptions
+2024-12-30 18:52:16,057:INFO:Determining Trained Model
+2024-12-30 18:52:16,057:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:16,057:INFO:Copying data
+2024-12-30 18:52:16,060:INFO:(1000, 45)
+2024-12-30 18:52:16,060:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:16,084:INFO:Initializing create_model()
+2024-12-30 18:52:16,084:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=9, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:16,085:INFO:Checking exceptions
+2024-12-30 18:52:16,117:INFO:Importing untrained model
+2024-12-30 18:52:16,118:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:16,120:INFO:Fitting Model
+2024-12-30 18:52:16,160:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:16,160:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:16,295:INFO:KMeans(n_clusters=9, random_state=123)
+2024-12-30 18:52:16,295:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:16,296:INFO:Uploading results into container
+2024-12-30 18:52:16,296:INFO:Uploading model into container now
+2024-12-30 18:52:16,305:INFO:_master_model_container: 6
+2024-12-30 18:52:16,306:INFO:_display_container: 7
+2024-12-30 18:52:16,306:INFO:KMeans(n_clusters=9, random_state=123)
+2024-12-30 18:52:16,306:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:17,691:INFO:Initializing assign_model()
+2024-12-30 18:52:17,691:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=9, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:17,691:INFO:Checking exceptions
+2024-12-30 18:52:17,691:INFO:Determining Trained Model
+2024-12-30 18:52:17,691:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:17,691:INFO:Copying data
+2024-12-30 18:52:17,694:INFO:(1000, 45)
+2024-12-30 18:52:17,694:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:17,715:INFO:Initializing create_model()
+2024-12-30 18:52:17,715:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=4, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:17,715:INFO:Checking exceptions
+2024-12-30 18:52:17,752:INFO:Importing untrained model
+2024-12-30 18:52:17,752:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:17,754:INFO:Fitting Model
+2024-12-30 18:52:17,820:INFO:KMeans(n_clusters=4, random_state=123)
+2024-12-30 18:52:17,820:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:17,820:INFO:Uploading results into container
+2024-12-30 18:52:17,821:INFO:Uploading model into container now
+2024-12-30 18:52:17,831:INFO:_master_model_container: 7
+2024-12-30 18:52:17,831:INFO:_display_container: 8
+2024-12-30 18:52:17,831:INFO:KMeans(n_clusters=4, random_state=123)
+2024-12-30 18:52:17,831:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:19,311:INFO:Initializing assign_model()
+2024-12-30 18:52:19,311:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=4, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:19,311:INFO:Checking exceptions
+2024-12-30 18:52:19,311:INFO:Determining Trained Model
+2024-12-30 18:52:19,311:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:19,311:INFO:Copying data
+2024-12-30 18:52:19,313:INFO:(1000, 45)
+2024-12-30 18:52:19,313:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:19,333:INFO:Initializing create_model()
+2024-12-30 18:52:19,333:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=3, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:19,333:INFO:Checking exceptions
+2024-12-30 18:52:19,361:INFO:Importing untrained model
+2024-12-30 18:52:19,361:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:19,362:INFO:Fitting Model
+2024-12-30 18:52:19,399:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:19,400:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:19,499:INFO:KMeans(n_clusters=3, random_state=123)
+2024-12-30 18:52:19,500:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:19,500:INFO:Uploading results into container
+2024-12-30 18:52:19,501:INFO:Uploading model into container now
+2024-12-30 18:52:19,510:INFO:_master_model_container: 8
+2024-12-30 18:52:19,511:INFO:_display_container: 9
+2024-12-30 18:52:19,511:INFO:KMeans(n_clusters=3, random_state=123)
+2024-12-30 18:52:19,511:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:21,149:INFO:Initializing assign_model()
+2024-12-30 18:52:21,149:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=3, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:21,149:INFO:Checking exceptions
+2024-12-30 18:52:21,149:INFO:Determining Trained Model
+2024-12-30 18:52:21,150:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:21,150:INFO:Copying data
+2024-12-30 18:52:21,154:INFO:(1000, 45)
+2024-12-30 18:52:21,154:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:21,180:INFO:Initializing create_model()
+2024-12-30 18:52:21,180:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=6, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:21,180:INFO:Checking exceptions
+2024-12-30 18:52:21,209:INFO:Importing untrained model
+2024-12-30 18:52:21,211:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:21,211:INFO:Fitting Model
+2024-12-30 18:52:21,254:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:21,254:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:21,384:INFO:KMeans(n_clusters=6, random_state=123)
+2024-12-30 18:52:21,385:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:21,385:INFO:Uploading results into container
+2024-12-30 18:52:21,386:INFO:Uploading model into container now
+2024-12-30 18:52:21,394:INFO:_master_model_container: 9
+2024-12-30 18:52:21,394:INFO:_display_container: 10
+2024-12-30 18:52:21,395:INFO:KMeans(n_clusters=6, random_state=123)
+2024-12-30 18:52:21,395:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:23,307:INFO:Initializing assign_model()
+2024-12-30 18:52:23,307:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=6, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:23,307:INFO:Checking exceptions
+2024-12-30 18:52:23,308:INFO:Determining Trained Model
+2024-12-30 18:52:23,308:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:23,308:INFO:Copying data
+2024-12-30 18:52:23,313:INFO:(1000, 45)
+2024-12-30 18:52:23,313:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:23,352:INFO:Initializing create_model()
+2024-12-30 18:52:23,352:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=5, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:23,353:INFO:Checking exceptions
+2024-12-30 18:52:23,400:INFO:Importing untrained model
+2024-12-30 18:52:23,401:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:23,403:INFO:Fitting Model
+2024-12-30 18:52:23,456:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:23,456:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:25,470:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-30 18:52:25,470:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:25,471:INFO:Uploading results into container
+2024-12-30 18:52:25,471:INFO:Uploading model into container now
+2024-12-30 18:52:25,481:INFO:_master_model_container: 10
+2024-12-30 18:52:25,481:INFO:_display_container: 11
+2024-12-30 18:52:25,481:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-30 18:52:25,481:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:26,931:INFO:Initializing assign_model()
+2024-12-30 18:52:26,931:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=5, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:26,931:INFO:Checking exceptions
+2024-12-30 18:52:26,932:INFO:Determining Trained Model
+2024-12-30 18:52:26,932:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:26,932:INFO:Copying data
+2024-12-30 18:52:26,934:INFO:(1000, 45)
+2024-12-30 18:52:26,934:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:26,962:INFO:Initializing create_model()
+2024-12-30 18:52:26,962:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=10, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:26,962:INFO:Checking exceptions
+2024-12-30 18:52:26,999:INFO:Importing untrained model
+2024-12-30 18:52:26,999:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:27,000:INFO:Fitting Model
+2024-12-30 18:52:27,073:INFO:KMeans(n_clusters=10, random_state=123)
+2024-12-30 18:52:27,073:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:27,074:INFO:Uploading results into container
+2024-12-30 18:52:27,074:INFO:Uploading model into container now
+2024-12-30 18:52:27,083:INFO:_master_model_container: 11
+2024-12-30 18:52:27,083:INFO:_display_container: 12
+2024-12-30 18:52:27,083:INFO:KMeans(n_clusters=10, random_state=123)
+2024-12-30 18:52:27,083:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:28,491:INFO:Initializing assign_model()
+2024-12-30 18:52:28,491:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=10, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:28,492:INFO:Checking exceptions
+2024-12-30 18:52:28,492:INFO:Determining Trained Model
+2024-12-30 18:52:28,492:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:28,492:INFO:Copying data
+2024-12-30 18:52:28,494:INFO:(1000, 45)
+2024-12-30 18:52:28,494:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:28,517:INFO:Initializing create_model()
+2024-12-30 18:52:28,517:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, estimator=kmeans, num_clusters=3, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-30 18:52:28,517:INFO:Checking exceptions
+2024-12-30 18:52:28,554:INFO:Importing untrained model
+2024-12-30 18:52:28,554:INFO:K-Means Clustering Imported successfully
+2024-12-30 18:52:28,555:INFO:Fitting Model
+2024-12-30 18:52:28,593:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:28,593:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:28,688:INFO:KMeans(n_clusters=3, random_state=123)
+2024-12-30 18:52:28,689:INFO:create_models() successfully completed......................................
+2024-12-30 18:52:28,689:INFO:Uploading results into container
+2024-12-30 18:52:28,690:INFO:Uploading model into container now
+2024-12-30 18:52:28,698:INFO:_master_model_container: 12
+2024-12-30 18:52:28,699:INFO:_display_container: 13
+2024-12-30 18:52:28,699:INFO:KMeans(n_clusters=3, random_state=123)
+2024-12-30 18:52:28,699:INFO:create_model() successfully completed......................................
+2024-12-30 18:52:30,105:INFO:Initializing assign_model()
+2024-12-30 18:52:30,105:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001839D804700>, model=KMeans(n_clusters=3, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-30 18:52:30,105:INFO:Checking exceptions
+2024-12-30 18:52:30,105:INFO:Determining Trained Model
+2024-12-30 18:52:30,105:INFO:Trained Model : K-Means Clustering
+2024-12-30 18:52:30,105:INFO:Copying data
+2024-12-30 18:52:30,108:INFO:(1000, 45)
+2024-12-30 18:52:30,108:INFO:assign_model() successfully completed......................................
+2024-12-30 18:52:30,112:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:30,113:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:30,235:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:30,236:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:30,318:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:30,319:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:30,426:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:30,426:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:30,527:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:30,528:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:30,608:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:30,609:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:30,724:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:30,724:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:30,831:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:30,831:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:30,939:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:30,940:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:31,053:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:31,054:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-30 18:52:31,171:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-30 18:52:31,171:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:54:29,258:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2024-12-31 08:54:29,260:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2024-12-31 08:54:29,260:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2024-12-31 08:54:29,260:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2024-12-31 08:57:19,660:INFO:PyCaret ClusteringExperiment
+2024-12-31 08:57:19,661:INFO:Logging name: cluster-default-name
+2024-12-31 08:57:19,661:INFO:ML Usecase: MLUsecase.CLUSTERING
+2024-12-31 08:57:19,661:INFO:version 3.0.4
+2024-12-31 08:57:19,661:INFO:Initializing setup()
+2024-12-31 08:57:19,661:INFO:self.USI: 61fb
+2024-12-31 08:57:19,662:INFO:self._variable_keys: {'USI', 'data', 'logging_param', 'exp_name_log', 'gpu_param', 'n_jobs_param', 'memory', 'X', '_ml_usecase', 'exp_id', 'html_param', 'idx', '_available_plots', 'gpu_n_jobs_param', 'log_plots_param', 'seed', 'pipeline'}
+2024-12-31 08:57:19,662:INFO:Checking environment
+2024-12-31 08:57:19,663:INFO:python_version: 3.10.16
+2024-12-31 08:57:19,663:INFO:python_build: ('main', 'Dec  5 2024 14:07:43')
+2024-12-31 08:57:19,663:INFO:machine: AMD64
+2024-12-31 08:57:19,682:INFO:platform: Windows-10-10.0.26100-SP0
+2024-12-31 08:57:19,696:INFO:Memory: svmem(total=7893946368, available=1273937920, percent=83.9, used=6620008448, free=1273937920)
+2024-12-31 08:57:19,696:INFO:Physical Core: 6
+2024-12-31 08:57:19,696:INFO:Logical Core: 12
+2024-12-31 08:57:19,697:INFO:Checking libraries
+2024-12-31 08:57:19,697:INFO:System:
+2024-12-31 08:57:19,697:INFO:    python: 3.10.16 | packaged by conda-forge | (main, Dec  5 2024, 14:07:43) [MSC v.1942 64 bit (AMD64)]
+2024-12-31 08:57:19,698:INFO:executable: C:\Users\yashu\anaconda3\envs\env_MLOps\python.exe
+2024-12-31 08:57:19,698:INFO:   machine: Windows-10-10.0.26100-SP0
+2024-12-31 08:57:19,698:INFO:PyCaret required dependencies:
+2024-12-31 08:57:19,756:INFO:                 pip: 24.3.1
+2024-12-31 08:57:19,757:INFO:          setuptools: 75.6.0
+2024-12-31 08:57:19,757:INFO:             pycaret: 3.0.4
+2024-12-31 08:57:19,757:INFO:             IPython: 8.31.0
+2024-12-31 08:57:19,757:INFO:          ipywidgets: 8.1.5
+2024-12-31 08:57:19,757:INFO:                tqdm: 4.67.1
+2024-12-31 08:57:19,757:INFO:               numpy: 1.23.5
+2024-12-31 08:57:19,757:INFO:              pandas: 1.5.3
+2024-12-31 08:57:19,757:INFO:              jinja2: 3.1.5
+2024-12-31 08:57:19,757:INFO:               scipy: 1.7.3
+2024-12-31 08:57:19,757:INFO:              joblib: 1.2.0
+2024-12-31 08:57:19,757:INFO:             sklearn: 1.2.2
+2024-12-31 08:57:19,757:INFO:                pyod: 2.0.2
+2024-12-31 08:57:19,757:INFO:            imblearn: 0.12.4
+2024-12-31 08:57:19,757:INFO:   category_encoders: 2.6.4
+2024-12-31 08:57:19,757:INFO:            lightgbm: 4.5.0
+2024-12-31 08:57:19,757:INFO:               numba: 0.60.0
+2024-12-31 08:57:19,757:INFO:            requests: 2.32.3
+2024-12-31 08:57:19,757:INFO:          matplotlib: 3.8.4
+2024-12-31 08:57:19,757:INFO:          scikitplot: 0.3.7
+2024-12-31 08:57:19,757:INFO:         yellowbrick: 1.5
+2024-12-31 08:57:19,759:INFO:              plotly: 5.24.1
+2024-12-31 08:57:19,759:INFO:    plotly-resampler: Not installed
+2024-12-31 08:57:19,759:INFO:             kaleido: 0.2.1
+2024-12-31 08:57:19,759:INFO:           schemdraw: 0.15
+2024-12-31 08:57:19,759:INFO:         statsmodels: 0.14.4
+2024-12-31 08:57:19,759:INFO:              sktime: 0.21.1
+2024-12-31 08:57:19,759:INFO:               tbats: 1.1.3
+2024-12-31 08:57:19,759:INFO:            pmdarima: 2.0.4
+2024-12-31 08:57:19,759:INFO:              psutil: 6.1.0
+2024-12-31 08:57:19,759:INFO:          markupsafe: 3.0.2
+2024-12-31 08:57:19,759:INFO:             pickle5: Not installed
+2024-12-31 08:57:19,759:INFO:         cloudpickle: 3.1.0
+2024-12-31 08:57:19,759:INFO:         deprecation: 2.1.0
+2024-12-31 08:57:19,759:INFO:              xxhash: 3.5.0
+2024-12-31 08:57:19,759:INFO:           wurlitzer: 3.1.1
+2024-12-31 08:57:19,759:INFO:PyCaret optional dependencies:
+2024-12-31 08:57:19,832:INFO:                shap: Not installed
+2024-12-31 08:57:19,832:INFO:           interpret: Not installed
+2024-12-31 08:57:19,832:INFO:                umap: 0.5.7
+2024-12-31 08:57:19,832:INFO:    pandas_profiling: Not installed
+2024-12-31 08:57:19,832:INFO:  explainerdashboard: Not installed
+2024-12-31 08:57:19,832:INFO:             autoviz: Not installed
+2024-12-31 08:57:19,832:INFO:           fairlearn: Not installed
+2024-12-31 08:57:19,832:INFO:          deepchecks: Not installed
+2024-12-31 08:57:19,832:INFO:             xgboost: 2.0.3
+2024-12-31 08:57:19,832:INFO:            catboost: Not installed
+2024-12-31 08:57:19,832:INFO:              kmodes: Not installed
+2024-12-31 08:57:19,832:INFO:             mlxtend: Not installed
+2024-12-31 08:57:19,832:INFO:       statsforecast: Not installed
+2024-12-31 08:57:19,832:INFO:        tune_sklearn: Not installed
+2024-12-31 08:57:19,832:INFO:                 ray: Not installed
+2024-12-31 08:57:19,832:INFO:            hyperopt: Not installed
+2024-12-31 08:57:19,832:INFO:              optuna: 4.1.0
+2024-12-31 08:57:19,832:INFO:               skopt: Not installed
+2024-12-31 08:57:19,833:INFO:              mlflow: 2.19.0
+2024-12-31 08:57:19,833:INFO:              gradio: Not installed
+2024-12-31 08:57:19,833:INFO:             fastapi: Not installed
+2024-12-31 08:57:19,833:INFO:             uvicorn: Not installed
+2024-12-31 08:57:19,833:INFO:              m2cgen: Not installed
+2024-12-31 08:57:19,833:INFO:           evidently: Not installed
+2024-12-31 08:57:19,833:INFO:               fugue: Not installed
+2024-12-31 08:57:19,833:INFO:           streamlit: Not installed
+2024-12-31 08:57:19,833:INFO:             prophet: Not installed
+2024-12-31 08:57:19,833:INFO:None
+2024-12-31 08:57:19,833:INFO:Set up data.
+2024-12-31 08:57:19,846:INFO:Set up index.
+2024-12-31 08:57:19,846:INFO:Assigning column types.
+2024-12-31 08:57:19,850:INFO:Engine successfully changes for model 'kmeans' to 'sklearn'.
+2024-12-31 08:57:19,851:INFO:Engine for model 'dbscan' has not been set explicitly, hence returning None.
+2024-12-31 08:57:19,851:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-31 08:57:19,851:INFO:Engine for model 'dbscan' has not been set explicitly, hence returning None.
+2024-12-31 08:57:19,851:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-31 08:57:19,851:INFO:Engine successfully changes for model 'dbscan' to 'sklearn'.
+2024-12-31 08:57:19,852:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-31 08:57:19,852:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-31 08:57:19,854:INFO:Preparing preprocessing pipeline...
+2024-12-31 08:57:19,854:INFO:Set up simple imputation.
+2024-12-31 08:57:19,903:INFO:Finished creating preprocessing pipeline.
+2024-12-31 08:57:19,913:INFO:Pipeline: Pipeline(memory=FastMemory(location=C:\Users\yashu\AppData\Local\Temp\joblib),
+         steps=[('numerical_imputer',
+                 TransformerWrapper(include=['Unit price', 'Quantity', 'Tax 5%',
+                                             'Total', 'cogs',
+                                             'gross margin percentage',
+                                             'gross income', 'Rating',
+                                             'Unit price^2',
+                                             'Unit price Quantity',
+                                             'Unit price Tax 5%',
+                                             'Unit price Total',
+                                             'Unit price cogs',
+                                             'Unit price gross margin '
+                                             'percentage',
+                                             'Uni...
+                                             'Quantity Total', 'Quantity cogs',
+                                             'Quantity gross margin percentage',
+                                             'Quantity gross income',
+                                             'Quantity Rating', 'Tax 5%^2',
+                                             'Tax 5% Total', 'Tax 5% cogs',
+                                             'Tax 5% gross margin percentage',
+                                             'Tax 5% gross income',
+                                             'Tax 5% Rating', 'Total^2', ...],
+                                    transformer=SimpleImputer())),
+                ('categorical_imputer',
+                 TransformerWrapper(include=[],
+                                    transformer=SimpleImputer(strategy='most_frequent')))])
+2024-12-31 08:57:19,913:INFO:Creating final display dataframe.
+2024-12-31 08:57:19,958:INFO:Setup _display_container:                Description                 Value
+0               Session id                   123
+1      Original data shape            (1000, 44)
+2   Transformed data shape            (1000, 44)
+3         Numeric features                    44
+4               Preprocess                  True
+5          Imputation type                simple
+6       Numeric imputation                  mean
+7   Categorical imputation                  mode
+8                 CPU Jobs                    -1
+9                  Use GPU                 False
+10          Log Experiment                 False
+11         Experiment Name  cluster-default-name
+12                     USI                  61fb
+2024-12-31 08:57:19,959:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-31 08:57:19,959:WARNING:
+'kmodes' is a soft dependency and not included in the pycaret installation. Please run: `pip install kmodes` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2024-12-31 08:57:19,959:INFO:setup() successfully completed in 2.28s...............
+2024-12-31 08:57:19,959:INFO:Initializing create_model()
+2024-12-31 08:57:19,959:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=4, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:19,959:INFO:Checking exceptions
+2024-12-31 08:57:19,988:INFO:Importing untrained model
+2024-12-31 08:57:19,988:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:19,990:INFO:Fitting Model
+2024-12-31 08:57:20,071:INFO:KMeans(n_clusters=4, random_state=123)
+2024-12-31 08:57:20,071:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:20,072:INFO:Uploading results into container
+2024-12-31 08:57:20,073:INFO:Uploading model into container now
+2024-12-31 08:57:20,083:INFO:_master_model_container: 1
+2024-12-31 08:57:20,083:INFO:_display_container: 2
+2024-12-31 08:57:20,084:INFO:KMeans(n_clusters=4, random_state=123)
+2024-12-31 08:57:20,084:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:21,828:INFO:Initializing assign_model()
+2024-12-31 08:57:21,828:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=4, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:21,828:INFO:Checking exceptions
+2024-12-31 08:57:21,831:INFO:Determining Trained Model
+2024-12-31 08:57:21,832:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:21,832:INFO:Copying data
+2024-12-31 08:57:21,835:INFO:(1000, 45)
+2024-12-31 08:57:21,835:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:21,839:INFO:Initializing create_model()
+2024-12-31 08:57:21,839:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=7, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:21,839:INFO:Checking exceptions
+2024-12-31 08:57:21,878:INFO:Importing untrained model
+2024-12-31 08:57:21,879:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:21,881:INFO:Fitting Model
+2024-12-31 08:57:21,982:INFO:KMeans(n_clusters=7, random_state=123)
+2024-12-31 08:57:21,982:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:21,982:INFO:Uploading results into container
+2024-12-31 08:57:21,983:INFO:Uploading model into container now
+2024-12-31 08:57:21,993:INFO:_master_model_container: 2
+2024-12-31 08:57:21,993:INFO:_display_container: 3
+2024-12-31 08:57:21,994:INFO:KMeans(n_clusters=7, random_state=123)
+2024-12-31 08:57:21,994:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:23,969:INFO:Initializing assign_model()
+2024-12-31 08:57:23,969:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=7, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:23,969:INFO:Checking exceptions
+2024-12-31 08:57:23,969:INFO:Determining Trained Model
+2024-12-31 08:57:23,969:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:23,970:INFO:Copying data
+2024-12-31 08:57:23,974:INFO:(1000, 45)
+2024-12-31 08:57:23,975:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:24,040:INFO:Initializing create_model()
+2024-12-31 08:57:24,040:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=6, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:24,040:INFO:Checking exceptions
+2024-12-31 08:57:24,092:INFO:Importing untrained model
+2024-12-31 08:57:24,095:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:24,097:INFO:Fitting Model
+2024-12-31 08:57:24,157:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:24,389:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:25,324:INFO:KMeans(n_clusters=6, random_state=123)
+2024-12-31 08:57:25,324:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:25,324:INFO:Uploading results into container
+2024-12-31 08:57:25,326:INFO:Uploading model into container now
+2024-12-31 08:57:25,341:INFO:_master_model_container: 3
+2024-12-31 08:57:25,341:INFO:_display_container: 4
+2024-12-31 08:57:25,342:INFO:KMeans(n_clusters=6, random_state=123)
+2024-12-31 08:57:25,342:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:27,574:INFO:Initializing assign_model()
+2024-12-31 08:57:27,574:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=6, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:27,574:INFO:Checking exceptions
+2024-12-31 08:57:27,574:INFO:Determining Trained Model
+2024-12-31 08:57:27,574:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:27,574:INFO:Copying data
+2024-12-31 08:57:27,577:INFO:(1000, 45)
+2024-12-31 08:57:27,577:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:27,603:INFO:Initializing create_model()
+2024-12-31 08:57:27,603:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=9, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:27,603:INFO:Checking exceptions
+2024-12-31 08:57:27,643:INFO:Importing untrained model
+2024-12-31 08:57:27,644:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:27,645:INFO:Fitting Model
+2024-12-31 08:57:27,684:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:27,684:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:27,899:INFO:KMeans(n_clusters=9, random_state=123)
+2024-12-31 08:57:27,899:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:27,900:INFO:Uploading results into container
+2024-12-31 08:57:27,900:INFO:Uploading model into container now
+2024-12-31 08:57:27,909:INFO:_master_model_container: 4
+2024-12-31 08:57:27,909:INFO:_display_container: 5
+2024-12-31 08:57:27,909:INFO:KMeans(n_clusters=9, random_state=123)
+2024-12-31 08:57:27,910:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:29,578:INFO:Initializing assign_model()
+2024-12-31 08:57:29,579:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=9, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:29,579:INFO:Checking exceptions
+2024-12-31 08:57:29,579:INFO:Determining Trained Model
+2024-12-31 08:57:29,579:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:29,579:INFO:Copying data
+2024-12-31 08:57:29,584:INFO:(1000, 45)
+2024-12-31 08:57:29,584:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:29,613:INFO:Initializing create_model()
+2024-12-31 08:57:29,613:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=5, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:29,613:INFO:Checking exceptions
+2024-12-31 08:57:29,651:INFO:Importing untrained model
+2024-12-31 08:57:29,652:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:29,653:INFO:Fitting Model
+2024-12-31 08:57:29,749:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-31 08:57:29,749:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:29,750:INFO:Uploading results into container
+2024-12-31 08:57:29,750:INFO:Uploading model into container now
+2024-12-31 08:57:29,758:INFO:_master_model_container: 5
+2024-12-31 08:57:29,759:INFO:_display_container: 6
+2024-12-31 08:57:29,759:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-31 08:57:29,759:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:31,464:INFO:Initializing assign_model()
+2024-12-31 08:57:31,464:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=5, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:31,464:INFO:Checking exceptions
+2024-12-31 08:57:31,464:INFO:Determining Trained Model
+2024-12-31 08:57:31,464:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:31,465:INFO:Copying data
+2024-12-31 08:57:31,470:INFO:(1000, 45)
+2024-12-31 08:57:31,470:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:31,509:INFO:Initializing create_model()
+2024-12-31 08:57:31,509:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=5, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:31,509:INFO:Checking exceptions
+2024-12-31 08:57:31,549:INFO:Importing untrained model
+2024-12-31 08:57:31,550:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:31,551:INFO:Fitting Model
+2024-12-31 08:57:31,647:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-31 08:57:31,647:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:31,647:INFO:Uploading results into container
+2024-12-31 08:57:31,648:INFO:Uploading model into container now
+2024-12-31 08:57:31,660:INFO:_master_model_container: 6
+2024-12-31 08:57:31,660:INFO:_display_container: 7
+2024-12-31 08:57:31,660:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-31 08:57:31,660:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:33,300:INFO:Initializing assign_model()
+2024-12-31 08:57:33,300:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=5, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:33,300:INFO:Checking exceptions
+2024-12-31 08:57:33,301:INFO:Determining Trained Model
+2024-12-31 08:57:33,301:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:33,301:INFO:Copying data
+2024-12-31 08:57:33,304:INFO:(1000, 45)
+2024-12-31 08:57:33,304:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:33,328:INFO:Initializing create_model()
+2024-12-31 08:57:33,328:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=3, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:33,328:INFO:Checking exceptions
+2024-12-31 08:57:33,358:INFO:Importing untrained model
+2024-12-31 08:57:33,358:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:33,360:INFO:Fitting Model
+2024-12-31 08:57:33,403:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:33,403:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:33,511:INFO:KMeans(n_clusters=3, random_state=123)
+2024-12-31 08:57:33,512:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:33,512:INFO:Uploading results into container
+2024-12-31 08:57:33,513:INFO:Uploading model into container now
+2024-12-31 08:57:33,522:INFO:_master_model_container: 7
+2024-12-31 08:57:33,522:INFO:_display_container: 8
+2024-12-31 08:57:33,522:INFO:KMeans(n_clusters=3, random_state=123)
+2024-12-31 08:57:33,522:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:34,975:INFO:Initializing assign_model()
+2024-12-31 08:57:34,975:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=3, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:34,975:INFO:Checking exceptions
+2024-12-31 08:57:34,975:INFO:Determining Trained Model
+2024-12-31 08:57:34,975:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:34,975:INFO:Copying data
+2024-12-31 08:57:34,978:INFO:(1000, 45)
+2024-12-31 08:57:34,978:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:35,005:INFO:Initializing create_model()
+2024-12-31 08:57:35,005:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=5, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:35,005:INFO:Checking exceptions
+2024-12-31 08:57:35,041:INFO:Importing untrained model
+2024-12-31 08:57:35,043:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:35,044:INFO:Fitting Model
+2024-12-31 08:57:35,133:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-31 08:57:35,133:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:35,134:INFO:Uploading results into container
+2024-12-31 08:57:35,134:INFO:Uploading model into container now
+2024-12-31 08:57:35,143:INFO:_master_model_container: 8
+2024-12-31 08:57:35,143:INFO:_display_container: 9
+2024-12-31 08:57:35,144:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-31 08:57:35,144:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:36,556:INFO:Initializing assign_model()
+2024-12-31 08:57:36,557:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=5, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:36,557:INFO:Checking exceptions
+2024-12-31 08:57:36,557:INFO:Determining Trained Model
+2024-12-31 08:57:36,557:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:36,557:INFO:Copying data
+2024-12-31 08:57:36,559:INFO:(1000, 45)
+2024-12-31 08:57:36,559:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:36,582:INFO:Initializing create_model()
+2024-12-31 08:57:36,582:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=5, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:36,582:INFO:Checking exceptions
+2024-12-31 08:57:36,621:INFO:Importing untrained model
+2024-12-31 08:57:36,621:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:36,622:INFO:Fitting Model
+2024-12-31 08:57:36,699:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-31 08:57:36,699:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:36,699:INFO:Uploading results into container
+2024-12-31 08:57:36,700:INFO:Uploading model into container now
+2024-12-31 08:57:36,708:INFO:_master_model_container: 9
+2024-12-31 08:57:36,708:INFO:_display_container: 10
+2024-12-31 08:57:36,709:INFO:KMeans(n_clusters=5, random_state=123)
+2024-12-31 08:57:36,709:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:38,314:INFO:Initializing assign_model()
+2024-12-31 08:57:38,315:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=5, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:38,315:INFO:Checking exceptions
+2024-12-31 08:57:38,315:INFO:Determining Trained Model
+2024-12-31 08:57:38,315:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:38,315:INFO:Copying data
+2024-12-31 08:57:38,320:INFO:(1000, 45)
+2024-12-31 08:57:38,320:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:38,351:INFO:Initializing create_model()
+2024-12-31 08:57:38,352:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=8, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:38,352:INFO:Checking exceptions
+2024-12-31 08:57:38,395:INFO:Importing untrained model
+2024-12-31 08:57:38,396:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:38,396:INFO:Fitting Model
+2024-12-31 08:57:38,442:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:38,443:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:38,584:INFO:KMeans(random_state=123)
+2024-12-31 08:57:38,585:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:38,585:INFO:Uploading results into container
+2024-12-31 08:57:38,586:INFO:Uploading model into container now
+2024-12-31 08:57:38,595:INFO:_master_model_container: 10
+2024-12-31 08:57:38,595:INFO:_display_container: 11
+2024-12-31 08:57:38,595:INFO:KMeans(random_state=123)
+2024-12-31 08:57:38,595:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:40,478:INFO:Initializing assign_model()
+2024-12-31 08:57:40,478:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:40,478:INFO:Checking exceptions
+2024-12-31 08:57:40,478:INFO:Determining Trained Model
+2024-12-31 08:57:40,478:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:40,478:INFO:Copying data
+2024-12-31 08:57:40,484:INFO:(1000, 45)
+2024-12-31 08:57:40,484:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:40,522:INFO:Initializing create_model()
+2024-12-31 08:57:40,522:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=8, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:40,522:INFO:Checking exceptions
+2024-12-31 08:57:40,579:INFO:Importing untrained model
+2024-12-31 08:57:40,580:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:40,582:INFO:Fitting Model
+2024-12-31 08:57:40,638:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:40,639:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:41,571:INFO:KMeans(random_state=123)
+2024-12-31 08:57:41,571:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:41,571:INFO:Uploading results into container
+2024-12-31 08:57:41,572:INFO:Uploading model into container now
+2024-12-31 08:57:41,582:INFO:_master_model_container: 11
+2024-12-31 08:57:41,582:INFO:_display_container: 12
+2024-12-31 08:57:41,583:INFO:KMeans(random_state=123)
+2024-12-31 08:57:41,583:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:43,280:INFO:Initializing assign_model()
+2024-12-31 08:57:43,280:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:43,280:INFO:Checking exceptions
+2024-12-31 08:57:43,280:INFO:Determining Trained Model
+2024-12-31 08:57:43,280:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:43,280:INFO:Copying data
+2024-12-31 08:57:43,283:INFO:(1000, 45)
+2024-12-31 08:57:43,283:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:43,309:INFO:Initializing create_model()
+2024-12-31 08:57:43,309:INFO:create_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, estimator=kmeans, num_clusters=3, fraction=0.05, ground_truth=None, round=4, fit_kwargs=None, experiment_custom_tags=None, verbose=True, system=True, add_to_model_list=True, raise_num_clusters=False, display=None, kwargs={})
+2024-12-31 08:57:43,309:INFO:Checking exceptions
+2024-12-31 08:57:43,344:INFO:Importing untrained model
+2024-12-31 08:57:43,345:INFO:K-Means Clustering Imported successfully
+2024-12-31 08:57:43,346:INFO:Fitting Model
+2024-12-31 08:57:43,393:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:43,394:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:43,511:INFO:KMeans(n_clusters=3, random_state=123)
+2024-12-31 08:57:43,511:INFO:create_models() successfully completed......................................
+2024-12-31 08:57:43,511:INFO:Uploading results into container
+2024-12-31 08:57:43,512:INFO:Uploading model into container now
+2024-12-31 08:57:43,524:INFO:_master_model_container: 12
+2024-12-31 08:57:43,524:INFO:_display_container: 13
+2024-12-31 08:57:43,525:INFO:KMeans(n_clusters=3, random_state=123)
+2024-12-31 08:57:43,525:INFO:create_model() successfully completed......................................
+2024-12-31 08:57:44,959:INFO:Initializing assign_model()
+2024-12-31 08:57:44,959:INFO:assign_model(self=<pycaret.clustering.oop.ClusteringExperiment object at 0x000001ED74108DF0>, model=KMeans(n_clusters=3, random_state=123), transformation=False, score=True, verbose=True)
+2024-12-31 08:57:44,959:INFO:Checking exceptions
+2024-12-31 08:57:44,960:INFO:Determining Trained Model
+2024-12-31 08:57:44,960:INFO:Trained Model : K-Means Clustering
+2024-12-31 08:57:44,960:INFO:Copying data
+2024-12-31 08:57:44,965:INFO:(1000, 45)
+2024-12-31 08:57:44,965:INFO:assign_model() successfully completed......................................
+2024-12-31 08:57:44,969:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:44,969:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:45,079:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:45,079:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:45,196:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:45,197:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:45,308:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:45,309:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:45,428:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:45,429:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:45,537:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:45,538:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:45,634:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:45,635:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:45,742:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:45,743:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:45,832:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:45,833:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:45,952:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:45,953:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+
+2024-12-31 08:57:46,059:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:870: FutureWarning: The default value of `n_init` will change from 10 to 'auto' in 1.4. Set the value of `n_init` explicitly to suppress the warning
+  warnings.warn(
+
+2024-12-31 08:57:46,060:WARNING:C:\Users\yashu\anaconda3\envs\env_MLOps\lib\site-packages\sklearn\cluster\_kmeans.py:1382: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=4.
+  warnings.warn(
+

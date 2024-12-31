@@ -41,7 +41,7 @@ def perform_eda(df, title="EDA"):
     logging.info(f"--- {title} ---")
     logging.info("Generating Sweetviz report...")
     report = sv.analyze(df)
-    report.show_html(os.path.join(REPORTS_PATH, f"{title}_report.html"))
+    report.show_html(os.path.join(REPORTS_PATH, f"{title}_report.html"), open_browser=False)
     logging.info("Sweetviz report generated successfully.")
 
 # Step 3: Data Cleaning
@@ -154,39 +154,73 @@ def visualize_model_performance(model, test_df, model_name):
 
 # Main Function
 def main():
-    # Load dataset
-    df = load_data(DATA_PATH)
-
-    # Perform EDA before cleaning
-    perform_eda(df, title="EDA Before Cleaning")
-
-    # Clean the dataset
-    df = clean_data(df)
-
-    # Perform EDA after cleaning
-    perform_eda(df, title="EDA After Cleaning")
-
-    # Feature Engineering
-    df = feature_engineering(df)
-
-    # Split dataset into training and testing subsets
-    train_df, test_df = train_test_split(df, test_size=0.2, random_state=123)
-
-    # Hyperparameter Tuning
-    best_trial = hyperparameter_tuning(train_df, test_df)
-
-    # Build the best model
-    best_model, best_accuracy, best_model_name = build_model(train_df, test_df, best_trial)
-
-    # Visualize the performance of the best model
-    visualize_model_performance(best_model, test_df, best_model_name)
-
-    # Log and print the results
-    logging.info("Best Model: %s", best_model_name)
-    logging.info("Best Model Accuracy: %s", best_accuracy)
-
-    print(f"\nWinner: {best_model_name}")
-    print(f"Best Model Accuracy: {best_accuracy}")
+    try:
+        print("Starting the classification process...")
+        logging.info("Starting the classification process...")
+        
+        # Load dataset
+        print("Step 1: Loading the dataset...")
+        df = load_data(DATA_PATH)
+        print("Dataset loaded successfully.")
+        
+        # Perform EDA before cleaning
+        print("Step 2: Performing EDA before cleaning...")
+        perform_eda(df, title="EDA Before Cleaning")
+        print("EDA report generated before cleaning.")
+        
+        # Clean the dataset
+        print("Step 3: Cleaning the dataset...")
+        df = clean_data(df)
+        print("Dataset cleaned successfully.")
+        
+        # Perform EDA after cleaning
+        print("Step 4: Performing EDA after cleaning...")
+        perform_eda(df, title="EDA After Cleaning")
+        print("EDA report generated after cleaning.")
+        
+        # Feature Engineering
+        print("Step 5: Performing feature engineering...")
+        df = feature_engineering(df)
+        print("Feature engineering completed.")
+        
+        # Split dataset into training and testing subsets
+        print("Step 6: Splitting the dataset into training and testing subsets...")
+        train_df, test_df = train_test_split(df, test_size=0.2, random_state=123)
+        print("Dataset split into training and testing subsets.")
+        
+        # Hyperparameter Tuning
+        print("Step 7: Tuning hyperparameters using Optuna...")
+        best_trial = hyperparameter_tuning(train_df, test_df)
+        print(f"Hyperparameter tuning completed. Best trial: {best_trial}")
+        
+        # Build the best model
+        print("Step 8: Building the best model...")
+        best_model, best_accuracy, best_model_name = build_model(train_df, test_df, best_trial)
+        print(f"Best model built using {best_model_name}.")
+        
+        # Visualize the performance of the best model
+        print("Step 9: Visualizing the performance of the best model...")
+        visualize_model_performance(best_model, test_df, best_model_name)
+        print("Model performance visualized.")
+        
+        # Log and print the results
+        logging.info("Best Model: %s", best_model_name)
+        logging.info("Best Model Accuracy: %s", best_accuracy)
+        
+        print(f"\nWinner: {best_model_name}")
+        print(f"Best Model Accuracy: {best_accuracy}")
+        
+        # Recommendations
+        print("\nRecommendations:")
+        if best_model_name == "PyCaret":
+            print("The PyCaret model performed better based on the accuracy score. It is recommended to use the PyCaret model for classification.")
+        else:
+            print("The FLAML model performed better based on the accuracy score. It is recommended to use the FLAML model for classification.")
+        print("Further tuning and validation can be performed to ensure the robustness of the selected model.")
+        
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
