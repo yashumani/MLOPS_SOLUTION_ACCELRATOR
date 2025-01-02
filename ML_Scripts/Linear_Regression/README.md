@@ -1,61 +1,29 @@
-# **Project: Comparative Analysis of Regression Models using PyCaret and FLAML**
+# **End-to-End Machine Learning Workflow with Enhanced Feature Engineering and Hyperparameter Tuning**
 
 ---
 
 ## **Overview**
 
-This project focuses on building an end-to-end pipeline for comparative regression analysis using two powerful frameworks: **PyCaret** and **FLAML**. The primary goal is to predict a target variable (e.g., graduation rate in the provided dataset) through robust data preprocessing, feature engineering, and hyperparameter optimization. By leveraging automation and machine learning, the pipeline identifies the best-performing model and provides actionable insights.
-
----
-
-## **Purpose**
-
-1. **Regression Model Comparison**:
-   - Evaluate and compare the performance of PyCaret and FLAML in solving regression problems.
-   - Identify the best model using metrics like R² and RMSE.
-
-2. **End-to-End Machine Learning Pipeline**:
-   - Automate processes including data cleaning, exploratory data analysis (EDA), feature engineering, and model evaluation.
-
-3. **Hyperparameter Optimization**:
-   - Use Optuna for efficient hyperparameter tuning and model selection.
-
-4. **Visualization and Reporting**:
-   - Generate insightful visualizations for model performance and a detailed EDA report using Sweetviz.
+This project implements an end-to-end machine learning workflow for regression tasks, including data loading, exploratory data analysis (EDA), data cleaning, feature engineering, hyperparameter tuning, and model evaluation. The script leverages advanced techniques such as outlier detection, enhanced feature engineering with GridSearchCV, and hyperparameter optimization using Optuna.
 
 ---
 
 ## **Features**
 
-### 1. **Data Preprocessing**
-   - Handles missing values using **Iterative Imputer (MICE)**.
-   - Encodes categorical variables using one-hot encoding.
-   - Identifies and removes outliers based on percentile thresholds.
+1. **Outlier Detection**:
+   - Univariate and multivariate outlier detection using z-score, IQR, and machine learning models like Isolation Forest and One-Class SVM.
 
-### 2. **Exploratory Data Analysis (EDA)**
-   - Generates a comprehensive Sweetviz report for understanding dataset characteristics.
-   - Visualizes data distributions, correlations, and outliers.
+2. **Enhanced Feature Engineering**:
+   - Normalization using StandardScaler.
+   - Advanced feature engineering with GridSearchCV for optimal transformations and model selection.
 
-### 3. **Regression Model Training**
-   - **PyCaret**: Automates model selection, hyperparameter tuning, and evaluation.
-   - **FLAML**: Lightweight and efficient AutoML framework for fast experimentation.
-
-### 4. **Hyperparameter Tuning**
-   - Uses **Optuna** for tuning hyperparameters dynamically across both PyCaret and FLAML.
-
-### 5. **Model Evaluation**
-   - Compares models using key metrics: R² (coefficient of determination) and RMSE (root mean squared error).
-   - Provides detailed insights through visualizations such as scatter plots and residual distributions.
+3. **Performance Visualization**:
+   - Generates visualizations for EDA, model performance, and residual analysis.
 
 ---
 
-## **Setup and Requirements**
+## **Requirements**
 
-### **Environment**
-Ensure you have a Python environment with the required dependencies installed. A recommended environment configuration is provided in the `environment.yml` file.
-
-### **Dependencies**
-The script requires the following libraries:
 - `pandas`
 - `numpy`
 - `matplotlib`
@@ -65,97 +33,126 @@ The script requires the following libraries:
 - `optuna`
 - `sweetviz`
 - `scikit-learn`
+- `fuzzywuzzy`
+- `shutil`
 
-### **Installation**
-1. Clone this repository to your local machine.
-2. Create a virtual environment:
+---
+
+## **Setup Instructions**
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/SAVYMINDS/YS_MVP.git
+   cd YS_MVP
+   ```
+
+2. Create and activate a virtual environment:
    ```bash
    conda env create -f environment.yml
    conda activate env_MLOps
    ```
-3. Install additional dependencies (if necessary) using `pip` or `conda`.
+
+3. Ensure all dependencies are installed:
+   ```bash
+   conda install --file requirements.txt
+   ```
 
 ---
 
-## **Pipeline Workflow**
+## **Usage**
 
-1. **Data Collection**:
-   - Loads the dataset from the specified path.
-   - Logs information about the data.
+1. **Specify the dataset path and target column**:
+   - Update `DATA_PATH` and `TARGET_COLUMN` in the script with the appropriate values.
 
-2. **EDA**:
-   - Generates a Sweetviz report for pre-cleaning and post-cleaning analysis.
+2. **Run the script**:
+   ```bash
+   python Linear_regression_1_5.py
+   ```
+
+3. **Generated Reports and Visualizations**:
+   - Sweetviz reports and visualizations are saved in the `Reports` directory.
+
+---
+
+## **Process Workflow**
+
+1. **Data Loading**:
+   - Loads the dataset and checks for compatibility with regression tasks.
+
+2. **Exploratory Data Analysis (EDA)**:
+   - Generates Sweetviz reports and visualizations for initial data insights.
 
 3. **Data Cleaning**:
-   - Removes duplicates and encodes categorical features.
-   - Handles missing values using MICE.
-   - Removes outliers using percentile-based thresholds.
+   - Handles missing values, removes duplicates, and detects anomalies.
 
 4. **Feature Engineering**:
-   - Prepares features for modeling (placeholder for custom feature engineering steps).
+   - Applies normalization and advanced feature engineering with GridSearchCV.
 
 5. **Hyperparameter Tuning**:
-   - Uses Optuna to tune parameters for PyCaret and FLAML.
-   - Selects the best-performing model based on R².
+   - Optimizes model hyperparameters using Optuna.
 
 6. **Model Evaluation**:
-   - Builds and evaluates the best model using test data.
-   - Visualizes performance through scatter plots and residual analysis.
-
-7. **Reporting**:
-   - Saves detailed logs and visualizations in the specified reports directory.
+   - Evaluates models using multiple metrics and visualizes performance.
 
 ---
 
-## **Execution**
+## **Performance Metrics**
 
-Run the script using the following command:
-```bash
-python Linear_regression_1_5.py
-```
+- **R² (Coefficient of Determination)**
+- **RMSE (Root Mean Squared Error)**
+- **MAE (Mean Absolute Error)**
+- **MAPE (Mean Absolute Percentage Error)**
+- **Explained Variance**
 
 ---
 
-## **Outputs**
+## **Reports and Outputs**
 
 1. **Logs**:
-   - Detailed logs of every step stored in `logs.log`.
+   - Execution logs stored in `logs.log`.
 
 2. **Visualizations**:
    - Scatter plot of true vs predicted values.
    - Residual distribution plot.
 
-3. **Sweetviz Report**:
-   - Automatically generated HTML reports for EDA.
+3. **EDA Reports**:
+   - Pre-cleaning and post-cleaning Sweetviz reports.
 
 4. **Metrics**:
-   - R² and RMSE scores for the best-performing model.
+   - R², RMSE, MAE, MAPE, and Explained Variance scores for model evaluation.
 
-5. **Winner**:
-   - Outputs the best-performing model name and its performance metrics.
-
----
-
-## **Results**
-
-### Example Output
-| Metric        | PyCaret         | FLAML          |
-|---------------|-----------------|----------------|
-| R² (Accuracy) | **0.88**        | 0.85           |
-| RMSE (Error)  | 2.34            | **2.30**       |
-
-**Winner**: FLAML
+5. **Best Model**:
+   - Prints the best-performing model's name and metrics.
 
 ---
 
-## **Customizations**
+## **Example Usage**
 
-1. **Feature Engineering**:
-   - Add domain-specific feature transformations in the `feature_engineering` function.
+```bash
+python Linear_regression_1_5.py
+```
 
-2. **Hyperparameter Tuning**:
-   - Modify the search space in the `objective` function to experiment with additional parameters.
+**Interpreting Results**:
+- The script will output the best model based on R² and RMSE scores.
+- Visualizations and reports will be saved in the `Reports` directory.
 
-3. **Visualization**:
-   - Extend the visualization module for more detailed plots (e.g., feature importance, partial dependence).
+---
+
+## **Limitations and Future Improvements**
+
+- **Limitations**:
+  - The current implementation may not handle all types of datasets.
+  - Further tuning and validation are recommended for robustness.
+
+- **Future Improvements**:
+  - Incorporate additional feature engineering techniques.
+  - Extend support for more machine learning models.
+
+---
+
+## **Contact Information**
+
+For queries, please contact: [Your Email]
+
+---
 
