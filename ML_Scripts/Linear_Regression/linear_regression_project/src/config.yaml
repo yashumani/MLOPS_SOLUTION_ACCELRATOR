@@ -31,7 +31,7 @@ flaml:
   time_budget: 600  # Set the time budget for FLAML in seconds
   metric: 'r2'  # Metric to optimize
   task: 'regression'  # Task type
-  estimator_list: ['lgbm', 'xgboost', 'rf', 'catboost']  # Ensure 'catboost' is included
+  estimator_list: ['lgbm', 'xgboost', 'rf', 'catboost']  
   mem_thres: 0.8  # Set memory threshold to 80%
   learner_kwargs:
     lgbm:

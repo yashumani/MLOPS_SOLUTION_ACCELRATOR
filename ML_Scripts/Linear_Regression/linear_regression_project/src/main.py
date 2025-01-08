@@ -2,15 +2,14 @@
 
 import os
 import pandas as pd
-from clear_reports_directory import clear_reports_directory
-from clean_data import clean_data
-from load_data import load_data
-from eda import perform_eda
+from data_ingestion import load_data
+from data_cleaning import clean_data
 from feature_engineering import feature_engineering
-from split_data import split_data
+from model_selection import select_model
 from hyperparameter_tuning import hyperparameter_tuning
-from visualize_model_performance import visualize_model_performance
-from explain_model_predictions import explain_model_predictions
+from model_evaluation import evaluate_model
+from model_deployment import deploy_model
+from drift_detection import detect_drift
 from get_logger import get_logger
 from config import config
 
@@ -18,29 +17,21 @@ def main():
     try:
         print("Executing main.py")
         logger = get_logger('main')
-        logger.info("Starting the linear regression process...")
+        logger.info("Starting the machine learning pipeline...")
 
         # Load dataset
-        df = load_data(config['data_path'])
+        df = load_data()
         logger.info("Dataset loaded successfully.")
         print("Columns after loading data:", df.columns)
-
-        # Clear the Reports directory
-        clear_reports_directory(config['reports_path'])
-
-        # Perform EDA before cleaning
-        perform_eda(df, title="EDA Before Cleaning")
 
         # Clean the dataset
         df = clean_data(df)
         logger.info("Dataset cleaned successfully.")
         print("Columns after cleaning data:", df.columns)
 
-        # Perform EDA after cleaning
-        perform_eda(df, title="EDA After Cleaning")
-
-        # Feature Engineering
+        # Perform feature engineering
         df = feature_engineering(df, config)
+        logger.info("Feature engineering completed successfully.")
         print("Columns after feature engineering:", df.columns)
 
         # Split dataset into training and testing subsets
@@ -48,14 +39,27 @@ def main():
         print("Columns in training data:", train_df.columns)
         print("Columns in testing data:", test_df.columns)
 
-        # Hyperparameter Tuning
+        # Model selection
+        best_model = select_model(train_df, config)
+        logger.info("Model selection completed successfully.")
+
+        # Hyperparameter tuning
         best_trial, best_model = hyperparameter_tuning(train_df, test_df, config)
+        logger.info("Hyperparameter tuning completed successfully.")
 
-        # Visualize the performance of the best model
-        visualize_model_performance(best_trial, test_df)
+        # Model evaluation
+        X_test = test_df.drop(columns=[config['target_column']])
+        y_test = test_df[config['target_column']]
+        mse, r2 = evaluate_model(best_model, X_test, y_test)
+        logger.info("Model evaluation completed successfully.")
 
-        # Explain model predictions
-        explain_model_predictions(best_model, test_df)
+        # Model deployment
+        deploy_model(best_model)
+        logger.info("Model deployment completed successfully.")
+
+        # Data drift detection
+        detect_drift(df)
+        logger.info("Data drift detection completed successfully.")
 
         # Perform EDA on performance metrics and predictions files
         performance_metrics_path = os.path.join(config['reports_path'], 'performance_metrics.csv')
