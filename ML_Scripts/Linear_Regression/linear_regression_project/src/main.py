@@ -69,6 +69,14 @@ def main():
             predictions_df = pd.read_csv(predictions_path)
             perform_eda(predictions_df, title="Predictions EDA")
 
+        # Print the best model performance and best performance metric
+        best_performance_metric = best_trial.value
+        best_model_params = best_trial.params
+        logger.info(f"Best Model Performance: {best_performance_metric}")
+        logger.info(f"Best Model Parameters: {best_model_params}")
+        print(f"Best Model Performance: {best_performance_metric}")
+        print(f"Best Model Parameters: {best_model_params}")
+
     except Exception as e:
         logger.error(f"An error occurred: {e}")
         print(f"An error occurred: {e}")
