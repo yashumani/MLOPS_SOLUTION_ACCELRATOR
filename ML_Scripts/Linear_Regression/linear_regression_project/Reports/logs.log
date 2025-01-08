@@ -1,0 +1,471 @@
+2025-01-07 19:34:59,640 - INFO - Starting the linear regression process...
+2025-01-07 19:34:59,641 - INFO - Loading dataset...
+2025-01-07 19:34:59,656 - INFO - Dataset loaded successfully.
+2025-01-07 19:34:59,678 - INFO - Dataset loaded successfully.
+2025-01-07 19:34:59,680 - INFO - Clearing the Reports directory...
+2025-01-07 19:34:59,682 - ERROR - Failed to clear file: C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\logs.log. Reason: [WinError 32] The process cannot access the file because it is being used by another process: 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\\logs.log'
+2025-01-07 19:34:59,683 - INFO - --- EDA Before Cleaning ---
+2025-01-07 19:34:59,685 - INFO - Generating EDA report using D-Tale...
+2025-01-07 19:35:04,184 - INFO - D-Tale EDA report generated successfully.
+2025-01-07 19:35:04,184 - INFO - Generating box plot for numeric columns...
+2025-01-07 19:35:04,998 - INFO - Box plot generated successfully.
+2025-01-07 19:35:04,999 - INFO - --- Data Cleaning ---
+2025-01-07 19:35:05,007 - INFO - Shape after removing duplicates: (777, 18)
+2025-01-07 19:35:05,021 - INFO - Performing data deduplication with Levenshtein Distance...
+2025-01-07 19:35:05,024 - INFO - Shape after deduplication: (777, 18)
+2025-01-07 19:35:05,024 - INFO - Performing advanced imputation using KNN...
+2025-01-07 19:35:05,033 - INFO - Shape after imputation: (777, 18)
+2025-01-07 19:35:05,034 - INFO - Dataset cleaned successfully.
+2025-01-07 19:35:05,035 - INFO - --- EDA After Cleaning ---
+2025-01-07 19:35:05,036 - INFO - Generating EDA report using D-Tale...
+2025-01-07 19:35:07,199 - INFO - D-Tale EDA report generated successfully.
+2025-01-07 19:35:07,200 - INFO - Generating box plot for numeric columns...
+2025-01-07 19:35:07,508 - INFO - Box plot generated successfully.
+2025-01-07 19:35:07,509 - INFO - --- Feature Engineering ---
+2025-01-07 19:35:07,509 - INFO - Encoding categorical variables...
+2025-01-07 19:35:07,512 - INFO - Categorical variables encoded.
+2025-01-07 19:35:07,513 - INFO - Performing feature engineering for normalization...
+2025-01-07 19:35:07,521 - INFO - Normalization completed.
+2025-01-07 19:35:07,522 - INFO - Performing feature selection using method: correlation_threshold
+2025-01-07 19:35:07,530 - INFO - Feature selection completed. Shape after feature selection: (777, 2)
+2025-01-07 19:35:07,531 - INFO - Feature selection completed.
+2025-01-07 19:35:07,531 - INFO - Feature Engineering Summary:
+Applied StandardScaler for normalization.
+2025-01-07 19:35:07,533 - INFO - --- Data Splitting ---
+2025-01-07 19:35:07,536 - INFO - Performed train/test split.
+2025-01-07 19:35:07,538 - INFO - Starting hyperparameter tuning...
+2025-01-07 19:35:07,545 - INFO - Evaluating model: flaml
+2025-01-07 19:35:07,547 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0}
+2025-01-07 19:46:05,762 - ERROR - An error occurred: Model file doesn't specify the number of classes
+2025-01-07 19:49:19,287 - INFO - Starting the linear regression process...
+2025-01-07 19:49:19,289 - INFO - Loading dataset...
+2025-01-07 19:49:19,300 - INFO - Dataset loaded successfully.
+2025-01-07 19:49:19,319 - INFO - Dataset loaded successfully.
+2025-01-07 19:49:19,321 - INFO - Clearing the Reports directory...
+2025-01-07 19:49:19,322 - ERROR - Failed to clear file: C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\logs.log. Reason: [WinError 32] The process cannot access the file because it is being used by another process: 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\\logs.log'
+2025-01-07 19:49:19,324 - INFO - --- EDA Before Cleaning ---
+2025-01-07 19:49:19,324 - INFO - Generating EDA report using D-Tale...
+2025-01-07 19:49:23,783 - INFO - D-Tale EDA report generated successfully.
+2025-01-07 19:49:23,783 - INFO - Generating box plot for numeric columns...
+2025-01-07 19:49:24,636 - INFO - Box plot generated successfully.
+2025-01-07 19:49:24,638 - INFO - --- Data Cleaning ---
+2025-01-07 19:49:24,645 - INFO - Shape after removing duplicates: (777, 18)
+2025-01-07 19:49:24,659 - INFO - Performing data deduplication with Levenshtein Distance...
+2025-01-07 19:49:24,662 - INFO - Shape after deduplication: (777, 18)
+2025-01-07 19:49:24,662 - INFO - Performing advanced imputation using KNN...
+2025-01-07 19:49:24,673 - INFO - Shape after imputation: (777, 18)
+2025-01-07 19:49:24,673 - INFO - Dataset cleaned successfully.
+2025-01-07 19:49:24,675 - INFO - --- EDA After Cleaning ---
+2025-01-07 19:49:24,675 - INFO - Generating EDA report using D-Tale...
+2025-01-07 19:49:26,801 - INFO - D-Tale EDA report generated successfully.
+2025-01-07 19:49:26,801 - INFO - Generating box plot for numeric columns...
+2025-01-07 19:49:27,092 - INFO - Box plot generated successfully.
+2025-01-07 19:49:27,093 - INFO - --- Feature Engineering ---
+2025-01-07 19:49:27,093 - INFO - Encoding categorical variables...
+2025-01-07 19:49:27,095 - INFO - Categorical variables encoded.
+2025-01-07 19:49:27,096 - INFO - Performing feature engineering for normalization...
+2025-01-07 19:49:27,105 - INFO - Normalization completed.
+2025-01-07 19:49:27,106 - INFO - Performing feature selection using method: correlation_threshold
+2025-01-07 19:49:27,111 - INFO - Feature selection completed. Shape after feature selection: (777, 2)
+2025-01-07 19:49:27,112 - INFO - Feature selection completed.
+2025-01-07 19:49:27,112 - INFO - Feature Engineering Summary:
+Applied StandardScaler for normalization.
+2025-01-07 19:49:27,114 - INFO - --- Data Splitting ---
+2025-01-07 19:49:27,117 - INFO - Performed train/test split.
+2025-01-07 19:49:27,118 - INFO - Starting hyperparameter tuning...
+2025-01-07 19:49:27,125 - INFO - Evaluating model: flaml
+2025-01-07 19:49:27,127 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0}
+2025-01-07 20:00:18,662 - ERROR - An error occurred: bad allocation
+2025-01-07 20:06:04,629 - INFO - Starting the linear regression process...
+2025-01-07 20:06:04,630 - INFO - Loading dataset...
+2025-01-07 20:06:04,645 - INFO - Dataset loaded successfully.
+2025-01-07 20:06:04,666 - INFO - Dataset loaded successfully.
+2025-01-07 20:06:04,667 - INFO - Clearing the Reports directory...
+2025-01-07 20:06:04,669 - ERROR - Failed to clear file: C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\logs.log. Reason: [WinError 32] The process cannot access the file because it is being used by another process: 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\\logs.log'
+2025-01-07 20:06:04,672 - INFO - --- EDA Before Cleaning ---
+2025-01-07 20:06:04,672 - INFO - Generating EDA report using D-Tale...
+2025-01-07 20:06:09,153 - INFO - D-Tale EDA report generated successfully.
+2025-01-07 20:06:09,154 - INFO - Generating box plot for numeric columns...
+2025-01-07 20:06:09,988 - INFO - Box plot generated successfully.
+2025-01-07 20:06:09,990 - INFO - --- Data Cleaning ---
+2025-01-07 20:06:09,997 - INFO - Shape after removing duplicates: (777, 18)
+2025-01-07 20:06:10,011 - INFO - Performing data deduplication with Levenshtein Distance...
+2025-01-07 20:06:10,015 - INFO - Shape after deduplication: (777, 18)
+2025-01-07 20:06:10,016 - INFO - Performing advanced imputation using KNN...
+2025-01-07 20:06:10,023 - INFO - Shape after imputation: (777, 18)
+2025-01-07 20:06:10,024 - INFO - Dataset cleaned successfully.
+2025-01-07 20:06:10,025 - INFO - --- EDA After Cleaning ---
+2025-01-07 20:06:10,027 - INFO - Generating EDA report using D-Tale...
+2025-01-07 20:06:12,175 - INFO - D-Tale EDA report generated successfully.
+2025-01-07 20:06:12,176 - INFO - Generating box plot for numeric columns...
+2025-01-07 20:06:12,479 - INFO - Box plot generated successfully.
+2025-01-07 20:06:12,481 - INFO - --- Feature Engineering ---
+2025-01-07 20:06:12,482 - INFO - Encoding categorical variables...
+2025-01-07 20:06:12,484 - INFO - Categorical variables encoded.
+2025-01-07 20:06:12,486 - INFO - Performing feature engineering for normalization...
+2025-01-07 20:06:12,493 - INFO - Normalization completed.
+2025-01-07 20:06:12,494 - INFO - Performing feature selection using method: correlation_threshold
+2025-01-07 20:06:12,503 - INFO - Feature selection completed. Shape after feature selection: (777, 2)
+2025-01-07 20:06:12,504 - INFO - Feature selection completed.
+2025-01-07 20:06:12,504 - INFO - Feature Engineering Summary:
+Applied StandardScaler for normalization.
+2025-01-07 20:06:12,506 - INFO - --- Data Splitting ---
+2025-01-07 20:06:12,509 - INFO - Performed train/test split.
+2025-01-07 20:06:12,509 - INFO - Starting hyperparameter tuning...
+2025-01-07 20:06:12,517 - INFO - Evaluating model: flaml
+2025-01-07 20:06:12,517 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8}
+2025-01-07 20:17:15,157 - ERROR - An error occurred: bad allocation
+2025-01-07 20:35:50,889 - INFO - Starting the linear regression process...
+2025-01-07 20:35:50,891 - INFO - Loading dataset...
+2025-01-07 20:35:50,904 - INFO - Dataset loaded successfully.
+2025-01-07 20:35:50,926 - INFO - Dataset loaded successfully.
+2025-01-07 20:35:50,927 - INFO - Clearing the Reports directory...
+2025-01-07 20:35:50,929 - ERROR - Failed to clear file: C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\logs.log. Reason: [WinError 32] The process cannot access the file because it is being used by another process: 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\\logs.log'
+2025-01-07 20:35:50,930 - INFO - --- EDA Before Cleaning ---
+2025-01-07 20:35:50,930 - INFO - Generating EDA report using D-Tale...
+2025-01-07 20:35:55,386 - INFO - D-Tale EDA report generated successfully.
+2025-01-07 20:35:55,386 - INFO - Generating box plot for numeric columns...
+2025-01-07 20:35:57,131 - INFO - Box plot generated successfully.
+2025-01-07 20:35:57,134 - INFO - --- Data Cleaning ---
+2025-01-07 20:35:57,149 - INFO - Shape after removing duplicates: (777, 18)
+2025-01-07 20:35:57,181 - INFO - Performing data deduplication with Levenshtein Distance...
+2025-01-07 20:35:57,189 - INFO - Shape after deduplication: (777, 18)
+2025-01-07 20:35:57,192 - INFO - Performing advanced imputation using KNN...
+2025-01-07 20:35:57,221 - INFO - Shape after imputation: (777, 18)
+2025-01-07 20:35:57,223 - INFO - Dataset cleaned successfully.
+2025-01-07 20:35:57,227 - INFO - --- EDA After Cleaning ---
+2025-01-07 20:35:57,227 - INFO - Generating EDA report using D-Tale...
+2025-01-07 20:35:59,518 - INFO - D-Tale EDA report generated successfully.
+2025-01-07 20:35:59,518 - INFO - Generating box plot for numeric columns...
+2025-01-07 20:36:00,333 - INFO - Box plot generated successfully.
+2025-01-07 20:36:00,336 - INFO - --- Feature Engineering ---
+2025-01-07 20:36:00,339 - INFO - Encoding categorical variables...
+2025-01-07 20:36:00,346 - INFO - Categorical variables encoded.
+2025-01-07 20:36:00,350 - INFO - Performing feature engineering for normalization...
+2025-01-07 20:36:00,367 - INFO - Normalization completed.
+2025-01-07 20:36:00,371 - INFO - Performing feature selection using method: correlation_threshold
+2025-01-07 20:36:00,384 - INFO - Feature selection completed. Shape after feature selection: (777, 2)
+2025-01-07 20:36:00,388 - INFO - Feature selection completed.
+2025-01-07 20:36:00,388 - INFO - Feature Engineering Summary:
+Applied StandardScaler for normalization.
+2025-01-07 20:36:00,391 - INFO - --- Data Splitting ---
+2025-01-07 20:36:00,394 - INFO - Performed train/test split.
+2025-01-07 20:36:00,398 - INFO - Starting hyperparameter tuning...
+2025-01-07 20:36:00,408 - INFO - Evaluating model: flaml
+2025-01-07 20:36:00,410 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 20:38:55,434 - INFO - Starting the linear regression process...
+2025-01-07 20:38:55,435 - INFO - Loading dataset...
+2025-01-07 20:38:55,442 - INFO - Dataset loaded successfully.
+2025-01-07 20:38:55,460 - INFO - Dataset loaded successfully.
+2025-01-07 20:38:55,461 - INFO - Clearing the Reports directory...
+2025-01-07 20:38:55,464 - ERROR - Failed to clear file: C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\logs.log. Reason: [WinError 32] The process cannot access the file because it is being used by another process: 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\\logs.log'
+2025-01-07 20:38:55,464 - INFO - --- EDA Before Cleaning ---
+2025-01-07 20:38:55,464 - INFO - Generating box plot for numeric columns...
+2025-01-07 20:38:56,037 - INFO - Box plot generated successfully.
+2025-01-07 20:38:56,038 - INFO - --- Data Cleaning ---
+2025-01-07 20:38:56,041 - INFO - Shape after removing duplicates: (777, 18)
+2025-01-07 20:38:56,052 - INFO - Performing data deduplication with Levenshtein Distance...
+2025-01-07 20:38:56,054 - INFO - Shape after deduplication: (777, 18)
+2025-01-07 20:38:56,054 - INFO - Performing advanced imputation using KNN...
+2025-01-07 20:38:56,060 - INFO - Shape after imputation: (777, 18)
+2025-01-07 20:38:56,061 - INFO - Dataset cleaned successfully.
+2025-01-07 20:38:56,063 - INFO - --- EDA After Cleaning ---
+2025-01-07 20:38:56,063 - INFO - Generating box plot for numeric columns...
+2025-01-07 20:38:56,294 - INFO - Box plot generated successfully.
+2025-01-07 20:38:56,295 - INFO - --- Feature Engineering ---
+2025-01-07 20:38:56,295 - INFO - Encoding categorical variables...
+2025-01-07 20:38:56,297 - INFO - Categorical variables encoded.
+2025-01-07 20:38:56,297 - INFO - Performing feature engineering for normalization...
+2025-01-07 20:38:56,304 - INFO - Normalization completed.
+2025-01-07 20:38:56,305 - INFO - Performing feature selection using method: correlation_threshold
+2025-01-07 20:38:56,310 - INFO - Feature selection completed. Shape after feature selection: (777, 2)
+2025-01-07 20:38:56,310 - INFO - Feature selection completed.
+2025-01-07 20:38:56,310 - INFO - Feature Engineering Summary:
+Applied StandardScaler for normalization.
+2025-01-07 20:38:56,312 - INFO - --- Data Splitting ---
+2025-01-07 20:38:56,314 - INFO - Performed train/test split.
+2025-01-07 20:38:56,315 - INFO - Starting hyperparameter tuning...
+2025-01-07 20:38:56,319 - INFO - Evaluating model: flaml
+2025-01-07 20:38:56,319 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 20:40:44,832 - INFO - Starting the linear regression process...
+2025-01-07 20:40:44,833 - INFO - Loading dataset...
+2025-01-07 20:40:44,839 - INFO - Dataset loaded successfully.
+2025-01-07 20:40:44,855 - INFO - Dataset loaded successfully.
+2025-01-07 20:40:44,857 - INFO - Clearing the Reports directory...
+2025-01-07 20:40:44,859 - ERROR - Failed to clear file: C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\logs.log. Reason: [WinError 32] The process cannot access the file because it is being used by another process: 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\\logs.log'
+2025-01-07 20:40:44,860 - INFO - --- EDA Before Cleaning ---
+2025-01-07 20:40:44,861 - INFO - Generating EDA report using ydata-profiling...
+2025-01-07 20:41:38,882 - INFO - ydata-profiling EDA report saved to C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\EDA Before Cleaning_ydata_profiling_report.html
+2025-01-07 20:41:38,883 - INFO - Generating box plot for numeric columns...
+2025-01-07 20:41:39,109 - INFO - Box plot generated successfully.
+2025-01-07 20:41:39,121 - INFO - --- Data Cleaning ---
+2025-01-07 20:41:39,125 - INFO - Shape after removing duplicates: (777, 18)
+2025-01-07 20:41:39,138 - INFO - Performing data deduplication with Levenshtein Distance...
+2025-01-07 20:41:39,139 - INFO - Shape after deduplication: (777, 18)
+2025-01-07 20:41:39,140 - INFO - Performing advanced imputation using KNN...
+2025-01-07 20:41:39,145 - INFO - Shape after imputation: (777, 18)
+2025-01-07 20:41:39,146 - INFO - Dataset cleaned successfully.
+2025-01-07 20:41:39,147 - INFO - --- EDA After Cleaning ---
+2025-01-07 20:41:39,147 - INFO - Generating EDA report using ydata-profiling...
+2025-01-07 20:42:38,439 - INFO - ydata-profiling EDA report saved to C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\EDA After Cleaning_ydata_profiling_report.html
+2025-01-07 20:42:38,441 - INFO - Generating box plot for numeric columns...
+2025-01-07 20:42:38,846 - INFO - Box plot generated successfully.
+2025-01-07 20:42:38,857 - INFO - --- Feature Engineering ---
+2025-01-07 20:42:38,857 - INFO - Encoding categorical variables...
+2025-01-07 20:42:38,859 - INFO - Categorical variables encoded.
+2025-01-07 20:42:38,859 - INFO - Performing feature engineering for normalization...
+2025-01-07 20:42:38,866 - INFO - Normalization completed.
+2025-01-07 20:42:38,867 - INFO - Performing feature selection using method: correlation_threshold
+2025-01-07 20:42:38,870 - INFO - Feature selection completed. Shape after feature selection: (777, 2)
+2025-01-07 20:42:38,872 - INFO - Feature selection completed.
+2025-01-07 20:42:38,873 - INFO - Feature Engineering Summary:
+Applied StandardScaler for normalization.
+2025-01-07 20:42:38,874 - INFO - --- Data Splitting ---
+2025-01-07 20:42:38,879 - INFO - Performed train/test split.
+2025-01-07 20:42:38,880 - INFO - Starting hyperparameter tuning...
+2025-01-07 20:42:38,886 - INFO - Evaluating model: flaml
+2025-01-07 20:42:38,886 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 21:06:06,546 - INFO - R2 score: -0.9696930702767439
+2025-01-07 21:06:06,550 - INFO - Time taken: 1407.6608197689056 seconds
+2025-01-07 21:06:06,656 - INFO - Evaluating model: ridge
+2025-01-07 21:06:06,657 - INFO - Ridge alpha: 1.5686262180199408
+2025-01-07 21:06:06,679 - INFO - R2 score: 0.02629097661605717
+2025-01-07 21:06:06,680 - INFO - Time taken: 0.0226290225982666 seconds
+2025-01-07 21:06:06,682 - INFO - Evaluating model: ridge
+2025-01-07 21:06:06,682 - INFO - Ridge alpha: 8.663099696291603
+2025-01-07 21:06:06,686 - INFO - R2 score: 0.02734298091030052
+2025-01-07 21:06:06,687 - INFO - Time taken: 0.0033409595489501953 seconds
+2025-01-07 21:06:06,688 - INFO - Evaluating model: flaml
+2025-01-07 21:06:06,689 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 21:29:54,057 - INFO - R2 score: -0.9696930702767439
+2025-01-07 21:29:54,062 - INFO - Time taken: 1427.3698341846466 seconds
+2025-01-07 21:29:54,201 - INFO - Evaluating model: flaml
+2025-01-07 21:29:54,204 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 21:53:34,055 - INFO - R2 score: -0.9696930702767439
+2025-01-07 21:53:34,059 - INFO - Time taken: 1419.8532066345215 seconds
+2025-01-07 21:53:34,142 - INFO - Evaluating model: ridge
+2025-01-07 21:53:34,143 - INFO - Ridge alpha: 1.8264314223989353
+2025-01-07 21:53:34,165 - INFO - R2 score: 0.02633016614559991
+2025-01-07 21:53:34,165 - INFO - Time taken: 0.021541595458984375 seconds
+2025-01-07 21:53:34,167 - INFO - Evaluating model: flaml
+2025-01-07 21:53:34,169 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 22:17:21,386 - INFO - R2 score: -0.9696930702767439
+2025-01-07 22:17:21,391 - INFO - Time taken: 1427.2187287807465 seconds
+2025-01-07 22:17:21,486 - INFO - Evaluating model: ridge
+2025-01-07 22:17:21,487 - INFO - Ridge alpha: 2.9193791105784386
+2025-01-07 22:17:21,505 - INFO - R2 score: 0.026495491256336767
+2025-01-07 22:17:21,505 - INFO - Time taken: 0.019490718841552734 seconds
+2025-01-07 22:17:21,507 - INFO - Evaluating model: ridge
+2025-01-07 22:17:21,507 - INFO - Ridge alpha: 2.9285250388668294
+2025-01-07 22:17:21,511 - INFO - R2 score: 0.02649686916400018
+2025-01-07 22:17:21,511 - INFO - Time taken: 0.0032663345336914062 seconds
+2025-01-07 22:17:21,512 - INFO - Evaluating model: flaml
+2025-01-07 22:17:21,513 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 22:41:12,207 - INFO - R2 score: -0.9696930702767439
+2025-01-07 22:41:12,210 - INFO - Time taken: 1430.694204568863 seconds
+2025-01-07 22:41:12,308 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,326 - INFO - Ridge alpha: 9.319040521207613
+2025-01-07 22:41:12,344 - INFO - R2 score: 0.027437526154928893
+2025-01-07 22:41:12,344 - INFO - Time taken: 0.03536558151245117 seconds
+2025-01-07 22:41:12,346 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,351 - INFO - Ridge alpha: 9.541676994895115
+2025-01-07 22:41:12,355 - INFO - R2 score: 0.027469513620303476
+2025-01-07 22:41:12,355 - INFO - Time taken: 0.008039236068725586 seconds
+2025-01-07 22:41:12,358 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,363 - INFO - Ridge alpha: 9.313589780272105
+2025-01-07 22:41:12,366 - INFO - R2 score: 0.027436742364133182
+2025-01-07 22:41:12,367 - INFO - Time taken: 0.007410526275634766 seconds
+2025-01-07 22:41:12,369 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,373 - INFO - Ridge alpha: 7.073323758408696
+2025-01-07 22:41:12,376 - INFO - R2 score: 0.027111950568877607
+2025-01-07 22:41:12,377 - INFO - Time taken: 0.006318807601928711 seconds
+2025-01-07 22:41:12,379 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,385 - INFO - Ridge alpha: 6.440690238871997
+2025-01-07 22:41:12,388 - INFO - R2 score: 0.027019267029360527
+2025-01-07 22:41:12,388 - INFO - Time taken: 0.00870513916015625 seconds
+2025-01-07 22:41:12,390 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,395 - INFO - Ridge alpha: 9.653839935450174
+2025-01-07 22:41:12,398 - INFO - R2 score: 0.027485609056449034
+2025-01-07 22:41:12,399 - INFO - Time taken: 0.007577419281005859 seconds
+2025-01-07 22:41:12,401 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,405 - INFO - Ridge alpha: 7.145107694222375
+2025-01-07 22:41:12,408 - INFO - R2 score: 0.027122440237302814
+2025-01-07 22:41:12,408 - INFO - Time taken: 0.007360219955444336 seconds
+2025-01-07 22:41:12,410 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,415 - INFO - Ridge alpha: 5.422745999866857
+2025-01-07 22:41:12,418 - INFO - R2 score: 0.026869233256764824
+2025-01-07 22:41:12,419 - INFO - Time taken: 0.0070226192474365234 seconds
+2025-01-07 22:41:12,421 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,427 - INFO - Ridge alpha: 9.98903695044022
+2025-01-07 22:41:12,431 - INFO - R2 score: 0.027533631611919684
+2025-01-07 22:41:12,431 - INFO - Time taken: 0.009418010711669922 seconds
+2025-01-07 22:41:12,433 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,439 - INFO - Ridge alpha: 8.42669921312372
+2025-01-07 22:41:12,442 - INFO - R2 score: 0.02730879587774826
+2025-01-07 22:41:12,442 - INFO - Time taken: 0.008212566375732422 seconds
+2025-01-07 22:41:12,445 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,450 - INFO - Ridge alpha: 9.987673628466926
+2025-01-07 22:41:12,453 - INFO - R2 score: 0.027533436530964406
+2025-01-07 22:41:12,454 - INFO - Time taken: 0.008037328720092773 seconds
+2025-01-07 22:41:12,455 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,460 - INFO - Ridge alpha: 7.896875892531452
+2025-01-07 22:41:12,463 - INFO - R2 score: 0.027231965631088095
+2025-01-07 22:41:12,464 - INFO - Time taken: 0.00703883171081543 seconds
+2025-01-07 22:41:12,465 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,471 - INFO - Ridge alpha: 9.959701343155427
+2025-01-07 22:41:12,474 - INFO - R2 score: 0.0275294334825964
+2025-01-07 22:41:12,474 - INFO - Time taken: 0.007641792297363281 seconds
+2025-01-07 22:41:12,477 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,481 - INFO - Ridge alpha: 9.960205152156881
+2025-01-07 22:41:12,484 - INFO - R2 score: 0.027529505588745562
+2025-01-07 22:41:12,485 - INFO - Time taken: 0.007043600082397461 seconds
+2025-01-07 22:41:12,488 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,493 - INFO - Ridge alpha: 7.9913336649169
+2025-01-07 22:41:12,496 - INFO - R2 score: 0.027245684806170067
+2025-01-07 22:41:12,497 - INFO - Time taken: 0.008068323135375977 seconds
+2025-01-07 22:41:12,500 - INFO - Evaluating model: ridge
+2025-01-07 22:41:12,505 - INFO - Ridge alpha: 5.271581299099833
+2025-01-07 22:41:12,507 - INFO - R2 score: 0.026846858101618798
+2025-01-07 22:41:12,508 - INFO - Time taken: 0.007165431976318359 seconds
+2025-01-07 22:41:12,510 - INFO - Evaluating model: flaml
+2025-01-07 22:41:12,512 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 23:05:21,559 - INFO - R2 score: -0.9696930702767439
+2025-01-07 23:05:21,561 - INFO - Time taken: 1449.047158241272 seconds
+2025-01-07 23:05:21,629 - INFO - Evaluating model: ridge
+2025-01-07 23:05:21,645 - INFO - Ridge alpha: 8.697273629462874
+2025-01-07 23:05:21,663 - INFO - R2 score: 0.02734791780776702
+2025-01-07 23:05:21,663 - INFO - Time taken: 0.033589839935302734 seconds
+2025-01-07 23:05:21,667 - INFO - Evaluating model: ridge
+2025-01-07 23:05:21,672 - INFO - Ridge alpha: 0.14127175402090586
+2025-01-07 23:05:21,675 - INFO - R2 score: 0.02607266230944072
+2025-01-07 23:05:21,675 - INFO - Time taken: 0.008279800415039062 seconds
+2025-01-07 23:05:21,678 - INFO - Evaluating model: flaml
+2025-01-07 23:05:21,679 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 23:29:26,724 - INFO - R2 score: -0.9696930702767439
+2025-01-07 23:29:26,728 - INFO - Time taken: 1445.04585146904 seconds
+2025-01-07 23:29:26,818 - INFO - Evaluating model: ridge
+2025-01-07 23:29:26,837 - INFO - Ridge alpha: 9.978104648243692
+2025-01-07 23:29:26,854 - INFO - R2 score: 0.027532067228449475
+2025-01-07 23:29:26,855 - INFO - Time taken: 0.03517889976501465 seconds
+2025-01-07 23:29:26,857 - INFO - Evaluating model: ridge
+2025-01-07 23:29:26,863 - INFO - Ridge alpha: 9.908900509031001
+2025-01-07 23:29:26,866 - INFO - R2 score: 0.027522161405765133
+2025-01-07 23:29:26,867 - INFO - Time taken: 0.009004831314086914 seconds
+2025-01-07 23:29:26,869 - INFO - Evaluating model: ridge
+2025-01-07 23:29:26,874 - INFO - Ridge alpha: 8.932931042306333
+2025-01-07 23:29:26,877 - INFO - R2 score: 0.027381928309326842
+2025-01-07 23:29:26,877 - INFO - Time taken: 0.00754237174987793 seconds
+2025-01-07 23:29:26,880 - INFO - Evaluating model: ridge
+2025-01-07 23:29:26,885 - INFO - Ridge alpha: 7.584653933960608
+2025-01-07 23:29:26,889 - INFO - R2 score: 0.027186550787930308
+2025-01-07 23:29:26,889 - INFO - Time taken: 0.008895397186279297 seconds
+2025-01-07 23:29:26,893 - INFO - Evaluating model: ridge
+2025-01-07 23:29:26,900 - INFO - Ridge alpha: 8.821044986932819
+2025-01-07 23:29:26,903 - INFO - R2 score: 0.027365787999467317
+2025-01-07 23:29:26,903 - INFO - Time taken: 0.008422136306762695 seconds
+2025-01-07 23:29:26,905 - INFO - Evaluating model: ridge
+2025-01-07 23:29:26,910 - INFO - Ridge alpha: 9.767692360766944
+2025-01-07 23:29:26,913 - INFO - R2 score: 0.02750193347733476
+2025-01-07 23:29:26,914 - INFO - Time taken: 0.006871223449707031 seconds
+2025-01-07 23:29:26,916 - INFO - Evaluating model: flaml
+2025-01-07 23:29:26,918 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-07 23:53:30,925 - INFO - R2 score: -0.03067613005366021
+2025-01-07 23:53:30,930 - INFO - Time taken: 1444.0096731185913 seconds
+2025-01-07 23:53:30,997 - INFO - Evaluating model: ridge
+2025-01-07 23:53:31,013 - INFO - Ridge alpha: 9.995428677883716
+2025-01-07 23:53:31,031 - INFO - R2 score: 0.027534546193410003
+2025-01-07 23:53:31,032 - INFO - Time taken: 0.03430914878845215 seconds
+2025-01-07 23:53:31,035 - INFO - Evaluating model: ridge
+2025-01-07 23:53:31,043 - INFO - Ridge alpha: 5.938134057854645
+2025-01-07 23:53:31,047 - INFO - R2 score: 0.026945334993936032
+2025-01-07 23:53:31,047 - INFO - Time taken: 0.01041865348815918 seconds
+2025-01-07 23:53:31,049 - INFO - Evaluating model: flaml
+2025-01-07 23:53:31,050 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-08 00:18:17,134 - INFO - R2 score: -0.9696930702767439
+2025-01-08 00:18:17,138 - INFO - Time taken: 1486.08460688591 seconds
+2025-01-08 00:18:17,262 - INFO - Evaluating model: ridge
+2025-01-08 00:18:17,281 - INFO - Ridge alpha: 4.482565868392486
+2025-01-08 00:18:17,300 - INFO - R2 score: 0.026729668021567732
+2025-01-08 00:18:17,301 - INFO - Time taken: 0.0378570556640625 seconds
+2025-01-08 00:18:17,303 - INFO - Evaluating model: ridge
+2025-01-08 00:18:17,310 - INFO - Ridge alpha: 9.208943272763292
+2025-01-08 00:18:17,313 - INFO - R2 score: 0.0274216886489399
+2025-01-08 00:18:17,313 - INFO - Time taken: 0.009010076522827148 seconds
+2025-01-08 00:18:17,316 - INFO - Evaluating model: ridge
+2025-01-08 00:18:17,320 - INFO - Ridge alpha: 9.961352132272918
+2025-01-08 00:18:17,322 - INFO - R2 score: 0.02752966974583948
+2025-01-08 00:18:17,322 - INFO - Time taken: 0.00538945198059082 seconds
+2025-01-08 00:18:17,325 - INFO - Evaluating model: ridge
+2025-01-08 00:18:17,331 - INFO - Ridge alpha: 8.395671212533541
+2025-01-08 00:18:17,334 - INFO - R2 score: 0.0273043046524597
+2025-01-08 00:18:17,334 - INFO - Time taken: 0.00825190544128418 seconds
+2025-01-08 00:18:17,336 - INFO - Evaluating model: ridge
+2025-01-08 00:18:17,341 - INFO - Ridge alpha: 9.039231411101323
+2025-01-08 00:18:17,345 - INFO - R2 score: 0.02739725065276344
+2025-01-08 00:18:17,345 - INFO - Time taken: 0.008127212524414062 seconds
+2025-01-08 00:18:17,348 - INFO - Evaluating model: ridge
+2025-01-08 00:18:17,355 - INFO - Ridge alpha: 8.190231105977112
+2025-01-08 00:18:17,358 - INFO - R2 score: 0.027274542059549156
+2025-01-08 00:18:17,358 - INFO - Time taken: 0.009706735610961914 seconds
+2025-01-08 00:18:17,360 - INFO - Evaluating model: ridge
+2025-01-08 00:18:17,367 - INFO - Ridge alpha: 4.275623193089189
+2025-01-08 00:18:17,370 - INFO - R2 score: 0.026698819641574056
+2025-01-08 00:18:17,370 - INFO - Time taken: 0.008489131927490234 seconds
+2025-01-08 00:18:17,373 - INFO - Evaluating model: flaml
+2025-01-08 00:18:17,375 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
+2025-01-08 00:43:15,763 - INFO - R2 score: -0.9696930702767439
+2025-01-08 00:43:15,768 - INFO - Time taken: 1498.3896834850311 seconds
+2025-01-08 00:43:15,985 - INFO - Evaluating model: ridge
+2025-01-08 00:43:16,007 - INFO - Ridge alpha: 9.31782509798757
+2025-01-08 00:43:16,027 - INFO - R2 score: 0.027437351385510622
+2025-01-08 00:43:16,027 - INFO - Time taken: 0.04249238967895508 seconds
+2025-01-08 00:43:16,031 - INFO - Evaluating model: ridge
+2025-01-08 00:43:16,038 - INFO - Ridge alpha: 9.369473286032939
+2025-01-08 00:43:16,041 - INFO - R2 score: 0.027444776670879634
+2025-01-08 00:43:16,041 - INFO - Time taken: 0.010136604309082031 seconds
+2025-01-08 00:43:16,045 - INFO - Hyperparameter Tuning Summary:
+Best hyperparameters: {'model': 'ridge', 'alpha': 9.995428677883716}
+Best R² score: 0.027534546193410003
+2025-01-08 00:43:16,118 - INFO - Performance metrics saved to C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\performance_metrics.csv
+2025-01-08 00:43:16,144 - INFO - Predictions saved to C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\predictions.csv
+2025-01-08 00:43:16,154 - INFO - Visualizing Model Performance
+2025-01-08 00:43:16,156 - INFO - Explaining model predictions using SHAP...
+2025-01-08 00:43:16,167 - ERROR - An error occurred: The passed model is not callable and cannot be analyzed directly with the given masker! Model: FrozenTrial(number=37, state=TrialState.COMPLETE, values=[0.027534546193410003], datetime_start=datetime.datetime(2025, 1, 7, 23, 53, 30, 982359), datetime_complete=datetime.datetime(2025, 1, 7, 23, 53, 31, 33879), params={'model': 'ridge', 'alpha': 9.995428677883716}, user_attrs={}, system_attrs={}, intermediate_values={}, distributions={'model': CategoricalDistribution(choices=('ridge', 'flaml')), 'alpha': FloatDistribution(high=10.0, log=False, low=0.01, step=None)}, trial_id=37, value=None)
+2025-01-08 06:22:43,793 - INFO - Starting the linear regression process...
+2025-01-08 06:22:43,794 - INFO - Loading dataset...
+2025-01-08 06:22:43,817 - INFO - Dataset loaded successfully.
+2025-01-08 06:22:43,834 - INFO - Dataset loaded successfully.
+2025-01-08 06:22:43,836 - INFO - Clearing the Reports directory...
+2025-01-08 06:22:43,840 - ERROR - Failed to clear file: C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\logs.log. Reason: [WinError 32] The process cannot access the file because it is being used by another process: 'C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\\logs.log'
+2025-01-08 06:22:43,841 - INFO - --- EDA Before Cleaning ---
+2025-01-08 06:22:43,842 - INFO - Generating EDA report using ydata-profiling...
+2025-01-08 06:23:23,660 - INFO - ydata-profiling EDA report saved to C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\EDA Before Cleaning_ydata_profiling_report.html
+2025-01-08 06:23:23,661 - INFO - Generating box plot for numeric columns...
+2025-01-08 06:23:23,901 - INFO - Box plot generated successfully.
+2025-01-08 06:23:23,913 - INFO - --- Data Cleaning ---
+2025-01-08 06:23:23,916 - INFO - Shape after removing duplicates: (777, 18)
+2025-01-08 06:23:23,930 - INFO - Performing data deduplication with Levenshtein Distance...
+2025-01-08 06:23:23,932 - INFO - Shape after deduplication: (777, 18)
+2025-01-08 06:23:23,934 - INFO - Performing advanced imputation using KNN...
+2025-01-08 06:23:23,941 - INFO - Shape after imputation: (777, 18)
+2025-01-08 06:23:23,941 - INFO - Dataset cleaned successfully.
+2025-01-08 06:23:23,943 - INFO - --- EDA After Cleaning ---
+2025-01-08 06:23:23,943 - INFO - Generating EDA report using ydata-profiling...
+2025-01-08 06:24:04,440 - INFO - ydata-profiling EDA report saved to C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/Linear_Regression/linear_regression_project/Reports\EDA After Cleaning_ydata_profiling_report.html
+2025-01-08 06:24:04,440 - INFO - Generating box plot for numeric columns...
+2025-01-08 06:24:04,889 - INFO - Box plot generated successfully.
+2025-01-08 06:24:04,902 - INFO - --- Feature Engineering ---
+2025-01-08 06:24:04,903 - INFO - Encoding categorical variables...
+2025-01-08 06:24:04,904 - INFO - Categorical variables encoded.
+2025-01-08 06:24:04,904 - INFO - Performing feature engineering for normalization...
+2025-01-08 06:24:04,911 - INFO - Normalization completed.
+2025-01-08 06:24:04,912 - INFO - Performing feature selection using method: correlation_threshold
+2025-01-08 06:24:04,918 - INFO - Feature selection completed. Shape after feature selection: (777, 2)
+2025-01-08 06:24:04,919 - INFO - Feature selection completed.
+2025-01-08 06:24:04,919 - INFO - Feature Engineering Summary:
+Applied StandardScaler for normalization.
+2025-01-08 06:24:04,921 - INFO - --- Data Splitting ---
+2025-01-08 06:24:04,923 - INFO - Performed train/test split.
+2025-01-08 06:24:04,924 - INFO - Starting hyperparameter tuning...
+2025-01-08 06:24:04,930 - INFO - Evaluating model: flaml
+2025-01-08 06:24:04,930 - INFO - AutoML settings: {'time_budget': 600, 'metric': 'r2', 'task': 'regression', 'log_file_name': 'flaml.log', 'verbose': 0, 'estimator_list': ['lgbm', 'xgboost', 'rf', 'catboost'], 'n_jobs': -1, 'mem_thres': 0.8, 'learner_kwargs': {'lgbm': {'num_leaves': 31, 'max_depth': -1, 'n_estimators': 100}}}
