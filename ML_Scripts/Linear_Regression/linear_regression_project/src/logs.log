@@ -142566,3 +142566,71 @@ pandas.Int64Index is deprecated and will be removed from pandas in a future vers
 pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
 
 
+2025-01-08 06:22:43,561:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2025-01-08 06:22:43,561:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2025-01-08 06:22:43,561:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2025-01-08 06:22:43,561:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2025-01-08 06:24:04,905:WARNING:C:\Users\yashu\Desktop\SAVYMINDS\MLOps\YS_MVP\ML_Scripts\Linear_Regression\linear_regression_project\src\feature_engineering.py:27: FutureWarning:
+
+The pandas.np module is deprecated and will be removed from pandas in a future version. Import numpy directly instead.
+
+
+2025-01-08 06:24:04,914:WARNING:C:\Users\yashu\Desktop\SAVYMINDS\MLOps\YS_MVP\ML_Scripts\Linear_Regression\linear_regression_project\src\feature_selection.py:19: FutureWarning:
+
+The pandas.np module is deprecated and will be removed from pandas in a future version. Import numpy directly instead.
+
+
+2025-01-08 06:34:06,463:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
+2025-01-08 06:34:11,924:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
+2025-01-08 06:34:11,960:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
+2025-01-08 06:34:17,110:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
+2025-01-08 06:34:17,141:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
+2025-01-08 06:34:22,396:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
+2025-01-08 06:34:22,433:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
+2025-01-08 06:34:27,577:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
+2025-01-08 06:34:27,618:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
+2025-01-08 06:34:32,926:WARNING:C:\Users\yashu\anaconda3\lib\site-packages\xgboost\data.py:262: FutureWarning:
+
+pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead.
+
+
