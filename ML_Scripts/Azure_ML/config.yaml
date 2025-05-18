@@ -1,0 +1,75 @@
+azureml:
+  subscription_id: "8e7c9c7e-60b9-4f43-9dde-0268f7fce7bf"
+  resource_group: "MLPipelineEastUS2"
+  workspace_name: "MLPipelineWorkspace"
+
+mlflow:
+  experiment_name: "ML_Pipeline_Experiments"
+
+data:
+  datastore_name: "workspaceblobstore"
+  dataset_name: "input_dataset"
+  file_path: "/home/azureuser/cloudfiles/code/Users/yashu.savyminds/azure-ml-regression-project/data/College.csv"
+  target_column: "Grad.Rate"
+  storage_account_name: "yamlpipelinestorage"
+  storage_account_key: "N6QWmT1BdNA11SqRcozSQSY2q2rKTGgVZyf7ZX2erskceERpYya4QieYsXaio72qwcQlYZgeR/bd+AStSzTxyA=="
+  container_name: "ml-pipeline-container"
+  blob_name: "cleaned_data.csv" 
+
+log_path: "Reports/logs.log"
+reports_path: "/home/azureuser/cloudfiles/code/Users/yashu.savyminds/azure-ml-regression-project/Reports"
+
+eda_tool: 
+  tool: "dtale"  # Options: 'sweetviz', 'ydata-profiling', 'dtale'
+  open_browser: false  # Option to open D-Tale in the browser
+
+outlier_detection:
+  ml_models:
+    isolation_forest:
+      n_estimators: 100
+      max_samples: "auto"
+      contamination: 0.1
+      random_state: 42
+outlier_strategy: "remove"  # Options: 'remove', 'cap', 'transform'
+
+feature_engineering:
+  normalize: [True, False]
+  transformation: [True, False]
+  polynomial_features: [True, False]
+  remove_multicollinearity: [True, False]
+
+feature_selection:
+  method: correlation_threshold  # Valid methods: 'variance_threshold', 'correlation_threshold'
+  threshold: 0.1
+
+optuna:
+  n_trials: 50
+
+grid_search:
+  param_grid:
+    n_estimators: [50, 100, 200]
+    max_depth: [None, 10, 20, 30]
+    min_samples_split: [2, 5, 10]
+
+split_type: "train_test"  # Options: 'train_test', 'k_fold', 'time_series'
+
+flaml:
+  time_budget: 600  # Set the time budget for FLAML in seconds
+  metric: 'r2'  # Metric to optimize
+  task: 'regression'  # Task type
+  estimator_list: ['lgbm', 'xgboost', 'rf', 'catboost']  
+  mem_thres: 0.8  # Set memory threshold to 80%
+  learner_kwargs:
+    lgbm:
+      num_leaves: 31
+      max_depth: -1
+      n_estimators: 100
+
+drift_detection:
+  ks_test_p_val: 0.05  # P-value threshold for Kolmogorov-Smirnov test
+  chi2_test_p_val: 0.05  # P-value threshold for Chi-Square test
+  js_divergence_threshold: 0.1  # Threshold for Jensen-Shannon divergence
+  alibi_ks_p_val: 0.05  # P-value threshold for Alibi Detect KSDrift
+  alibi_chi2_p_val: 0.05  # P-value threshold for Alibi Detect ChiSquareDrift
+  evidently:
+    report_path: "ML_Scripts/Linear_Regression/linear_regression_project/Reports/evidently_report.html"

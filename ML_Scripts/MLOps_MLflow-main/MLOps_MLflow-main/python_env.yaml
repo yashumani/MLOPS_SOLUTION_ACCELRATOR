@@ -1,0 +1,8 @@
+python: "3.10"
+build_dependencies:
+  - pip
+dependencies:
+  - mlflow>=1.0
+  - click
+  - shap
+  - numpy==1.23
