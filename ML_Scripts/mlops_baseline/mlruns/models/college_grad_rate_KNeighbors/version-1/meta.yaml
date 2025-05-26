@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748148813166
+current_stage: None
+description: null
+last_updated_timestamp: 1748148813166
+name: college_grad_rate_KNeighbors
+run_id: 9a96b874a6ac423084101057efd2e433
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/9a96b874a6ac423084101057efd2e433/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/9a96b874a6ac423084101057efd2e433/artifacts/model
+user_id: null
+version: 1

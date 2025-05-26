@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/77fccb16c31044adb2cb7ab5d6fbb858/artifacts
+end_time: 1748277593712
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: 77fccb16c31044adb2cb7ab5d6fbb858
+run_name: LogisticRegression_trial_7
+run_uuid: 77fccb16c31044adb2cb7ab5d6fbb858
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748277583389
+status: 3
+tags: []
+user_id: yashu

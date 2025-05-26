@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/534006080397959772/f3012998be1a486b9f4f805e417a6925/artifacts
+end_time: 1748047363956
+entry_point_name: ''
+experiment_id: '534006080397959772'
+lifecycle_stage: active
+run_id: f3012998be1a486b9f4f805e417a6925
+run_name: suave-grouse-776
+run_uuid: f3012998be1a486b9f4f805e417a6925
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748047363706
+status: 3
+tags: []
+user_id: yashu

@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/534006080397959772/30de257728e04d2997dd9c6ff1fe05f7/artifacts
+end_time: 1748046921881
+entry_point_name: ''
+experiment_id: '534006080397959772'
+lifecycle_stage: active
+run_id: 30de257728e04d2997dd9c6ff1fe05f7
+run_name: flaml_automl_child_155
+run_uuid: 30de257728e04d2997dd9c6ff1fe05f7
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748046921725
+status: 3
+tags: []
+user_id: yashu

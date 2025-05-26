@@ -1,0 +1,93 @@
+# A living catalog of algorithms the platform supports.
+# -----------------------------------------------------------------
+# schema:
+#   family: human-readable group
+#   id:     snake-case unique id (used in CLI / API)
+#   type:   supervised | unsupervised | time_series | reco | anomaly
+#   libs:   python packages that implement it
+#   metric: default evaluation metric
+#   notes:  free-text
+
+- family: Linear / Elastic Net Regression
+  id: linear_regression
+  type: supervised
+  libs: [scikit-learn]
+  metric: rmse
+  notes: good baseline for regression
+
+- family: Random Forest
+  id: random_forest
+  type: supervised
+  libs: [scikit-learn, flaml, pycaret]
+  metric: rmse
+  notes: handles non-linearities, low feature engineering
+
+- family: XGBoost
+  id: xgboost
+  type: supervised
+  libs: [xgboost, flaml, pycaret]
+  metric: rmse
+  notes: state-of-the-art tabular
+
+- family: LightGBM
+  id: lightgbm
+  type: supervised
+  libs: [lightgbm, flaml, pycaret]
+  metric: rmse
+  notes: faster than XGB on CPUs
+
+- family: CatBoost
+  id: catboost
+  type: supervised
+  libs: [catboost]
+  metric: rmse
+  notes: handles categorical features natively
+
+- family: Support Vector Machine
+  id: svm
+  type: supervised
+  libs: [scikit-learn]
+  metric: accuracy
+  notes: good for small-to-medium datasets
+
+- family: K-Nearest Neighbors
+  id: knn
+  type: supervised
+  libs: [scikit-learn]
+  metric: accuracy
+  notes: instance-based
+
+- family: K-Means
+  id: kmeans
+  type: unsupervised
+  libs: [scikit-learn]
+  metric: silhouette
+  notes: baseline clustering
+
+- family: DBSCAN
+  id: dbscan
+  type: unsupervised
+  libs: [scikit-learn]
+  metric: silhouette
+  notes: density clustering
+
+- family: Isolation Forest
+  id: isolation_forest
+  type: anomaly
+  libs: [scikit-learn]
+  metric: auc
+  notes: outlier detection
+
+- family: Prophet
+  id: prophet
+  type: time_series
+  libs: [prophet]
+  metric: mape
+  notes: additive TS forecasting
+
+- family: Surprise SVD
+  id: svd_recommender
+  type: reco
+  libs: [scikit-surprise]
+  metric: rmse
+  notes: matrix-factorization

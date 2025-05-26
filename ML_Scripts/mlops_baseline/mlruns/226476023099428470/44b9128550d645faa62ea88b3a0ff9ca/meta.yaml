@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/44b9128550d645faa62ea88b3a0ff9ca/artifacts
+end_time: 1748277784342
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: 44b9128550d645faa62ea88b3a0ff9ca
+run_name: OptunaStudy_KNeighborsClassifier
+run_uuid: 44b9128550d645faa62ea88b3a0ff9ca
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748277777808
+status: 3
+tags: []
+user_id: yashu

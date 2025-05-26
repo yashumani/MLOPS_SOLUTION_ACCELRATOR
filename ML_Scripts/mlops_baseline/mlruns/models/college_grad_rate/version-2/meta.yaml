@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748097096211
+current_stage: Archived
+description: null
+last_updated_timestamp: 1748099013774
+name: college_grad_rate
+run_id: 9609836d611f4a6dbb4abab9fabc3dc1
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/213659154539456866/9609836d611f4a6dbb4abab9fabc3dc1/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/213659154539456866/9609836d611f4a6dbb4abab9fabc3dc1/artifacts/model
+user_id: null
+version: 2

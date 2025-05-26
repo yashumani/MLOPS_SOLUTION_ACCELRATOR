@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748169525830
+current_stage: None
+description: null
+last_updated_timestamp: 1748169525830
+name: college_grad_rate_Ridge
+run_id: 904a008f2b1a4b938ee008d29d0a277b
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/904a008f2b1a4b938ee008d29d0a277b/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/904a008f2b1a4b938ee008d29d0a277b/artifacts/model
+user_id: null
+version: 3

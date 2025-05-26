@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748142101548
+current_stage: None
+description: null
+last_updated_timestamp: 1748142101548
+name: college_grad_rate_RandomForest
+run_id: 0f28ad87a5c14f4a81fc7fc5d40c9940
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/0f28ad87a5c14f4a81fc7fc5d40c9940/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/0f28ad87a5c14f4a81fc7fc5d40c9940/artifacts/model
+user_id: null
+version: 4

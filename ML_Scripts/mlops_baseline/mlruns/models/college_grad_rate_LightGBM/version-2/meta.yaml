@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748169529522
+current_stage: None
+description: null
+last_updated_timestamp: 1748169529522
+name: college_grad_rate_LightGBM
+run_id: 186ad0907442444c9cec46856acaf227
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/186ad0907442444c9cec46856acaf227/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/186ad0907442444c9cec46856acaf227/artifacts/model
+user_id: null
+version: 2

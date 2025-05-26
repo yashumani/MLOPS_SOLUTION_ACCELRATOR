@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748169573073
+current_stage: None
+description: null
+last_updated_timestamp: 1748169573073
+name: college_grad_rate_CatBoost
+run_id: 560bb0e4c0b24efd9809bea03bbf1dde
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/560bb0e4c0b24efd9809bea03bbf1dde/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/560bb0e4c0b24efd9809bea03bbf1dde/artifacts/model
+user_id: null
+version: 2

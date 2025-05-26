@@ -1,0 +1,6 @@
+artifact_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/951956800980755586
+creation_time: 1747586150778
+experiment_id: '951956800980755586'
+last_update_time: 1747586150778
+lifecycle_stage: active
+name: rf_vs_xgb_regression

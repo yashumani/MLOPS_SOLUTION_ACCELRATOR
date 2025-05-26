@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/213659154539456866/0c03d7d03fe14a7a816dfed4dcdc37f5/artifacts
+end_time: 1748097080251
+entry_point_name: ''
+experiment_id: '213659154539456866'
+lifecycle_stage: active
+run_id: 0c03d7d03fe14a7a816dfed4dcdc37f5
+run_name: xgb_trial_16
+run_uuid: 0c03d7d03fe14a7a816dfed4dcdc37f5
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748097079925
+status: 3
+tags: []
+user_id: yashu

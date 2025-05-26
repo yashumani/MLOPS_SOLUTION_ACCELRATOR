@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748169522382
+current_stage: None
+description: null
+last_updated_timestamp: 1748169522382
+name: college_grad_rate_XGBoost
+run_id: 1f0c605db6fa45508f7f3e09d337cf89
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/1f0c605db6fa45508f7f3e09d337cf89/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/582441630662000954/1f0c605db6fa45508f7f3e09d337cf89/artifacts/model
+user_id: null
+version: 6
