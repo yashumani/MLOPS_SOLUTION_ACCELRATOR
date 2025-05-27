@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/c18e8707029842889403841ca53bb2a4/artifacts
+end_time: 1748282460911
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: c18e8707029842889403841ca53bb2a4
+run_name: CatBoostClassifier_trial_17
+run_uuid: c18e8707029842889403841ca53bb2a4
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748282442093
+status: 3
+tags: []
+user_id: yashu

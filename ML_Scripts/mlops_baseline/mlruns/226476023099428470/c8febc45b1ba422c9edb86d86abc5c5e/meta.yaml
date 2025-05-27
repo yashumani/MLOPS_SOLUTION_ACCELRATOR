@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/c8febc45b1ba422c9edb86d86abc5c5e/artifacts
+end_time: 1748304090880
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: c8febc45b1ba422c9edb86d86abc5c5e
+run_name: XGBClassifier_trial_13
+run_uuid: c8febc45b1ba422c9edb86d86abc5c5e
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748304089248
+status: 3
+tags: []
+user_id: yashu

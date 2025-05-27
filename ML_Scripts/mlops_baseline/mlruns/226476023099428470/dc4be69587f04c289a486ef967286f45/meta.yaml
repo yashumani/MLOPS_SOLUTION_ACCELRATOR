@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/dc4be69587f04c289a486ef967286f45/artifacts
+end_time: 1748294662017
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: dc4be69587f04c289a486ef967286f45
+run_name: LGBMClassifier_trial_6
+run_uuid: dc4be69587f04c289a486ef967286f45
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748294661668
+status: 3
+tags: []
+user_id: yashu

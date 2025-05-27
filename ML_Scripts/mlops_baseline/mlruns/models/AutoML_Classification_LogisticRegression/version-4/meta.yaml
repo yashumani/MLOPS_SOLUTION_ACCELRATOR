@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748294779729
+current_stage: None
+description: null
+last_updated_timestamp: 1748294779729
+name: AutoML_Classification_LogisticRegression
+run_id: cc73ed33500742b79759fd93108d0822
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/cc73ed33500742b79759fd93108d0822/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/cc73ed33500742b79759fd93108d0822/artifacts/model
+user_id: null
+version: 4

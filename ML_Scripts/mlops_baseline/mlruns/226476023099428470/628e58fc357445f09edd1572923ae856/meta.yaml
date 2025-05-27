@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/628e58fc357445f09edd1572923ae856/artifacts
+end_time: 1748282483878
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: 628e58fc357445f09edd1572923ae856
+run_name: OptunaStudy_SVC
+run_uuid: 628e58fc357445f09edd1572923ae856
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748282463749
+status: 3
+tags: []
+user_id: yashu

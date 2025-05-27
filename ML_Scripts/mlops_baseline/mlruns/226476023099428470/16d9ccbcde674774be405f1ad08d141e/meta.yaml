@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/16d9ccbcde674774be405f1ad08d141e/artifacts
+end_time: 1748292982072
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: 16d9ccbcde674774be405f1ad08d141e
+run_name: Best_RandomForestClassifier
+run_uuid: 16d9ccbcde674774be405f1ad08d141e
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748292978179
+status: 3
+tags: []
+user_id: yashu

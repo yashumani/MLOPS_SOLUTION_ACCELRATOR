@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/2dc77ed93bce46478ca80426a7fcc0e3/artifacts
+end_time: 1748304106052
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: 2dc77ed93bce46478ca80426a7fcc0e3
+run_name: OptunaStudy_XGBClassifier
+run_uuid: 2dc77ed93bce46478ca80426a7fcc0e3
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748304060853
+status: 3
+tags: []
+user_id: yashu

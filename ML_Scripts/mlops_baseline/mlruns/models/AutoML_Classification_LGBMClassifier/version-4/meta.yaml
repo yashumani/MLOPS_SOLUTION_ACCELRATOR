@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748304333213
+current_stage: Staging
+description: null
+last_updated_timestamp: 1748304350844
+name: AutoML_Classification_LGBMClassifier
+run_id: c193719e7a0946f881316a60f6b90dc3
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/c193719e7a0946f881316a60f6b90dc3/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/c193719e7a0946f881316a60f6b90dc3/artifacts/model
+user_id: null
+version: 4

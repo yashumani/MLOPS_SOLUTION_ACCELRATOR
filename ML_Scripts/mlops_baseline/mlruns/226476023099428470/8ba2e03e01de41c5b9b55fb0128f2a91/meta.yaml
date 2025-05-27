@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/8ba2e03e01de41c5b9b55fb0128f2a91/artifacts
+end_time: 1748304256625
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: 8ba2e03e01de41c5b9b55fb0128f2a91
+run_name: OptunaStudy_CatBoostClassifier
+run_uuid: 8ba2e03e01de41c5b9b55fb0128f2a91
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748304114804
+status: 3
+tags: []
+user_id: yashu

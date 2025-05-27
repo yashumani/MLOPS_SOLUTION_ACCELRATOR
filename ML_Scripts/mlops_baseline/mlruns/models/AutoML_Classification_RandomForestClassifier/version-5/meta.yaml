@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748304322502
+current_stage: None
+description: null
+last_updated_timestamp: 1748304322502
+name: AutoML_Classification_RandomForestClassifier
+run_id: dd6f12d8c2fe4b5db15859335c57454f
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/dd6f12d8c2fe4b5db15859335c57454f/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/dd6f12d8c2fe4b5db15859335c57454f/artifacts/model
+user_id: null
+version: 5

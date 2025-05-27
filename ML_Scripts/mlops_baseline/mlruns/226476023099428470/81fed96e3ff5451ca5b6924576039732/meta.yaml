@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/81fed96e3ff5451ca5b6924576039732/artifacts
+end_time: 1748304284163
+entry_point_name: ''
+experiment_id: '226476023099428470'
+lifecycle_stage: active
+run_id: 81fed96e3ff5451ca5b6924576039732
+run_name: KNeighborsClassifier_trial_6
+run_uuid: 81fed96e3ff5451ca5b6924576039732
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748304283882
+status: 3
+tags: []
+user_id: yashu
