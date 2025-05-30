@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748522163069
+current_stage: None
+description: null
+last_updated_timestamp: 1748522163069
+name: AutoML_Regression_LGBMRegressor
+run_id: 079e6422697149eab040bd766004f03e
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/783770411799452014/079e6422697149eab040bd766004f03e/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/783770411799452014/079e6422697149eab040bd766004f03e/artifacts/model
+user_id: null
+version: 1

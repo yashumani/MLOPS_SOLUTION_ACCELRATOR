@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748516544813
+current_stage: None
+description: null
+last_updated_timestamp: 1748516544813
+name: AutoML_Classification_KNeighborsClassifier
+run_id: 4837dd87308c4b1994da752831c0962d
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/4837dd87308c4b1994da752831c0962d/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/4837dd87308c4b1994da752831c0962d/artifacts/model
+user_id: null
+version: 7

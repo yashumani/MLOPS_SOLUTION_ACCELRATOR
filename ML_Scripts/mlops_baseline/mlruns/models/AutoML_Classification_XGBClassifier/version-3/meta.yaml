@@ -1,8 +1,8 @@
 aliases: []
 creation_timestamp: 1748292989471
-current_stage: Staging
+current_stage: Archived
 description: null
-last_updated_timestamp: 1748294808491
+last_updated_timestamp: 1748326848107
 name: AutoML_Classification_XGBClassifier
 run_id: e84b266ec5eb4a62a08f1a47e066bab0
 run_link: null

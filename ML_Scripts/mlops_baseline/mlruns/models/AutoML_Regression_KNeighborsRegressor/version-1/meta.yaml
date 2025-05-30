@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748522202262
+current_stage: Staging
+description: null
+last_updated_timestamp: 1748522205205
+name: AutoML_Regression_KNeighborsRegressor
+run_id: 776fdc365f8149ffbb3f715fe1e6b69f
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/783770411799452014/776fdc365f8149ffbb3f715fe1e6b69f/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/783770411799452014/776fdc365f8149ffbb3f715fe1e6b69f/artifacts/model
+user_id: null
+version: 1

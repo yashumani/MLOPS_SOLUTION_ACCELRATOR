@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/783770411799452014/4d24977281f445fd93651bccec5d4d34/artifacts
+end_time: 1748521976107
+entry_point_name: ''
+experiment_id: '783770411799452014'
+lifecycle_stage: active
+run_id: 4d24977281f445fd93651bccec5d4d34
+run_name: CatBoostRegressor_trial_4
+run_uuid: 4d24977281f445fd93651bccec5d4d34
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748521975712
+status: 3
+tags: []
+user_id: yashu

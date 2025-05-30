@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748522152824
+current_stage: None
+description: null
+last_updated_timestamp: 1748522152824
+name: AutoML_Regression_RandomForestRegressor
+run_id: f4df7f7a741342239a35fa77835571a3
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/783770411799452014/f4df7f7a741342239a35fa77835571a3/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/783770411799452014/f4df7f7a741342239a35fa77835571a3/artifacts/model
+user_id: null
+version: 1

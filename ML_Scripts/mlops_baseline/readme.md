@@ -1,224 +1,103 @@
-# Model Garden: End-to-End AutoML Pipeline with MLOps + FastAPI Deployment
+# MLOps Baseline Project: Simplified Overview
 
-## Project Objective
+Hi Vinay,
 
-To build a modular and automated machine learning platform that allows users to input a dataset, select a prediction target, and execute a full MLOps lifecycle. This includes data ingestion & validation, automated preprocessing, exploratory data analysis (EDA), AutoML-driven model training and tuning across a variety of regressors (Random Forest, XGBoost, Ridge, LightGBM, CatBoost, SVR, KNeighbors, ElasticNet), hyperparameter optimization with Optuna, model evaluation, comprehensive experiment tracking and model registry with MLflow (including promotion to "Staging"), and model serving via a FastAPI-based REST API.
+This document provides a high-level summary of our MLOps Baseline project. The goal was to build a foundational, automated pipeline for developing, tracking, and deploying machine learning models efficiently.
 
-This project simulates a self-service "model garden" experience where users can obtain production-ready models with minimal manual intervention.
+## What We've Built: An End-to-End ML Pipeline
 
-## Key Features & Capabilities
+We've created a system that takes a dataset and a prediction target, and then automatically handles:
 
-* **Automated Data Preparation (`prep_pipeline.py`):**
-    * Ingests CSV data.
-    * Validates data schema using Pandera (`data_ingest.py`).
-    * Performs data cleaning: deduplication and median imputation for numerical features.
-    * Encodes categorical features using one-hot encoding.
-    * Generates a comprehensive EDA report using YData Profiling (`eda_report.html`).
-    * (Optional) Performs Deep Feature Synthesis (DFS) using Featuretools.
-    * Outputs `prepared.parquet` (or `featuretools_matrix.parquet`) and `prep_manifest.json`.
-* **AutoML Training & Tuning (`train_pipeline.py`):**
-    * Consumes data from the preparation pipeline.
-    * Supports a configurable "Model Garden" (`MODEL_CONFIG`) including:
-        * RandomForestRegressor
-        * XGBRegressor
-        * Ridge Regression
-        * LGBMRegressor
-        * CatBoostRegressor
-        * Support Vector Regressor (SVR)
-        * KNeighborsRegressor
-        * ElasticNet
-    * Performs model-specific conditional feature scaling (e.g., `StandardScaler`).
-    * Automated hyperparameter optimization for each model using Optuna.
-    * **MLflow Integration:**
-        * Tracks all Optuna studies and individual trials (parameters, metrics, tags).
-        * Logs final retrained models, their parameters, evaluation metrics (RMSE), and scaler artifacts.
-        * Registers each trained model family to the MLflow Model Registry.
-        * Automatically promotes the overall best-performing model to the "Staging" alias.
-    * Saves final model (`.joblib`), scaler (`.joblib` if used), and `train_columns.json` locally in the `artifacts/` directory.
-* **Model Serving (`model_serving_api.py`):**
-    * FastAPI application for serving trained models.
-    * Dynamically loads all available models and their scalers from the `artifacts/` directory at startup.
-    * **Endpoints:**
-        * `/health`: API health check and count of loaded models.
-        * `/available_models`: Lists all model aliases ready for prediction.
-        * `/predict`: Accepts a model alias and raw features (JSON payload). Performs necessary preprocessing (one-hot encoding, scaling, column alignment) and returns the prediction.
-* **API Testing (`test_api.py`):**
-    * Automated tests using `pytest` and FastAPI's `TestClient`.
-    * Covers health checks, available models, and prediction endpoints for all loaded models.
-* **Modularity & Extensibility:** Designed to easily add new models to the training pipeline via `MODEL_CONFIG`.
+1.  **Data Preparation (`src/prep_pipeline.py`):**
+    * Loads data (e.g., CSV files like `titanic.csv` or `college.csv`).
+    * Cleans it (handles duplicates, fills missing numerical values using mean imputation).
+    * Prepares features for models (e.g., converts text categories into numbers using one-hot encoding).
+    * Saves the processed data and a list of features (`train_columns.json`) needed for consistent predictions.
 
-## Project Structure
+2.  **Model Training & Experimentation (`src/train_pipeline.py`):**
+    * **Task-Aware:** Can be run for "classification" (like predicting 'Survived' on Titanic) or "regression" (like predicting 'Grad.Rate' on College data) by changing a command-line flag (`--task_type`).
+    * **Model Variety:** Trains a "garden" of different models:
+        * For Classification: Logistic Regression, Random Forest, XGBoost, LightGBM, CatBoost, SVC, K-Nearest Neighbors.
+        * (Regression models like Ridge, RandomForestRegressor, etc., are defined and can be trained by switching the task type).
+    * **Smart Tuning (Optuna):** Automatically finds the best settings (hyperparameters) for each model to maximize its performance (e.g., F1-score for classification).
+    * **MLflow Integration (Key for MLOps):**
+        * **Tracks Everything:** Every training run, its parameters, and performance scores are logged in MLflow. This means we have a full history and can compare models easily.
+        * **Model Registry:** Saves all trained models in a central place (MLflow Model Registry), versioning them.
+        * **Best Model Staging:** Automatically identifies the best performing model on test data and promotes it to a "Staging" area in MLflow, ready for potential deployment.
+    * **Local Artifacts:** Saves the trained models, scalers (for feature normalization), and the label encoder (for classification targets) in the `artifacts/` folder for the API to use.
 
-mlops_baseline/
-├── artifacts/            # Stores generated models, scalers, data, reports, manifests
-│   ├── eda_report.html
-│   ├── prep_manifest.json
-│   ├── prepared.parquet
-│   ├── featuretools_matrix.parquet (optional)
-│   ├── train_columns.json
-│   ├── randomforest_model.joblib
-│   ├── xgboost_model.joblib
-│   ├── ridge_model.joblib
-│   ├── ridge_scaler.joblib
-│   └── ... (other model and scaler files)
-├── data/
-│   └── college.csv       # Sample dataset
-├── src/
-│   ├── data_ingest.py    # Data validation schema and ingestion
-│   ├── prep_pipeline.py  # Data preparation and EDA generation
-│   ├── train_pipeline.py # Model training, tuning, and registration
-│   └── test_api.py       # API tests
-├── model_serving_api.py  # FastAPI application for model serving
-├── requirements.txt      # Project dependencies
-├── README.md             # This file
-└── mlruns/               # MLflow tracking data (if using local tracking)
+3.  **Model Serving API (`model_serving_api.py`):**
+    * **FastAPI Server:** A high-performance API that makes our trained models available for predictions.
+    * **Automatic Loading:** When the API starts, it automatically finds and loads all the trained models and necessary preprocessing tools (scalers, `train_columns.json`, label encoder) from the `artifacts/` folder. It knows if a model is for classification or regression based on its filename.
+    * **Prediction Endpoint (`/predict`):**
+        * Takes new, raw data as input (you tell it which model alias to use).
+        * Internally, it performs the *exact same* preprocessing steps (one-hot encoding, scaling, handling of missing columns, fixing NaN/infinity values from scaling, and special name cleaning for LightGBM/CatBoost) that were done during training. This ensures consistency.
+        * Returns the model's prediction.
+    * **Helper Endpoints:**
+        * `/health`: Shows if the API is running and how many models are loaded.
+        * `/available_models`: Lists all model aliases ready for use.
+        * `/docs`: An interactive page to see and test all API functions.
 
+4.  **API Testing (`src/test_api.py`):**
+    * **Automated Checks (Pytest):** We have a suite of tests that automatically check if the API is working correctly – from loading models to making predictions and handling various types of input.
+    * **Current Status:** **All 15 functional tests are passing** for the classification task with the Titanic dataset (the 16th test was a temporary diagnostic one that can be removed). This confirms the API loads models, preprocesses input, and returns predictions as expected.
 
-## Tech Stack & Requirements
+## Current Status & What You Can See Today:
 
-* Python 3.9+
-* Pandas, NumPy
-* Scikit-learn
-* XGBoost
-* LightGBM
-* CatBoost
-* Optuna (for hyperparameter optimization)
-* MLflow (for experiment tracking and model registry)
-* FastAPI (for model serving API)
-* Uvicorn (ASGI server for FastAPI)
-* Pandera (for data validation)
-* YData Profiling (for EDA reports)
-* Featuretools (optional, for Deep Feature Synthesis)
-* Joblib (for model serialization)
-* Pytest (for API testing)
+* **Fully Functional for Classification (Titanic Dataset):** The entire pipeline from data prep to API serving and testing is working end-to-end for the Titanic classification task.
+* **Adaptable for Regression:** The `train_pipeline.py` is built to handle regression by changing the `--task_type` flag. The API is also designed to load and serve regression models.
+* **MLflow Tracking & Registry Operational:** All experiments and models are being logged and registered.
 
-See `requirements.txt` for a full list of dependencies and versions.
+**How to See It In Action (Demonstration Steps):**
 
-## Setup Instructions
-
-1.  **Clone the Repository (if applicable)**
-    ```bash
-    git clone <repository_url>
-    cd mlops_baseline
-    ```
-
-2.  **Create Conda Environment:**
-    It's recommended to use a Conda environment.
-    ```bash
-    conda create -n mlops_env_1 python=3.10  # Or your preferred Python 3.9+
-    conda activate mlops_env_1
-    ```
-
-3.  **Install Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-4.  **MLflow Setup:**
-    * **Local Tracking:** MLflow will automatically use a local `mlruns` directory for tracking if no tracking URI is set.
-    * **Remote Tracking Server (Optional):** If you have an MLflow tracking server, set the `MLFLOW_TRACKING_URI` environment variable:
+1.  **Environment Setup:**
+    * Ensure Python and Conda are installed.
+    * Create and activate the `mlops_env_1` conda environment:
         ```bash
-        export MLFLOW_TRACKING_URI=http://your-mlflow-server:5000
+        conda create -n mlops_env_1 python=3.10 
+        conda activate mlops_env_1
+        pip install -r requirements.txt
         ```
-    * You can view the MLflow UI by running `mlflow ui` in your terminal (from the directory containing `mlruns` or if `MLFLOW_TRACKING_URI` is set).
-
-## Usage Instructions (Workflow)
-
-Execute the pipelines in the following order:
-
-**1. Data Preparation (`prep_pipeline.py`)**
-
-* This script ingests, validates, cleans, encodes data, and generates an EDA report.
-* **Arguments:**
-    * `--input`: Path to the input CSV dataset (e.g., `data/college.csv`).
-    * `--target`: Name of the target column (e.g., `Grad.Rate`).
-    * `--dfs` (optional flag): Enable Deep Feature Synthesis with Featuretools.
-
-* **Example (without DFS):**
+2.  **Clean Previous Artifacts (Important for a fresh demo):**
+    * Manually empty the `mlops_baseline/artifacts/` directory.
+    * (Optional, for MLflow) Delete the `mlops_baseline/mlruns/` directory and `mlops_baseline/mlflow.db` if you want a completely fresh MLflow history for the demo.
+3.  **Run Data Preparation (Titanic Classification):**
     ```bash
-    python src/prep_pipeline.py --input data/college.csv --target Grad.Rate
+    python src/prep_pipeline.py --input data/titanic.csv --target Survived
     ```
-* **Example (with DFS):**
+    * *Observe: `artifacts/` folder gets populated (`prepared.parquet`, `train_columns.json`).*
+4.  **Run Model Training (Titanic Classification):**
     ```bash
-    python src/prep_pipeline.py --input data/college.csv --target Grad.Rate --dfs
+    python src/train_pipeline.py --task_type classification
     ```
-* **Outputs:** Artifacts will be saved in the `artifacts/` directory (`prepared.parquet`, `eda_report.html`, `prep_manifest.json`, and `featuretools_matrix.parquet` if `--dfs` is used).
-
-**2. Model Training & Selection (`train_pipeline.py`)**
-
-* This script trains and tunes all models defined in `MODEL_CONFIG`, logs to MLflow, registers models, and saves artifacts.
-* **Arguments:**
-    * `--use_dfs` (optional flag): If specified, the pipeline will attempt to load features from `artifacts/featuretools_matrix.parquet` (generated by `prep_pipeline.py --dfs`). Otherwise, it uses `artifacts/prepared.parquet`.
-
-* **Example (using default prepared data):**
-    ```bash
-    python src/train_pipeline.py
-    ```
-* **Example (using DFS features):**
-    ```bash
-    python src/train_pipeline.py --use_dfs
-    ```
-* **Outputs:**
-    * MLflow: Experiments updated with new runs, models registered, winner promoted.
-    * `artifacts/`: Updated with `<model_alias>_model.joblib`, `<model_alias>_scaler.joblib` (if applicable), and `train_columns.json`.
-    * Console: Leaderboard and status messages.
-
-**3. Run the Model Serving API (`model_serving_api.py`)**
-
-* This starts the FastAPI server. Ensure the `artifacts/` directory contains the trained models, scalers, and `train_columns.json`.
+    * *Observe: Console output showing model training, Optuna progress. `artifacts/` gets model files. Check MLflow UI (`mlflow ui` in a new terminal) for new runs, registered models, and the "Staging" model.*
+5.  **Start the API Server:**
     ```bash
     uvicorn model_serving_api:app --reload --port 8000
     ```
-* The API will be available at `http://127.0.0.1:8000`.
-* Check startup logs to see which models and scalers were loaded.
+    * *Observe: Server startup logs showing models being loaded from `artifacts/`.*
+6.  **Run API Tests (in a new terminal, ensure Uvicorn server is stopped first for `TestClient`):**
+    * Stop the Uvicorn server (Ctrl+C in its terminal).
+    * Run:
+        ```bash
+        pytest src/test_api.py -v -s
+        ```
+    * *Observe: Test results (should be 15 or 16 passing if `test_lifespan_execution_flag` is removed/kept).*
+7.  **Manual API Interaction (Restart Uvicorn server if stopped for pytest):**
+    * If Uvicorn was stopped, restart it: `uvicorn model_serving_api:app --reload --port 8000`
+    * Open `http://127.0.0.1:8000/docs` in your browser to see the API and try the `/predict` endpoint with sample Titanic data.
 
-**4. Test the API (`test_api.py`)**
+## Next Steps & Cloud Integration Path
 
-* Ensure the FastAPI server (from step 3) is **NOT** running if you are using `pytest` with `TestClient`, as `TestClient` runs the app in memory. If your tests are designed to hit a running server, then keep it running. (The provided `test_api.py` uses `TestClient`).
-* Run the tests from the project root:
-    ```bash
-    pytest src/test_api.py
-    ```
-* **Key Endpoints to interact with manually (e.g., via browser or `curl` if API is running):**
-    * `http://127.0.0.1:8000/docs`: Interactive API documentation (Swagger UI).
-    * `http://127.0.0.1:8000/health`: Health status.
-    * `http://127.0.0.1:8000/available_models`: List of loaded model aliases.
-    * `POST http://127.0.0.1:8000/predict`: Send JSON payload with `model_alias` and `features`.
+This baseline is a strong foundation. Future enhancements include:
 
-## Extending the Model Garden (Adding New Models)
+* **More Sophisticated Feature Engineering:** Especially for high-cardinality features in `prep_pipeline.py`.
+* **Data & Model Monitoring:** Implementing checks for data drift and model performance degradation over time.
+* **Cloud Deployment:**
+    * **Containerize (Docker):** Package the FastAPI for cloud deployment.
+    * **Remote Artifact Storage:** Use S3/GCS/Azure Blob for storing models and other artifacts.
+    * **Remote MLflow Server:** Set up a centralized MLflow server.
+    * **Cloud Serving Platforms:** Deploy the containerized API to services like AWS Lambda, Google Cloud Run, Azure App Service, or Kubernetes (EKS, GKE, AKS).
+    * **CI/CD Pipelines:** Automate the entire workflow from code commit to deployment using tools like GitHub Actions, Jenkins, etc.
 
-To add a new machine learning model to the training pipeline:
-
-1.  **Open `src/train_pipeline.py`**.
-2.  **Import the Model Class:** Add the import statement for your new model (e.g., `from sklearn.ensemble import AdaBoostRegressor`).
-3.  **Define an Optuna Space Function:** Create a new function similar to `get_rf_optuna_space` that defines the hyperparameter search space for your new model using Optuna's `trial.suggest_*` methods.
-    ```python
-    def get_adaboost_optuna_space(trial: optuna.trial.Trial) -> dict:
-        return {
-            "n_estimators": trial.suggest_int("n_estimators", 50, 200),
-            "learning_rate": trial.suggest_float("learning_rate", 0.01, 1.0, log=True)
-        }
-    ```
-4.  **Add to `MODEL_CONFIG`:** Add a new entry to the `MODEL_CONFIG` dictionary:
-    ```python
-    MODEL_CONFIG = {
-        # ... existing model entries ...
-        "AdaBoost": { # Choose a unique alias
-            "model_class": AdaBoostRegressor, # The imported class
-            "space_func": get_adaboost_optuna_space, # Reference to the space function
-            "fixed_params": {"random_state": RND_STATE},
-            "requires_scaling": False # Or True, if your model needs scaling
-        },
-    }
-    ```
-5.  **Update `requirements.txt`** if the new model comes from a new library and reinstall dependencies.
-6.  Re-run `src/train_pipeline.py`. The new model will be automatically included in the training and tuning process.
-7.  Restart `model_serving_api.py` to load the newly trained model.
-8.  Update `EXPECTED_MODEL_ALIASES` in `src/test_api.py` and re-run tests.
-
-## MLflow Usage
-
-* **Experiment Tracking:** All training runs, Optuna trials, parameters, and metrics are logged to MLflow. By default, this uses a local `mlruns` directory.
-* **Model Registry:** Final trained models are registered with names like `college_grad_rate_RandomForest`, `college_grad_rate_XGBoost`, etc. The best overall model (based on test set RMSE) is promoted to the "Staging" alias.
-* **Viewing UI:** Navigate to the directory containing `mlruns` (usually your project root) and run `mlflow ui`. Open your browser to `http://127.0.0.1:5000`.
-
+This setup provides a robust starting point for building and deploying various ML models in a structured and automated way.

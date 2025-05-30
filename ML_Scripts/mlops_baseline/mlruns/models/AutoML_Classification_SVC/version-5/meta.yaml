@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1748326843597
+current_stage: None
+description: null
+last_updated_timestamp: 1748326843597
+name: AutoML_Classification_SVC
+run_id: b7c98e187032460aa5c55076f684e48c
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/b7c98e187032460aa5c55076f684e48c/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/226476023099428470/b7c98e187032460aa5c55076f684e48c/artifacts/model
+user_id: null
+version: 5

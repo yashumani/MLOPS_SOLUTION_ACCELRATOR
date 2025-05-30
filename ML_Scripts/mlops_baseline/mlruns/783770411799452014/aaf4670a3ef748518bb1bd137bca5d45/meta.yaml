@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/783770411799452014/aaf4670a3ef748518bb1bd137bca5d45/artifacts
+end_time: 1748521945720
+entry_point_name: ''
+experiment_id: '783770411799452014'
+lifecycle_stage: active
+run_id: aaf4670a3ef748518bb1bd137bca5d45
+run_name: Ridge_trial_0
+run_uuid: aaf4670a3ef748518bb1bd137bca5d45
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748521945469
+status: 3
+tags: []
+user_id: yashu

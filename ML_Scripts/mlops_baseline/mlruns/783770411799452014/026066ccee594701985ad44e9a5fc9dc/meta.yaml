@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/783770411799452014/026066ccee594701985ad44e9a5fc9dc/artifacts
+end_time: 1748521954632
+entry_point_name: ''
+experiment_id: '783770411799452014'
+lifecycle_stage: active
+run_id: 026066ccee594701985ad44e9a5fc9dc
+run_name: LGBMRegressor_trial_7
+run_uuid: 026066ccee594701985ad44e9a5fc9dc
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1748521954288
+status: 3
+tags: []
+user_id: yashu
