@@ -1,8 +1,16 @@
 # MLOps Baseline Project: Simplified Overview
 
-Hi Vinay,
-
 This document provides a high-level summary of our MLOps Baseline project. The goal was to build a foundational, automated pipeline for developing, tracking, and deploying machine learning models efficiently.
+
+## Project Blueprint & Lifecycle Overview
+
+For a detailed breakdown of the Data Science Lifecycle stages, tools, libraries used, datasets, and evaluation metrics within this project, please refer to the following Google Sheet:
+
+[MLOps Pipeline Blueprint](https://docs.google.com/spreadsheets/d/1qtkp-d8k46QNrIfJYm-Z4ma8qyZhbH_sNoORNMv7nOA/edit?gid=1189347878#gid=1189347878)
+
+This sheet provides a comprehensive overview of the project's components and how they map to standard data science practices.
+
+
 
 ## What We've Built: An End-to-End ML Pipeline
 
