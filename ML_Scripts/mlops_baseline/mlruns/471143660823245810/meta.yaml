@@ -1,6 +1,0 @@
-artifact_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/471143660823245810
-creation_time: 1747576734033
-experiment_id: '471143660823245810'
-last_update_time: 1747576734033
-lifecycle_stage: active
-name: rf_optuna_regression

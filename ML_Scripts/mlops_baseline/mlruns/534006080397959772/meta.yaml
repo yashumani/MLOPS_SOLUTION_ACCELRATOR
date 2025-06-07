@@ -1,6 +1,0 @@
-artifact_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/534006080397959772
-creation_time: 1747598566594
-experiment_id: '534006080397959772'
-last_update_time: 1747598566594
-lifecycle_stage: active
-name: rf_xgb_flaml_regression
