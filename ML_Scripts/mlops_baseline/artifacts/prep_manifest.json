@@ -1,7 +1,0 @@
-{
-    "input_file": "data/college.csv",
-    "target_column": "Grad.Rate",
-    "imputation_strategy": "knn",
-    "outlier_handling_enabled": true,
-    "interaction_features_created": true
-}
