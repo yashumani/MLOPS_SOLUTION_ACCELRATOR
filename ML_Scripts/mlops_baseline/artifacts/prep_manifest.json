@@ -1,43 +1,7 @@
 {
     "input_file": "data/college.csv",
     "target_column": "Grad.Rate",
-    "original_shape": [
-        777,
-        18
-    ],
-    "deduplicated_shape": [
-        777,
-        19
-    ],
-    "processed_feature_shape": [
-        777,
-        17
-    ],
-    "final_prepared_shape": [
-        777,
-        18
-    ],
-    "numerical_features_processed": [
-        "Apps",
-        "Accept",
-        "Enroll",
-        "Top10perc",
-        "Top25perc",
-        "F.Undergrad",
-        "P.Undergrad",
-        "Outstate",
-        "Room.Board",
-        "Books",
-        "Personal",
-        "PhD",
-        "Terminal",
-        "S.F.Ratio",
-        "perc.alumni",
-        "Expend"
-    ],
-    "categorical_features_original": [
-        "Private"
-    ],
-    "train_columns_file": "artifacts\\train_columns.json",
-    "prepared_data_file": "artifacts\\prepared.parquet"
+    "imputation_strategy": "knn",
+    "outlier_handling_enabled": true,
+    "interaction_features_created": true
 }

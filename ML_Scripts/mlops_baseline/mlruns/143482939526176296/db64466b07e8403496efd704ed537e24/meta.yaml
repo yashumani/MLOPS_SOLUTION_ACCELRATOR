@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/db64466b07e8403496efd704ed537e24/artifacts
+end_time: 1749334595586
+entry_point_name: ''
+experiment_id: '143482939526176296'
+lifecycle_stage: active
+run_id: db64466b07e8403496efd704ed537e24
+run_name: Train_GaussianMixture_Clustering
+run_uuid: db64466b07e8403496efd704ed537e24
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749334546813
+status: 3
+tags: []
+user_id: yashu

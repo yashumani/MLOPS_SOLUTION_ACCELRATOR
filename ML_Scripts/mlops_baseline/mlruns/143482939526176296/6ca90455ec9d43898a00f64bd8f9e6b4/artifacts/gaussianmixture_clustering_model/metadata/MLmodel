@@ -1,0 +1,41 @@
+artifact_path: gaussianmixture_clustering_model
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.10.17
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.6.1
+mlflow_version: 2.12.2
+model_size_bytes: 9991
+model_uuid: fbb1b98edde34400b13f2dfb83023ece
+run_id: 6ca90455ec9d43898a00f64bd8f9e6b4
+saved_input_example_info:
+  artifact_path: input_example.json
+  pandas_orient: split
+  type: dataframe
+signature:
+  inputs: '[{"type": "double", "name": "BALANCE", "required": true}, {"type": "double",
+    "name": "BALANCE_FREQUENCY", "required": true}, {"type": "double", "name": "PURCHASES",
+    "required": true}, {"type": "double", "name": "ONEOFF_PURCHASES", "required":
+    true}, {"type": "double", "name": "INSTALLMENTS_PURCHASES", "required": true},
+    {"type": "double", "name": "CASH_ADVANCE", "required": true}, {"type": "double",
+    "name": "PURCHASES_FREQUENCY", "required": true}, {"type": "double", "name": "ONEOFF_PURCHASES_FREQUENCY",
+    "required": true}, {"type": "double", "name": "PURCHASES_INSTALLMENTS_FREQUENCY",
+    "required": true}, {"type": "double", "name": "CASH_ADVANCE_FREQUENCY", "required":
+    true}, {"type": "double", "name": "CASH_ADVANCE_TRX", "required": true}, {"type":
+    "double", "name": "PURCHASES_TRX", "required": true}, {"type": "double", "name":
+    "CREDIT_LIMIT", "required": true}, {"type": "double", "name": "PAYMENTS", "required":
+    true}, {"type": "double", "name": "MINIMUM_PAYMENTS", "required": true}, {"type":
+    "double", "name": "PRC_FULL_PAYMENT", "required": true}, {"type": "double", "name":
+    "TENURE", "required": true}]'
+  outputs: '[{"type": "long", "name": "cluster_label", "required": true}]'
+  params: null
+utc_time_created: '2025-06-07 15:43:17.496500'

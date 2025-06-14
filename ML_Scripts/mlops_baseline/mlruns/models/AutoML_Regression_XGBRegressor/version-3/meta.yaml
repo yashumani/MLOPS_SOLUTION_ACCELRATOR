@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749417413747
+current_stage: None
+description: null
+last_updated_timestamp: 1749417413747
+name: AutoML_Regression_XGBRegressor
+run_id: 890e99021eb240ba99bb422441cb5499
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/890e99021eb240ba99bb422441cb5499/artifacts/xgbregressor_regression_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/890e99021eb240ba99bb422441cb5499/artifacts/xgbregressor_regression_model
+user_id: null
+version: 3

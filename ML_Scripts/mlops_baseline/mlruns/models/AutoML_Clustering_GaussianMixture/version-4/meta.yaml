@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749333942718
+current_stage: None
+description: null
+last_updated_timestamp: 1749333942718
+name: AutoML_Clustering_GaussianMixture
+run_id: d6c88e2f09614e1e8b74156d2628f165
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/d6c88e2f09614e1e8b74156d2628f165/artifacts/gaussianmixture_clustering_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/d6c88e2f09614e1e8b74156d2628f165/artifacts/gaussianmixture_clustering_model
+user_id: null
+version: 4

@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749310295163
+current_stage: None
+description: null
+last_updated_timestamp: 1749310295163
+name: AutoML_Classification_CatBoostClassifier
+run_id: 8679369ca345401da9292af90de2bf9d
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/8679369ca345401da9292af90de2bf9d/artifacts/catboostclassifier_classification_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/8679369ca345401da9292af90de2bf9d/artifacts/catboostclassifier_classification_model
+user_id: null
+version: 1

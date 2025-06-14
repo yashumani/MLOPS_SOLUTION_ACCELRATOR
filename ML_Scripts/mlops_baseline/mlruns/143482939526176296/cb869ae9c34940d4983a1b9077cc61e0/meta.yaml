@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/cb869ae9c34940d4983a1b9077cc61e0/artifacts
+end_time: 1749333835241
+entry_point_name: ''
+experiment_id: '143482939526176296'
+lifecycle_stage: active
+run_id: cb869ae9c34940d4983a1b9077cc61e0
+run_name: Optuna Tuning - KMeans (Clustering)
+run_uuid: cb869ae9c34940d4983a1b9077cc61e0
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749333832805
+status: 3
+tags: []
+user_id: yashu

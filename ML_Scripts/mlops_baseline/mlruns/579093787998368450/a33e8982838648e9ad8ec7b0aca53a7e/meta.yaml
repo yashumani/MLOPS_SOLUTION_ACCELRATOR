@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/a33e8982838648e9ad8ec7b0aca53a7e/artifacts
+end_time: 1749485424599
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: a33e8982838648e9ad8ec7b0aca53a7e
+run_name: Optuna_Ridge_Regression
+run_uuid: a33e8982838648e9ad8ec7b0aca53a7e
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749485423903
+status: 3
+tags: []
+user_id: yashu

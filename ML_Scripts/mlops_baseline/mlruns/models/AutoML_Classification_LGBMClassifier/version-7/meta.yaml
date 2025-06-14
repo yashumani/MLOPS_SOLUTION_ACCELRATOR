@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749390728216
+current_stage: None
+description: null
+last_updated_timestamp: 1749390728216
+name: AutoML_Classification_LGBMClassifier
+run_id: 77d3b3cfb3fd4c8c85e35656add44c97
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/77d3b3cfb3fd4c8c85e35656add44c97/artifacts/lgbmclassifier_classification_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/77d3b3cfb3fd4c8c85e35656add44c97/artifacts/lgbmclassifier_classification_model
+user_id: null
+version: 7

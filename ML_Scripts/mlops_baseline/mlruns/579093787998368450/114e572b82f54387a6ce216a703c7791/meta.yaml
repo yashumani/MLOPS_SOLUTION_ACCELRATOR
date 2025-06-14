@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/114e572b82f54387a6ce216a703c7791/artifacts
+end_time: 1749863606962
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 114e572b82f54387a6ce216a703c7791
+run_name: Optuna_ElasticNet_Regression
+run_uuid: 114e572b82f54387a6ce216a703c7791
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749863604408
+status: 3
+tags: []
+user_id: yashu

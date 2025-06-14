@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/47c7066bfb6346bc88e930641110ac44/artifacts
+end_time: 1749332581269
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 47c7066bfb6346bc88e930641110ac44
+run_name: Optuna Tuning - LGBMRegressor (Regression)
+run_uuid: 47c7066bfb6346bc88e930641110ac44
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749332579530
+status: 3
+tags: []
+user_id: yashu

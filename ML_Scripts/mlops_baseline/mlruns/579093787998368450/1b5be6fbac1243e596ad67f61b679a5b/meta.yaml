@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/1b5be6fbac1243e596ad67f61b679a5b/artifacts
+end_time: 1749844313396
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 1b5be6fbac1243e596ad67f61b679a5b
+run_name: Train_SVR_Regression
+run_uuid: 1b5be6fbac1243e596ad67f61b679a5b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749844306158
+status: 3
+tags: []
+user_id: yashu

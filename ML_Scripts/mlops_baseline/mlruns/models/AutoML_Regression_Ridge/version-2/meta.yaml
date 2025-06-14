@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749408911558
+current_stage: None
+description: null
+last_updated_timestamp: 1749408911558
+name: AutoML_Regression_Ridge
+run_id: 21f46ee1a5e745c0bc5a778914866a8f
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/21f46ee1a5e745c0bc5a778914866a8f/artifacts/ridge_regression_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/21f46ee1a5e745c0bc5a778914866a8f/artifacts/ridge_regression_model
+user_id: null
+version: 2

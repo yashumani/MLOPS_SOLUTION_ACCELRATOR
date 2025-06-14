@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749353010748
+current_stage: None
+description: null
+last_updated_timestamp: 1749353010748
+name: AutoML_Classification_XGBClassifier
+run_id: 2772bba55a0345f6885c7c3d9532e98b
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/2772bba55a0345f6885c7c3d9532e98b/artifacts/xgbclassifier_classification_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/2772bba55a0345f6885c7c3d9532e98b/artifacts/xgbclassifier_classification_model
+user_id: null
+version: 4

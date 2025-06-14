@@ -1,111 +1,162 @@
-# MLOps Baseline Project: Simplified Overview
+Of course, Yashu. Now that the project has a complete, stable architecture and a full suite of features, it's the perfect time to update the `README.md` file.
 
-This document provides a high-level summary of our MLOps Baseline project. The goal was to build a foundational, automated pipeline for developing, tracking, and deploying machine learning models efficiently.
+This document is crucial for explaining the project's value, architecture, and how to use it to Vinay or any new team members.
 
-## Project Blueprint & Lifecycle Overview
+Here is a comprehensive, updated `README.md` content. You can copy and paste this directly into your `README.md` file.
 
-For a detailed breakdown of the Data Science Lifecycle stages, tools, libraries used, datasets, and evaluation metrics within this project, please refer to the following Google Sheet:
+---
 
-[MLOps Pipeline Blueprint](https://docs.google.com/spreadsheets/d/1qtkp-d8k46QNrIfJYm-Z4ma8qyZhbH_sNoORNMv7nOA/edit?gid=1189347878#gid=1189347878)
+# MLOps Model Garden & Experiment Platform
 
-This sheet provides a comprehensive overview of the project's components and how they map to standard data science practices.
+This project is a comprehensive, end-to-end MLOps platform designed to automate the machine learning lifecycle for various task types. It provides a robust framework for data validation, preprocessing, model training, hyperparameter optimization, experiment tracking, and model serving, all orchestrated through an interactive user interface.
 
+## Key Features
 
+* **Multi-Task AutoML:** Supports **Classification**, **Regression**, and **Clustering** tasks out-of-the-box with a "model garden" approach, training a suite of powerful models for each task.
+* **Dynamic Data Validation:** Uses **Pandera** to automatically infer and validate the schema of any new dataset, ensuring data quality and preventing pipeline failures.
+* **Advanced Preprocessing Framework:** Includes a configurable data preparation pipeline with options for:
+    * Advanced Imputation (`mean`, `knn`, `iterative`).
+    * Automated Outlier Handling.
+    * Automatic Interaction Feature Creation.
+* **Sophisticated HPO:** Leverages **Optuna** for state-of-the-art hyperparameter optimization for every model in the garden.
+* **Deep Experiment Tracking:** Fully integrated with **MLflow** to log all parameters, metrics, model artifacts, and a suite of diagnostic plots (e.g., feature importance, confusion matrices, actual vs. predicted plots, cluster visualizations).
+* **Experimental Framework:** A master orchestration script (`run_experiments.py`) allows for running and comparing multiple data preparation "recipes" against the full model garden to find the best end-to-end pipeline.
+* **Live API Serving:** A multi-task **FastAPI** server (`model_serving_api.py`) that dynamically loads all trained models and serves real-time predictions.
+* **Integrated User Interface:** A comprehensive **Streamlit** application (`app_ui.py`) acts as the central control panel for the entire platform, allowing users to upload data, run experiments, view results, and get live predictions.
 
-## What We've Built: An End-to-End ML Pipeline
+## Project Architecture
 
-We've created a system that takes a dataset and a prediction target, and then automatically handles:
+The platform is designed with a modular, decoupled architecture where each component has a clear responsibility.
 
-1.  **Data Preparation (`src/prep_pipeline.py`):**
-    * Loads data (e.g., CSV files like `titanic.csv` or `college.csv`).
-    * Cleans it (handles duplicates, fills missing numerical values using mean imputation).
-    * Prepares features for models (e.g., converts text categories into numbers using one-hot encoding).
-    * Saves the processed data and a list of features (`train_columns.json`) needed for consistent predictions.
+```mermaid
+graph TD
+    %% Define Styles for different components
+    classDef ui fill:#D2B4DE,stroke:#512E5F,stroke-width:2px,color:#333;
+    classDef script fill:#A9CCE3,stroke:#2471A3,stroke-width:2px,color:#333;
+    classDef artifact fill:#F9E79F,stroke:#B7950B,stroke-width:2px,color:#333;
+    classDef mlflow fill:#A3E4D7,stroke:#138D75,stroke-width:2px,color:#333;
+    classDef api fill:#A9DFBF,stroke:#239B56,stroke-width:2px,color:#333;
+    classDef orchestrator fill:#FAD7A0,stroke:#AF601A,stroke-width:2px;
 
-2.  **Model Training & Experimentation (`src/train_pipeline.py`):**
-    * **Task-Aware:** Can be run for "classification" (like predicting 'Survived' on Titanic) or "regression" (like predicting 'Grad.Rate' on College data) by changing a command-line flag (`--task_type`).
-    * **Model Variety:** Trains a "garden" of different models:
-        * For Classification: Logistic Regression, Random Forest, XGBoost, LightGBM, CatBoost, SVC, K-Nearest Neighbors.
-        * (Regression models like Ridge, RandomForestRegressor, etc., are defined and can be trained by switching the task type).
-    * **Smart Tuning (Optuna):** Automatically finds the best settings (hyperparameters) for each model to maximize its performance (e.g., F1-score for classification).
-    * **MLflow Integration (Key for MLOps):**
-        * **Tracks Everything:** Every training run, its parameters, and performance scores are logged in MLflow. This means we have a full history and can compare models easily.
-        * **Model Registry:** Saves all trained models in a central place (MLflow Model Registry), versioning them.
-        * **Best Model Staging:** Automatically identifies the best performing model on test data and promotes it to a "Staging" area in MLflow, ready for potential deployment.
-    * **Local Artifacts:** Saves the trained models, scalers (for feature normalization), and the label encoder (for classification targets) in the `artifacts/` folder for the API to use.
+    %% === UI & Master Orchestrator ===
+    subgraph "User Interface & Control Plane"
+        A[" User"]:::ui;
+        B[" Streamlit UI<br>(app_ui.py)"]:::ui;
+        C[" Master Orchestrator<br>(run_experiments.py)"]:::orchestrator;
+        A -- "Interacts with" --> B;
+        B -- "Triggers" --> C;
+    end
+    
+    %% === Experimental Loop ===
+    subgraph "Experiment Loop (Repeats for each 'Recipe')"
+        direction LR
+        D["<b>Recipe Config</b><br>(e.g., KNN Imputation)"]:::artifact;
+        E[" prep_pipeline.py"]:::script;
+        F[" Recipe Artifacts<br>(e.g., artifacts/recipe_1/)"]:::artifact;
+        G[" train_pipeline.py"]:::script;
+        
+        D --> E;
+        E --> F;
+        F --> G;
+    end
+    
+    C -- "Controls Loop" --> D;
 
-3.  **Model Serving API (`model_serving_api.py`):**
-    * **FastAPI Server:** A high-performance API that makes our trained models available for predictions.
-    * **Automatic Loading:** When the API starts, it automatically finds and loads all the trained models and necessary preprocessing tools (scalers, `train_columns.json`, label encoder) from the `artifacts/` folder. It knows if a model is for classification or regression based on its filename.
-    * **Prediction Endpoint (`/predict`):**
-        * Takes new, raw data as input (you tell it which model alias to use).
-        * Internally, it performs the *exact same* preprocessing steps (one-hot encoding, scaling, handling of missing columns, fixing NaN/infinity values from scaling, and special name cleaning for LightGBM/CatBoost) that were done during training. This ensures consistency.
-        * Returns the model's prediction.
-    * **Helper Endpoints:**
-        * `/health`: Shows if the API is running and how many models are loaded.
-        * `/available_models`: Lists all model aliases ready for use.
-        * `/docs`: An interactive page to see and test all API functions.
+    %% === Logging & Serving ===
+    subgraph "Backend Services"
+        direction LR
+        H[" MLflow Server"]:::mlflow;
+        I[" FastAPI Server"]:::api;
+    end
 
-4.  **API Testing (`src/test_api.py`):**
-    * **Automated Checks (Pytest):** We have a suite of tests that automatically check if the API is working correctly – from loading models to making predictions and handling various types of input.
-    * **Current Status:** **All 15 functional tests are passing** for the classification task with the Titanic dataset (the 16th test was a temporary diagnostic one that can be removed). This confirms the API loads models, preprocesses input, and returns predictions as expected.
+    G -- "Logs All Runs & Models" --> H;
+    F -- "Provides Models to" --> I;
+    B -- "Sends Prediction Requests to" --> I;
+    B -- "Links to Results in" --> H;
 
-## Current Status & What You Can See Today:
+```
 
-* **Fully Functional for Classification (Titanic Dataset):** The entire pipeline from data prep to API serving and testing is working end-to-end for the Titanic classification task.
-* **Adaptable for Regression:** The `train_pipeline.py` is built to handle regression by changing the `--task_type` flag. The API is also designed to load and serve regression models.
-* **MLflow Tracking & Registry Operational:** All experiments and models are being logged and registered.
+## File Structure
 
-**How to See It In Action (Demonstration Steps):**
+```
+mlops_baseline/
+├── artifacts/              # Output directory for models, data, plots, etc.
+├── data/                   # Raw input datasets
+├── src/                    # Main source code package
+│   ├── __init__.py
+│   ├── prep_pipeline.py    # Data preparation and validation script
+│   ├── train_pipeline.py   # Training orchestrator for a single run
+│   ├── trainers/           # Modular, task-specific training logic
+│   │   ├── __init__.py
+│   │   ├── classification_trainer.py
+│   │   ├── regression_trainer.py
+│   │   └── clustering_trainer.py
+│   └── utils/              # Shared utility functions
+│       ├── __init__.py
+│       └── plotting_utils.py
+├── app_ui.py               # The main Streamlit UI application
+├── model_serving_api.py    # The FastAPI prediction server
+├── run_experiments.py      # The master experiment orchestrator
+├── requirements.txt        # Python package dependencies
+└── README.md
+```
 
-1.  **Environment Setup:**
-    * Ensure Python and Conda are installed.
-    * Create and activate the `mlops_env_1` conda environment:
-        ```bash
-        conda create -n mlops_env_1 python=3.10 
-        conda activate mlops_env_1
-        pip install -r requirements.txt
-        ```
-2.  **Clean Previous Artifacts (Important for a fresh demo):**
-    * Manually empty the `mlops_baseline/artifacts/` directory.
-    * (Optional, for MLflow) Delete the `mlops_baseline/mlruns/` directory and `mlops_baseline/mlflow.db` if you want a completely fresh MLflow history for the demo.
-3.  **Run Data Preparation (Titanic Classification):**
+## Setup & Installation
+
+1.  **Clone the repository:**
     ```bash
-    python src/prep_pipeline.py --input data/titanic.csv --target Survived
+    git clone <your-repo-url>
+    cd mlops_baseline
     ```
-    * *Observe: `artifacts/` folder gets populated (`prepared.parquet`, `train_columns.json`).*
-4.  **Run Model Training (Titanic Classification):**
+
+2.  **Create and activate the Conda environment:**
     ```bash
-    python src/train_pipeline.py --task_type classification
+    conda create --name mlops_env_1 python=3.10
+    conda activate mlops_env_1
     ```
-    * *Observe: Console output showing model training, Optuna progress. `artifacts/` gets model files. Check MLflow UI (`mlflow ui` in a new terminal) for new runs, registered models, and the "Staging" model.*
-5.  **Start the API Server:**
+
+3.  **Install dependencies:**
     ```bash
-    uvicorn model_serving_api:app --reload --port 8000
+    pip install -r requirements.txt
     ```
-    * *Observe: Server startup logs showing models being loaded from `artifacts/`.*
-6.  **Run API Tests (in a new terminal, ensure Uvicorn server is stopped first for `TestClient`):**
-    * Stop the Uvicorn server (Ctrl+C in its terminal).
-    * Run:
-        ```bash
-        pytest src/test_api.py -v -s
-        ```
-    * *Observe: Test results (should be 15 or 16 passing if `test_lifespan_execution_flag` is removed/kept).*
-7.  **Manual API Interaction (Restart Uvicorn server if stopped for pytest):**
-    * If Uvicorn was stopped, restart it: `uvicorn model_serving_api:app --reload --port 8000`
-    * Open `http://127.0.0.1:8000/docs` in your browser to see the API and try the `/predict` endpoint with sample Titanic data.
 
-## Next Steps & Cloud Integration Path
+## How to Run the Platform (Recommended)
 
-This baseline is a strong foundation. Future enhancements include:
+For the full, integrated experience, you need to run **three separate servers** in three separate terminals from the project root directory.
 
-* **More Sophisticated Feature Engineering:** Especially for high-cardinality features in `prep_pipeline.py`.
-* **Data & Model Monitoring:** Implementing checks for data drift and model performance degradation over time.
-* **Cloud Deployment:**
-    * **Containerize (Docker):** Package the FastAPI for cloud deployment.
-    * **Remote Artifact Storage:** Use S3/GCS/Azure Blob for storing models and other artifacts.
-    * **Remote MLflow Server:** Set up a centralized MLflow server.
-    * **Cloud Serving Platforms:** Deploy the containerized API to services like AWS Lambda, Google Cloud Run, Azure App Service, or Kubernetes (EKS, GKE, AKS).
-    * **CI/CD Pipelines:** Automate the entire workflow from code commit to deployment using tools like GitHub Actions, Jenkins, etc.
+#### **Terminal 1: Start the MLflow UI Server**
+This server tracks all your experiments, metrics, and artifacts.
+```bash
+mlflow ui
+```
+> Access it at `http://127.0.0.1:5000`
 
-This setup provides a robust starting point for building and deploying various ML models in a structured and automated way.
+#### **Terminal 2: Start the FastAPI Prediction Server**
+This server loads the trained models and exposes them through a live API endpoint.
+```bash
+uvicorn model_serving_api:app --reload --port 8000
+```
+> This will automatically load any models present in the `artifacts/` subdirectories.
+
+#### **Terminal 3: Start the Streamlit UI**
+This is the main control panel for the platform.
+```bash
+streamlit run app_ui.py
+```
+> Access it at `http://localhost:8501`. From here, you can upload data, run the full experimental pipeline, view EDA reports, see a combined leaderboard of results, and get live predictions.
+
+## Running Standalone Components
+
+You can also run the experimental pipeline directly from the command line, which is useful for development and debugging.
+
+```bash
+python run_experiments.py --input data/college.csv --target Grad.Rate --task_type regression --n_trials_optuna 15
+```
+
+## Future Work & Roadmap
+
+The current platform provides a solid foundation. Future enhancements based on Vinay's feedback can include:
+* **Advanced Feature Engineering:** Integrating more encoding strategies (`feature-engine`) and automated feature selection (`sklearn.feature_selection`).
+* **CI/CD Automation:** Building a GitHub Actions workflow to automate testing and deployment.
+* **Model Monitoring:** Implementing a system to detect data drift and model performance degradation over time using a library like Evidently AI.
+* **Multi-Objective HPO:** Enhancing the Optuna studies to optimize for multiple metrics simultaneously (e.g., accuracy and inference speed).

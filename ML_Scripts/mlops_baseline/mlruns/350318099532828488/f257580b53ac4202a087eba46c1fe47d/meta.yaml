@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/f257580b53ac4202a087eba46c1fe47d/artifacts
+end_time: 1749859364457
+entry_point_name: ''
+experiment_id: '350318099532828488'
+lifecycle_stage: active
+run_id: f257580b53ac4202a087eba46c1fe47d
+run_name: Main_Pipeline_Run_baseline_mean_imputation
+run_uuid: f257580b53ac4202a087eba46c1fe47d
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749859283647
+status: 4
+tags: []
+user_id: yashu

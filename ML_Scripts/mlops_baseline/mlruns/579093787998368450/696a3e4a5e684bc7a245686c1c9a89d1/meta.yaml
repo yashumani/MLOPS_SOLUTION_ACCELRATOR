@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/696a3e4a5e684bc7a245686c1c9a89d1/artifacts
+end_time: 1749862578059
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 696a3e4a5e684bc7a245686c1c9a89d1
+run_name: Optuna_SVR_Regression
+run_uuid: 696a3e4a5e684bc7a245686c1c9a89d1
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749862576069
+status: 3
+tags: []
+user_id: yashu

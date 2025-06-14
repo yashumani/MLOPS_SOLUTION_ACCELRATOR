@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/3b370dca903042f0b8a8c17a98494a37/artifacts
+end_time: 1749862656867
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 3b370dca903042f0b8a8c17a98494a37
+run_name: Train_KNeighborsRegressor_Regression
+run_uuid: 3b370dca903042f0b8a8c17a98494a37
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749862651853
+status: 3
+tags: []
+user_id: yashu

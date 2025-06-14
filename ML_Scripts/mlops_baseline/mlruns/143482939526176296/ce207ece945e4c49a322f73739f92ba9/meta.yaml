@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/ce207ece945e4c49a322f73739f92ba9/artifacts
+end_time: 1749333893252
+entry_point_name: ''
+experiment_id: '143482939526176296'
+lifecycle_stage: active
+run_id: ce207ece945e4c49a322f73739f92ba9
+run_name: Train_AgglomerativeClustering_Clustering
+run_uuid: ce207ece945e4c49a322f73739f92ba9
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749333873378
+status: 3
+tags: []
+user_id: yashu

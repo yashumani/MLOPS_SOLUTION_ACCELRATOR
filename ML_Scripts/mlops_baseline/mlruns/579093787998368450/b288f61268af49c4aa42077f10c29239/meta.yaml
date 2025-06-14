@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/b288f61268af49c4aa42077f10c29239/artifacts
+end_time: 1749500524574
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: b288f61268af49c4aa42077f10c29239
+run_name: Optuna_XGBRegressor_Regression
+run_uuid: b288f61268af49c4aa42077f10c29239
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749500519673
+status: 3
+tags: []
+user_id: yashu

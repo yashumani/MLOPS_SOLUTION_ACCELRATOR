@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/f2ae6c04a288492dac64c11be7781d96/artifacts
+end_time: 1749836587441
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: f2ae6c04a288492dac64c11be7781d96
+run_name: Train_Ridge_Regression
+run_uuid: f2ae6c04a288492dac64c11be7781d96
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749836580621
+status: 3
+tags: []
+user_id: yashu

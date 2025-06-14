@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/fea3fdf8d5de40ee9bd92e0dd7566ad3/artifacts
+end_time: 1749390710246
+entry_point_name: ''
+experiment_id: '350318099532828488'
+lifecycle_stage: active
+run_id: fea3fdf8d5de40ee9bd92e0dd7566ad3
+run_name: Optuna Tuning - XGBClassifier
+run_uuid: fea3fdf8d5de40ee9bd92e0dd7566ad3
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749390697176
+status: 3
+tags: []
+user_id: yashu

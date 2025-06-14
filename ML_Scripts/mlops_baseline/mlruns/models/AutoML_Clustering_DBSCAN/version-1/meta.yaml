@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749309228708
+current_stage: None
+description: null
+last_updated_timestamp: 1749309228708
+name: AutoML_Clustering_DBSCAN
+run_id: 056d1f12372a432ea24f25e88561adcd
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/056d1f12372a432ea24f25e88561adcd/artifacts/dbscan_clustering_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/056d1f12372a432ea24f25e88561adcd/artifacts/dbscan_clustering_model
+user_id: null
+version: 1

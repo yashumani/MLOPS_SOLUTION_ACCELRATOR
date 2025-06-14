@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/7caff518e6d74825a39aae4a696e8cb8/artifacts
+end_time: 1749309221022
+entry_point_name: ''
+experiment_id: '143482939526176296'
+lifecycle_stage: active
+run_id: 7caff518e6d74825a39aae4a696e8cb8
+run_name: Optuna Tuning - DBSCAN (Clustering)
+run_uuid: 7caff518e6d74825a39aae4a696e8cb8
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749309218439
+status: 3
+tags: []
+user_id: yashu

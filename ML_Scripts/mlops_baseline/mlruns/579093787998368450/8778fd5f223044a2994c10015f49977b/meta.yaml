@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/8778fd5f223044a2994c10015f49977b/artifacts
+end_time: 1749863434548
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 8778fd5f223044a2994c10015f49977b
+run_name: Train_XGBRegressor_Regression
+run_uuid: 8778fd5f223044a2994c10015f49977b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749863424026
+status: 3
+tags: []
+user_id: yashu

@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/88377ca2fe9b4cf781c60aeb8a06711b/artifacts
+end_time: 1749865234218
+entry_point_name: ''
+experiment_id: '143482939526176296'
+lifecycle_stage: active
+run_id: 88377ca2fe9b4cf781c60aeb8a06711b
+run_name: Train_KMeans_Clustering
+run_uuid: 88377ca2fe9b4cf781c60aeb8a06711b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749865225382
+status: 3
+tags: []
+user_id: yashu

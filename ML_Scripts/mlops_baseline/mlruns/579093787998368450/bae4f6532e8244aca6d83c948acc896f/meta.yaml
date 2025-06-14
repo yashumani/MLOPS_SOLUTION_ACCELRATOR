@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/bae4f6532e8244aca6d83c948acc896f/artifacts
+end_time: 1749485515298
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: bae4f6532e8244aca6d83c948acc896f
+run_name: Optuna_CatBoostRegressor_Regression
+run_uuid: bae4f6532e8244aca6d83c948acc896f
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749485463366
+status: 3
+tags: []
+user_id: yashu

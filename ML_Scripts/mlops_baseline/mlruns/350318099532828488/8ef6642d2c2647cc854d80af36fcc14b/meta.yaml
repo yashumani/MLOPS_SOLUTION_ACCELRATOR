@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/8ef6642d2c2647cc854d80af36fcc14b/artifacts
+end_time: 1749353043901
+entry_point_name: ''
+experiment_id: '350318099532828488'
+lifecycle_stage: active
+run_id: 8ef6642d2c2647cc854d80af36fcc14b
+run_name: Optuna Tuning - SVC
+run_uuid: 8ef6642d2c2647cc854d80af36fcc14b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749353040168
+status: 3
+tags: []
+user_id: yashu

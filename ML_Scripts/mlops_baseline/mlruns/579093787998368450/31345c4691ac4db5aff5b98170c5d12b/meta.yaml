@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/31345c4691ac4db5aff5b98170c5d12b/artifacts
+end_time: 1749332570861
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 31345c4691ac4db5aff5b98170c5d12b
+run_name: Optuna Tuning - XGBRegressor (Regression)
+run_uuid: 31345c4691ac4db5aff5b98170c5d12b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749332568406
+status: 3
+tags: []
+user_id: yashu

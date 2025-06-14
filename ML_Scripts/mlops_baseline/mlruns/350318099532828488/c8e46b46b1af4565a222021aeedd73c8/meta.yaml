@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/c8e46b46b1af4565a222021aeedd73c8/artifacts
+end_time: 1749390688866
+entry_point_name: ''
+experiment_id: '350318099532828488'
+lifecycle_stage: active
+run_id: c8e46b46b1af4565a222021aeedd73c8
+run_name: Optuna Tuning - RandomForestClassifier
+run_uuid: c8e46b46b1af4565a222021aeedd73c8
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749390686481
+status: 3
+tags: []
+user_id: yashu

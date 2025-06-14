@@ -1,0 +1,57 @@
+[
+    {
+        "model_alias": "OVERALL_BEST_MODEL",
+        "original_alias": "ElasticNet",
+        "primary_metric": "rmse",
+        "score": 15.360185778822055,
+        "mlflow_run_id": "1035bb2c210b495f8fc81b5a7151aa76"
+    },
+    {
+        "model_alias": "ElasticNet",
+        "primary_metric": "rmse",
+        "score": 15.360185778822055,
+        "mlflow_run_id": "1035bb2c210b495f8fc81b5a7151aa76"
+    },
+    {
+        "model_alias": "SVR",
+        "primary_metric": "rmse",
+        "score": 15.254892170993585,
+        "mlflow_run_id": "4808afa139c44d1799c83efedef11dc0"
+    },
+    {
+        "model_alias": "LGBMRegressor",
+        "primary_metric": "rmse",
+        "score": 12.174903220315455,
+        "mlflow_run_id": "eb3f125c162840f882b51f7326ad5ad3"
+    },
+    {
+        "model_alias": "XGBRegressor",
+        "primary_metric": "rmse",
+        "score": 11.79794852317422,
+        "mlflow_run_id": "bcff4a09bcf84861a948bab407a45292"
+    },
+    {
+        "model_alias": "KNeighborsRegressor",
+        "primary_metric": "rmse",
+        "score": 11.214497954034252,
+        "mlflow_run_id": "f4ec69f1a04e4039b0ace7f06c1765bb"
+    },
+    {
+        "model_alias": "RandomForestRegressor",
+        "primary_metric": "rmse",
+        "score": 11.053299840350356,
+        "mlflow_run_id": "16e38ea65e204f1cb7480db3f4aa7fc6"
+    },
+    {
+        "model_alias": "CatBoostRegressor",
+        "primary_metric": "rmse",
+        "score": 11.04753654522708,
+        "mlflow_run_id": "a7001a57810f4681bbc94b9e51aa8d3a"
+    },
+    {
+        "model_alias": "Ridge",
+        "primary_metric": "rmse",
+        "score": 10.847462548742453,
+        "mlflow_run_id": "12ff2a5ef029422aab2dbc169815bc67"
+    }
+]

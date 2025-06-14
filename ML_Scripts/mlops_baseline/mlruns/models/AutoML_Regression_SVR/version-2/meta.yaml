@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749408931532
+current_stage: None
+description: null
+last_updated_timestamp: 1749408931532
+name: AutoML_Regression_SVR
+run_id: fb6ac08900c244e8b73a56f75124d3e8
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/fb6ac08900c244e8b73a56f75124d3e8/artifacts/svr_regression_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/fb6ac08900c244e8b73a56f75124d3e8/artifacts/svr_regression_model
+user_id: null
+version: 2

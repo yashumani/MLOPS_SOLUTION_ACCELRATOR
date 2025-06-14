@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/fcc951cac8bb44dca27913783798ba78/artifacts
+end_time: 1749334533088
+entry_point_name: ''
+experiment_id: '143482939526176296'
+lifecycle_stage: active
+run_id: fcc951cac8bb44dca27913783798ba78
+run_name: Optuna Tuning - AgglomerativeClustering (Clustering)
+run_uuid: fcc951cac8bb44dca27913783798ba78
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749334517138
+status: 3
+tags: []
+user_id: yashu

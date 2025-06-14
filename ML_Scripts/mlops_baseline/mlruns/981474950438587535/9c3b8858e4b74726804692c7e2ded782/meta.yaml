@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/981474950438587535/9c3b8858e4b74726804692c7e2ded782/artifacts
+end_time: 1749863975835
+entry_point_name: ''
+experiment_id: '981474950438587535'
+lifecycle_stage: active
+run_id: 9c3b8858e4b74726804692c7e2ded782
+run_name: advanced_knn_imputation_with_outliers
+run_uuid: 9c3b8858e4b74726804692c7e2ded782
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749863965437
+status: 4
+tags: []
+user_id: yashu

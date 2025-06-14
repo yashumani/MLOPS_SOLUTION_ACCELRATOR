@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/ba477507960d4ff2a1afc5f97605851c/artifacts
+end_time: 1749863959472
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: ba477507960d4ff2a1afc5f97605851c
+run_name: Optuna_KNeighborsRegressor_Regression
+run_uuid: ba477507960d4ff2a1afc5f97605851c
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749863956630
+status: 3
+tags: []
+user_id: yashu

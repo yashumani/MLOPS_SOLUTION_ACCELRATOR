@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749332620616
+current_stage: Staging
+description: null
+last_updated_timestamp: 1749332634180
+name: AutoML_Regression_CatBoostRegressor
+run_id: e9646aaaeaa64f41b2c3c5655a534dbc
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/e9646aaaeaa64f41b2c3c5655a534dbc/artifacts/catboostregressor_regression_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/e9646aaaeaa64f41b2c3c5655a534dbc/artifacts/catboostregressor_regression_model
+user_id: null
+version: 1

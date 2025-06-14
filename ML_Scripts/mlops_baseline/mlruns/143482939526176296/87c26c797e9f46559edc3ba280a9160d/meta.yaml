@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/87c26c797e9f46559edc3ba280a9160d/artifacts
+end_time: 1749864151205
+entry_point_name: ''
+experiment_id: '143482939526176296'
+lifecycle_stage: active
+run_id: 87c26c797e9f46559edc3ba280a9160d
+run_name: Train_DBSCAN_Clustering
+run_uuid: 87c26c797e9f46559edc3ba280a9160d
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749864144665
+status: 3
+tags: []
+user_id: yashu

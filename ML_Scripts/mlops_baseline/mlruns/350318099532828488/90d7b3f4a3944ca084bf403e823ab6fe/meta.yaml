@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/90d7b3f4a3944ca084bf403e823ab6fe/artifacts
+end_time: 1749310318220
+entry_point_name: ''
+experiment_id: '350318099532828488'
+lifecycle_stage: active
+run_id: 90d7b3f4a3944ca084bf403e823ab6fe
+run_name: Optuna Tuning - KNeighborsClassifier
+run_uuid: 90d7b3f4a3944ca084bf403e823ab6fe
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749310315962
+status: 3
+tags: []
+user_id: yashu

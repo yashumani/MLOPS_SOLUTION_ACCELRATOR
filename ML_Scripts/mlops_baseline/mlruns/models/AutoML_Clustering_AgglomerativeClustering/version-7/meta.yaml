@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749411898766
+current_stage: Staging
+description: null
+last_updated_timestamp: 1749411928854
+name: AutoML_Clustering_AgglomerativeClustering
+run_id: 16d76879175246ffaa71fb5994f04e8d
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/16d76879175246ffaa71fb5994f04e8d/artifacts/agglomerativeclustering_clustering_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/16d76879175246ffaa71fb5994f04e8d/artifacts/agglomerativeclustering_clustering_model
+user_id: null
+version: 7

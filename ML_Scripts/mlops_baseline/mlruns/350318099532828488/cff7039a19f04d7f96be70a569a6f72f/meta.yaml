@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/cff7039a19f04d7f96be70a569a6f72f/artifacts
+end_time: 1749866341901
+entry_point_name: ''
+experiment_id: '350318099532828488'
+lifecycle_stage: active
+run_id: cff7039a19f04d7f96be70a569a6f72f
+run_name: Optuna_LogisticRegression
+run_uuid: cff7039a19f04d7f96be70a569a6f72f
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749866307509
+status: 3
+tags: []
+user_id: yashu

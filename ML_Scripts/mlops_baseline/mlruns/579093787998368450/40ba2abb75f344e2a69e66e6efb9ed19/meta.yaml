@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/40ba2abb75f344e2a69e66e6efb9ed19/artifacts
+end_time: 1749408995692
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 40ba2abb75f344e2a69e66e6efb9ed19
+run_name: Optuna Tuning - KNeighborsRegressor (Regression)
+run_uuid: 40ba2abb75f344e2a69e66e6efb9ed19
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749408993450
+status: 3
+tags: []
+user_id: yashu

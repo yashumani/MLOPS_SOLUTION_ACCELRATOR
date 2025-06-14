@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/350318099532828488/50d01567fc94469883752be0f9296ddf/artifacts
+end_time: 1749868173745
+entry_point_name: ''
+experiment_id: '350318099532828488'
+lifecycle_stage: active
+run_id: 50d01567fc94469883752be0f9296ddf
+run_name: Train_LogisticRegression_Classification
+run_uuid: 50d01567fc94469883752be0f9296ddf
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749868136812
+status: 4
+tags: []
+user_id: yashu

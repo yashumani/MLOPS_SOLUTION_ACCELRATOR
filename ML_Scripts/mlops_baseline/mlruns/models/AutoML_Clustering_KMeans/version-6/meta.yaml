@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749355115523
+current_stage: None
+description: null
+last_updated_timestamp: 1749355115523
+name: AutoML_Clustering_KMeans
+run_id: 6b0ad55240f84588a37e3c24f557f2b6
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/6b0ad55240f84588a37e3c24f557f2b6/artifacts/kmeans_clustering_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/6b0ad55240f84588a37e3c24f557f2b6/artifacts/kmeans_clustering_model
+user_id: null
+version: 6

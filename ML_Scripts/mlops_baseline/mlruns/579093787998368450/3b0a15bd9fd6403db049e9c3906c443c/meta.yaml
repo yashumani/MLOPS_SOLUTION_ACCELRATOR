@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/3b0a15bd9fd6403db049e9c3906c443c/artifacts
+end_time: 1749430139275
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 3b0a15bd9fd6403db049e9c3906c443c
+run_name: Main_Pipeline_Run_REGRESSION_Optimize_rmse
+run_uuid: 3b0a15bd9fd6403db049e9c3906c443c
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749430090843
+status: 4
+tags: []
+user_id: yashu

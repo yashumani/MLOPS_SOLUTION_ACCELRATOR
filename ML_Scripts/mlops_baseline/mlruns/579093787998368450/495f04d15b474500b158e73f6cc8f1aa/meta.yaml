@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/579093787998368450/495f04d15b474500b158e73f6cc8f1aa/artifacts
+end_time: 1749492726807
+entry_point_name: ''
+experiment_id: '579093787998368450'
+lifecycle_stage: active
+run_id: 495f04d15b474500b158e73f6cc8f1aa
+run_name: Train_ElasticNet_Regression
+run_uuid: 495f04d15b474500b158e73f6cc8f1aa
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1749492721763
+status: 3
+tags: []
+user_id: yashu

@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1749309256500
+current_stage: Archived
+description: null
+last_updated_timestamp: 1749311009310
+name: AutoML_Clustering_AgglomerativeClustering
+run_id: 292d176dfd234c0f8bf0606bdd82025e
+run_link: null
+source: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/292d176dfd234c0f8bf0606bdd82025e/artifacts/agglomerativeclustering_clustering_model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/yashu/Desktop/SAVYMINDS/MLOps/YS_MVP/ML_Scripts/mlops_baseline/mlruns/143482939526176296/292d176dfd234c0f8bf0606bdd82025e/artifacts/agglomerativeclustering_clustering_model
+user_id: null
+version: 1

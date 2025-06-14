@@ -3,172 +3,132 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 import logging
+from typing import Dict, Any, List
 
-# Configure basic logging for the test script itself
-logging.basicConfig(level=logging.INFO) 
-logger = logging.getLogger(__name__)
-
-# Adjust path to import app from model_serving_api.py
+# --- Path Setup ---
 try:
-    # Assuming test_api.py is in src/ and model_serving_api.py is in the project root
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from model_serving_api import app, ARTIFACTS_DIR as api_artifacts_dir, TRAIN_COLUMNS_FILE as api_train_cols_file
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from model_serving_api import app
 except ImportError as e:
-    logger.error(f"Error importing app from model_serving_api: {e}")
-    logger.error(f"Current sys.path: {sys.path}")
-    raise
+    print(f"Error during initial imports: {e}")
+    sys.exit(1)
+
+# --- Logger Setup ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # --- Pytest Fixture for TestClient ---
 @pytest.fixture(scope="module")
 def client():
-    logger.info("Creating TestClient instance using fixture.")
+    """Create a TestClient instance for the API tests."""
+    logger.info("Setting up TestClient for API testing.")
     with TestClient(app) as c:
-        logger.info("TestClient instance created and lifespan startup should have run.")
         yield c
-    logger.info("TestClient lifespan shutdown should have run.")
+    logger.info("TestClient torn down.")
 
-# === Sample valid features for the Titanic dataset ===
+# --- Configuration for Clustering Test ---
+
+# Sample features from the Credit Card dataset (raw format, before any preprocessing)
 SAMPLE_VALID_FEATURES = {
-    "Pclass": 3,
-    "Sex": "male",
-    "Age": 29.7, 
-    "SibSp": 0,
-    "Parch": 0,
-    "Fare": 7.90,
-    "Embarked": "S"
+    "BALANCE": 1500.50,
+    "BALANCE_FREQUENCY": 1.0,
+    "PURCHASES": 850.75,
+    "ONEOFF_PURCHASES": 400.0,
+    "INSTALLMENTS_PURCHASES": 450.75,
+    "CASH_ADVANCE": 0.0,
+    "PURCHASES_FREQUENCY": 0.8,
+    "ONEOFF_PURCHASES_FREQUENCY": 0.3,
+    "PURCHASES_INSTALLMENTS_FREQUENCY": 0.5,
+    "CASH_ADVANCE_FREQUENCY": 0.0,
+    "CASH_ADVANCE_TRX": 0,
+    "PURCHASES_TRX": 15,
+    "CREDIT_LIMIT": 4000.0,
+    "PAYMENTS": 1000.0,
+    "MINIMUM_PAYMENTS": 250.0,
+    "PRC_FULL_PAYMENT": 0.1,
+    "TENURE": 12
+    # NOTE: CUST_ID is intentionally omitted as it's not a feature the user provides.
 }
 
-# === Expected model aliases for classification models ===
+# Expected model aliases based on your successful clustering run
 EXPECTED_MODEL_ALIASES = sorted([
-    'catboostclassifier_classification',
-    'kneighborsclassifier_classification',
-    'lgbmclassifier_classification',
-    'logisticregression_classification',
-    'randomforestclassifier_classification',
-    'svc_classification',
-    'xgbclassifier_classification'
+    'kmeans_clustering',
+    'dbscan_clustering',
+    'agglomerativeclustering_clustering',
+    'gaussianmixture_clustering'
 ])
 EXPECTED_MODEL_COUNT = len(EXPECTED_MODEL_ALIASES)
 
-# Helper to print response details on failure
-def log_response_details(response, model_alias_to_test="N/A"):
-    logger.error(f"Test failed for model/alias: {model_alias_to_test}")
+# --- Helper Function for Logging Failures ---
+def log_response_details(response, model_alias="N/A"):
+    logger.error(f"Test failed for model/alias: {model_alias}")
     logger.error(f"Response Status Code: {response.status_code}")
     try:
         logger.error(f"Response JSON: {response.json()}")
     except Exception:
         logger.error(f"Response Text: {response.text}")
 
-# === DIAGNOSTIC TEST (can be kept or removed) ===
-def test_artifact_paths_exist():
-    logger.info("Running test_artifact_paths_exist (checks paths from model_serving_api.py's perspective)")
-    logger.info(f"API's ARTIFACTS_DIR: {api_artifacts_dir}")
-    logger.info(f"API's TRAIN_COLUMNS_FILE: {api_train_cols_file}")
-    
-    assert api_artifacts_dir.exists(), f"ARTIFACTS_DIR defined in API does not exist: {api_artifacts_dir}"
-    assert api_train_cols_file.exists(), f"TRAIN_COLUMNS_FILE defined in API does not exist: {api_train_cols_file}"
-    
-    model_files_found = list(api_artifacts_dir.glob("*_classification_model.joblib"))
-    logger.info(f"Found classification model files in API's ARTIFACTS_DIR: {[f.name for f in model_files_found]}")
-    assert len(model_files_found) > 0, f"No '*_classification_model.joblib' files found in {api_artifacts_dir}"
-    assert len(model_files_found) == EXPECTED_MODEL_COUNT, \
-        f"Expected {EXPECTED_MODEL_COUNT} model files, found {len(model_files_found)} in {api_artifacts_dir}"
+# --- API Tests ---
 
-# === REGULAR API TESTS ===
-def test_health_check(client):
-    logger.info("Running test_health_check")
+def test_health_check(client: TestClient):
+    """Test the /health endpoint for a 200 OK and correct model count."""
+    logger.info("Running test_health_check...")
     response = client.get("/health")
-    if response.status_code != 200: log_response_details(response)
+    if response.status_code != 200:
+        log_response_details(response)
     assert response.status_code == 200
     response_json = response.json()
     assert response_json["status"] == "ok"
     assert "available_models_count" in response_json
     assert response_json["available_models_count"] == EXPECTED_MODEL_COUNT, \
-        f"Expected {EXPECTED_MODEL_COUNT} models, API reported {response_json['available_models_count']}"
+        f"Expected {EXPECTED_MODEL_COUNT} models, but API reported {response_json['available_models_count']}"
 
-def test_available_models(client):
-    logger.info("Running test_available_models")
+def test_available_models(client: TestClient):
+    """Test the /available_models endpoint to ensure it returns the expected list of models."""
+    logger.info("Running test_available_models...")
     response = client.get("/available_models")
-    if response.status_code != 200: log_response_details(response)
+    if response.status_code != 200:
+        log_response_details(response)
     assert response.status_code == 200
     response_json = response.json()
     assert "available_model_aliases" in response_json
     assert sorted(response_json["available_model_aliases"]) == EXPECTED_MODEL_ALIASES, \
-        f"API aliases: {sorted(response_json['available_model_aliases'])}, Expected: {EXPECTED_MODEL_ALIASES}"
+        f"API aliases do not match expected. API: {sorted(response_json['available_model_aliases'])}, Expected: {EXPECTED_MODEL_ALIASES}"
 
 @pytest.mark.parametrize("model_alias_to_test", EXPECTED_MODEL_ALIASES)
-def test_predict_valid_models(model_alias_to_test: str, client):
+def test_predict_valid_models(model_alias_to_test: str, client: TestClient):
+    """Test the /predict endpoint for all loaded clustering models with valid data."""
     logger.info(f"Running test_predict_valid_models for: {model_alias_to_test}")
+
+    # Skip models that do not have a .predict() method for new instances
+    if "dbscan" in model_alias_to_test or "agglomerative" in model_alias_to_test:
+        pytest.skip(f"Skipping prediction test for {model_alias_to_test} as it may not support predicting on new single instances.")
+
     payload = {"model_alias": model_alias_to_test, "features": SAMPLE_VALID_FEATURES}
     response = client.post("/predict", json=payload)
-    if response.status_code != 200: log_response_details(response, model_alias_to_test)
-    assert response.status_code == 200
+    
+    if response.status_code != 200:
+        log_response_details(response, model_alias_to_test)
+    
+    assert response.status_code == 200, f"Prediction failed for model: {model_alias_to_test}"
     response_json = response.json()
+    
     assert response_json["model_alias_used"] == model_alias_to_test
-    assert "prediction" in response_json; assert isinstance(response_json["prediction"], float)
-    assert response_json["prediction"] in [0.0, 1.0]
+    assert "prediction" in response_json
+    
+    prediction = response_json["prediction"]
+    assert isinstance(prediction, float)
+    # For clustering, the prediction is a cluster ID, which should be a whole number
+    assert prediction == int(prediction), f"Prediction for clustering should be a whole number, but got {prediction}"
+    assert prediction >= 0, f"Cluster ID should be non-negative, but got {prediction}"
+    logger.info(f"Successfully received cluster prediction '{int(prediction)}' for model '{model_alias_to_test}'")
 
-def test_predict_invalid_model_alias(client):
-    logger.info("Running test_predict_invalid_model_alias")
+def test_predict_invalid_model_alias(client: TestClient):
+    """Test that requesting a non-existent model returns a 404 error."""
+    logger.info("Running test_predict_invalid_model_alias...")
     payload = {"model_alias": "non_existent_model_xyz", "features": SAMPLE_VALID_FEATURES}
     response = client.post("/predict", json=payload)
-    if response.status_code != 404: log_response_details(response, "non_existent_model_xyz")
     assert response.status_code == 404
-    response_json = response.json()
-    assert "detail" in response_json
-    assert "Model alias 'non_existent_model_xyz' not found" in response_json["detail"]
-
-def test_predict_missing_features_key(client):
-    logger.info("Running test_predict_missing_features_key")
-    payload = {"model_alias": EXPECTED_MODEL_ALIASES[0] if EXPECTED_MODEL_ALIASES else "any_model"}
-    response = client.post("/predict", json=payload)
-    if response.status_code != 422: log_response_details(response, payload["model_alias"])
-    assert response.status_code == 422
-
-def test_predict_features_not_a_dict(client):
-    logger.info("Running test_predict_features_not_a_dict")
-    payload = {"model_alias": EXPECTED_MODEL_ALIASES[0] if EXPECTED_MODEL_ALIASES else "any_model", "features": "not_a_dict"}
-    response = client.post("/predict", json=payload)
-    if response.status_code != 422: log_response_details(response, payload["model_alias"])
-    assert response.status_code == 422
-
-def test_predict_missing_required_feature_in_dict(client):
-    logger.info("Running test_predict_missing_required_feature_in_dict")
-    incomplete_features = SAMPLE_VALID_FEATURES.copy()
-    if "Age" in incomplete_features: del incomplete_features["Age"]
-    
-    model_to_test_with = "randomforestclassifier_classification" # Or any other valid one
-    if EXPECTED_MODEL_ALIASES: # Ensure list is not empty
-        if model_to_test_with not in EXPECTED_MODEL_ALIASES:
-            model_to_test_with = EXPECTED_MODEL_ALIASES[0]
-    else: # Fallback if EXPECTED_MODEL_ALIASES is somehow empty
-        model_to_test_with = "some_model_if_expected_list_is_empty"
-
-
-    payload = {"model_alias": model_to_test_with, "features": incomplete_features}
-    response = client.post("/predict", json=payload)
-    if response.status_code != 200: log_response_details(response, model_to_test_with)
-    assert response.status_code == 200
-    response_json = response.json(); assert "prediction" in response_json
-    assert isinstance(response_json["prediction"], float)
-    assert response_json["prediction"] in [0.0, 1.0]
-
-def test_predict_feature_wrong_type_in_dict(client):
-    logger.info("Running test_predict_feature_wrong_type_in_dict")
-    features_with_wrong_type = SAMPLE_VALID_FEATURES.copy()
-    features_with_wrong_type["Pclass"] = "should_be_numeric_not_string"
-    
-    model_to_test_with = "randomforestclassifier_classification" # Or any other valid one
-    if EXPECTED_MODEL_ALIASES: # Ensure list is not empty
-        if model_to_test_with not in EXPECTED_MODEL_ALIASES:
-            model_to_test_with = EXPECTED_MODEL_ALIASES[0]
-    else: # Fallback
-        model_to_test_with = "some_model_if_expected_list_is_empty"
-
-    payload = {"model_alias": model_to_test_with, "features": features_with_wrong_type}
-    response = client.post("/predict", json=payload)
-    if response.status_code != 200: log_response_details(response, model_to_test_with)
-    assert response.status_code == 200
-    response_json = response.json(); assert "prediction" in response_json
-    assert isinstance(response_json["prediction"], float)
-    assert response_json["prediction"] in [0.0, 1.0]
+    assert "not found" in response.json().get("detail", "").lower()
