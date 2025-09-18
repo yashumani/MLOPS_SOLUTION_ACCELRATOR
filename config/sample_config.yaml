@@ -1,0 +1,28 @@
+
+# Example configuration file for Savvy Minds MLOps Solution Accelerator
+# This file defines the settings for a single pipeline run.
+
+industry: finance
+
+# Path to the dataset CSV file or a location recognized by Azure ML
+dataset_path: data/finance_sample.csv
+
+# Type of machine learning problem: classification, regression, or clustering
+task_type: classification
+
+# Metric used to rank models in the evaluation step
+primary_metric: f1
+
+# Whether to apply SMOTE to handle class imbalance (only for classification tasks)
+imbalance_handling: true
+
+# MLflow tracking URI (file system path or remote URI)
+mlflow_tracking_uri: mlruns
+
+# Azure ML details (not used directly in this version but included for reference)
+azure_ml:
+  subscription_id: "<subscription-id>"
+  resource_group: "<resource-group>"
+  workspace_name: "<workspace-name>"
+  datastore_name: "<datastore-name>"
+  compute_target: "<compute-target>"
