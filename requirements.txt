@@ -10,3 +10,9 @@ flaml
 mlflow
 pyyaml
 great-expectations
+
+# Azure ML SDK V2 packages
+azure-ai-ml>=1.11.0
+azure-identity>=1.14.0
+azure-storage-blob>=12.17.0
+azureml-mlflow>=1.51.0

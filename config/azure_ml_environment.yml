@@ -17,29 +17,34 @@ dependencies:
   - matplotlib>=3.4.0
   - seaborn>=0.11.0
   - plotly>=5.0.0
-  
+
   - pip:
-    # Azure ML packages
+    # Azure ML SDK V2 packages (modern)
+    - azure-ai-ml>=1.11.0
+    - azure-identity>=1.14.0
+    - azure-storage-blob>=12.17.0
+    - azureml-mlflow>=1.51.0
+    
+    # Azure ML SDK V1 packages (legacy support)
     - azureml-core>=1.45.0
     - azureml-dataset-runtime>=1.45.0
     - azureml-automl-core>=1.45.0
     - azureml-train-automl-client>=1.45.0
     - azureml-explain-model>=1.45.0
-    
+
     # MLflow packages
     - mlflow>=1.28.0
-    - azureml-mlflow>=1.45.0
-    
+
     # Additional ML packages
     - imbalanced-learn>=0.8.0
     - xgboost>=1.5.0
     - lightgbm>=3.3.0
     - catboost>=1.0.0
-    
+
     # Data processing
     - openpyxl>=3.0.0
     - xlrd>=2.0.0
-    
+
     # Utilities
     - pyyaml>=6.0
     - joblib>=1.1.0

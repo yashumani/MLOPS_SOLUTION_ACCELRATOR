@@ -15,7 +15,7 @@ import pandas as pd
 import mlflow
 
 from config_loader import load_config
-from data_ingestion import load_data
+from data_ingestion import DataIngestionManager
 from data_validation import validate_schema
 from data_cleaning import clean_data
 from imbalance_handling import detect_imbalance, apply_smote
@@ -44,9 +44,32 @@ def run_pipeline(config_path: str) -> None:
     with mlflow.start_run():
         log_params(config)
 
-        # Data ingestion
-        df, dataset_name = load_data(config['dataset_path'])
+        # Data ingestion using Azure ML SDK V2
+        data_manager = DataIngestionManager(config)
+        
+        # Get data asset configuration
+        data_asset_name = config.get('data_asset_name', '')
+        data_asset_version = config.get('data_asset_version', '')
+        
+        # Load data with Azure ML support
+        if data_asset_name:
+            df, dataset_name = data_manager.load_data(
+                path=config['dataset_path'],
+                data_asset_name=data_asset_name,
+                data_asset_version=data_asset_version if data_asset_version else None
+            )
+        else:
+            df, dataset_name = data_manager.load_data(config['dataset_path'])
+            
         logging.info(f"Dataset '{dataset_name}' loaded. Shape: {df.shape}")
+        
+        # Log dataset information to MLflow
+        mlflow.log_param("dataset_name", dataset_name)
+        mlflow.log_param("dataset_shape", f"{df.shape[0]}x{df.shape[1]}")
+        mlflow.log_param("dataset_path", config['dataset_path'])
+        if data_asset_name:
+            mlflow.log_param("data_asset_name", data_asset_name)
+            mlflow.log_param("data_asset_version", data_asset_version or "latest")
 
         # Initial validation
         try:

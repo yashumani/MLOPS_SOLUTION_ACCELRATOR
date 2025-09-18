@@ -27,17 +27,17 @@ azure_ml:
   workspace_id: "12b6bc01-e563-4a39-9006-b7bb2efe45b7"
   location: "eastus2"
   tenant_id: "3bc05bc3-19d1-4d30-89c5-134f4b278b11"
-  
+
   # Storage and services
   storage_account: "mlopsaccelerat7263606092"
   key_vault: "mlopsaccelerat1858934844"
   application_insights: "mlopsaccelerat4731181828"
   container_registry: "12b6bc01e5634a399006b7bb2efe45b7"
-  
+
   # MLflow configuration
   mlflow_tracking_uri: "azureml://eastus2.api.azureml.ms/mlflow/v1.0/subscriptions/93044a08-5661-4f1b-b424-5eafe066a9d1/resourceGroups/mvpv1/providers/Microsoft.MachineLearningServices/workspaces/mlops-accelerator"
   discovery_url: "https://eastus2.api.azureml.ms/discovery"
-  
+
   # Compute and datastore settings (to be configured based on your setup)
   datastore_name: "workspaceblobstore"  # Default datastore name
-  compute_target: "cpu-cluster"  # Update with your actual compute target name
+  compute_target: "mlopspipelineciDS3V2"  # Update with your actual compute target name

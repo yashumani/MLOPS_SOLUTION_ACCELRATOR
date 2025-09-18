@@ -3,8 +3,16 @@
 
 industry: finance
 
-# Path to the dataset CSV file or a location recognized by Azure ML
+# Path to the dataset CSV file or Azure ML data asset reference
+# Examples:
+#   Local file: data/finance_sample.csv
+#   Azure ML asset: azureml:finance_dataset:1
+#   Direct asset name: (use data_asset_name below)
 dataset_path: data/finance_sample.csv
+
+# Optional: Specify Azure ML data asset directly
+data_asset_name: ""  # e.g., "finance_dataset"
+data_asset_version: ""  # e.g., "1" or "latest"
 
 # Type of machine learning problem: classification, regression, or clustering
 task_type: classification
@@ -26,28 +34,28 @@ azure_ml:
   workspace_id: "12b6bc01-e563-4a39-9006-b7bb2efe45b7"
   location: "eastus2"
   tenant_id: "3bc05bc3-19d1-4d30-89c5-134f4b278b11"
-  
+
   # Storage and services
   storage_account: "mlopsaccelerat7263606092"
   key_vault: "mlopsaccelerat1858934844"
   application_insights: "mlopsaccelerat4731181828"
   container_registry: "12b6bc01e5634a399006b7bb2efe45b7"
-  
+
   # MLflow configuration
   mlflow_tracking_uri: "azureml://eastus2.api.azureml.ms/mlflow/v1.0/subscriptions/93044a08-5661-4f1b-b424-5eafe066a9d1/resourceGroups/mvpv1/providers/Microsoft.MachineLearningServices/workspaces/mlops-accelerator"
   discovery_url: "https://eastus2.api.azureml.ms/discovery"
-  
+
   # Compute and datastore settings
   datastore_name: "workspaceblobstore"  # Default Azure ML datastore
   compute_target: "cpu-cluster"  # Update with your actual compute target name
-  
+
   # Environment settings
   environment_name: "savvy-minds-mlops-env"
   environment_version: "1"
-  
+
   # Experiment settings
   experiment_name: "savvy-minds-mlops-experiment"
-  
+
   # Model registration settings
   model_name: "savvy-minds-model"
   model_description: "MLOps accelerator model for Savvy Minds"
@@ -57,13 +65,13 @@ data_processing:
   train_test_split: 0.8
   validation_split: 0.2
   random_state: 42
-  
+
 # Model training settings
 model_training:
   max_trials: 10
   timeout_hours: 1
   enable_early_stopping: true
-  
+
 # Evaluation settings
 evaluation:
   metrics: ["accuracy", "precision", "recall", "f1", "auc"]
