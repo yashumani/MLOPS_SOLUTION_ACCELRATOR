@@ -1,0 +1,13 @@
+bundle_name: "feature_selection"
+description: >
+  Variants with aggressive feature selection — activated when the dataset
+  has many features or high collinearity.
+tags: ["feature_selection", "collinearity", "dimensionality"]
+default_enabled: false
+gating_rules:
+  - signal: "high_corr_pairs"
+    operator: ">="
+    threshold: 3
+    reason: "3+ highly correlated pairs detected — feature selection recommended"
+variant_glob: "configs/recipes/classification/v1_generated/state_of_the_art/*.yml"
+max_variants: 6

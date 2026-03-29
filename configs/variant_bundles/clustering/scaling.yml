@@ -1,0 +1,13 @@
+bundle_name: "scaling"
+description: >
+  Clustering variants testing different scaling strategies.
+  Enabled when features have widely different ranges (high skewness).
+tags: ["scaling", "robust", "clustering"]
+default_enabled: false
+gating_rules:
+  - signal: "mean_abs_skewness"
+    operator: ">"
+    threshold: 0.8
+    reason: "Feature skewness suggests non-standard scaling could help"
+variant_glob: "configs/recipes/clustering/v1_generated/balanced_performance/*.yml"
+max_variants: 8

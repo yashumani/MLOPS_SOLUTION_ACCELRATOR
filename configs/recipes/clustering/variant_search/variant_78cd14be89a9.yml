@@ -1,0 +1,20 @@
+recipe_name: 78cd14be89a9
+version: '1.0'
+description: 'Pipeline Variant: constant+ordinal+none+variance'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: constant
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: 78cd14be89a9
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

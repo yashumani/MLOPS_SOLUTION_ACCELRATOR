@@ -1,0 +1,20 @@
+recipe_name: 872ebec48049
+version: '1.0'
+description: 'Pipeline Variant: knn+ordinal+robust+correlation'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: robust
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: 872ebec48049
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

@@ -1,0 +1,13 @@
+bundle_name: "dimensionality"
+description: >
+  Clustering variants with feature selection / PCA for high-dimensional data
+  or datasets with collinearity.
+tags: ["feature_selection", "dimensionality", "clustering"]
+default_enabled: false
+gating_rules:
+  - signal: "n_features"
+    operator: ">="
+    threshold: 15
+    reason: "15+ features — dimensionality reduction may improve cluster quality"
+variant_glob: "configs/recipes/clustering/v1_generated/progressive/*.yml"
+max_variants: 6

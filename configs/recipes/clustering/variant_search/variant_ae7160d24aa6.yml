@@ -1,0 +1,20 @@
+recipe_name: ae7160d24aa6
+version: '1.0'
+description: 'Pipeline Variant: iterative+frequency+maxabs+correlation'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: frequency
+  scaling:
+    method: maxabs
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: ae7160d24aa6
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

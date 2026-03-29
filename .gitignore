@@ -1,0 +1,102 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+*~
+
+# Jupyter/IPython
+.ipynb_checkpoints/
+.jupyter/
+
+# MLflow and ML artifacts
+mlruns/
+catboost_info/
+
+# Pipeline outputs and data
+outputs/
+*.csv
+data/
+
+# Azure ML
+.amlignore.amltmp
+
+# Logs
+*.log
+*.out
+logs/
+job_logs/
+
+# Backup files
+*.backup
+*.clean
+
+# OS
+.DS_Store
+.AppleDouble
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+*.tmp
+*.bak
+*~.pkl
+
+# Duplicate submission prevention artifacts
+.submit.lock
+.last_submitted_job
+pipelines/.last_submitted_job
+pipelines/temp_selected_variants.json
+
+# Archive (cleaned up files preserved for reference)
+archive/
+
+# Job outputs (downloaded from Azure ML)
+job_artifacts/
+job_results/
+
+# Runtime artifacts
+nohup.out
+logs_clustering_failure/
+
+# Job output artifacts (large files, not code)
+outputs_review_feb23/
+analysis_outputs/
+archive/
+tools/
+job_outputs_*/
+tmp_logs/
+
+job_artifacts/
+job_results/

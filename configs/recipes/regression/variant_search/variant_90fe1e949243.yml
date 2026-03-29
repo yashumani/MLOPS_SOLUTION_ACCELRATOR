@@ -1,0 +1,19 @@
+recipe_name: 90fe1e949243
+version: '1.0'
+description: 'Pipeline Variant: iterative+target+standard+none+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: target
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 90fe1e949243
+  leakage_risk: low
+  estimated_runtime_sec: 30
+  generation_mode: curated

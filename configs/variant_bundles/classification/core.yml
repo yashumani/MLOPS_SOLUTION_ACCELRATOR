@@ -1,0 +1,12 @@
+bundle_name: "core"
+description: >
+  Essential baseline variants — always enabled regardless of data signals.
+  Provides minimal preprocessing (mean imputation, one-hot encoding, standard scaling)
+  as the control group for every pipeline run.
+tags: ["core", "baseline", "always"]
+default_enabled: true
+gating_rules: []
+variant_paths:
+  - "configs/recipes/classification/baseline_recipe.yml"
+variant_glob: "configs/recipes/classification/v1_generated/lightning_fast/*.yml"
+max_variants: 8

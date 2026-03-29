@@ -1,0 +1,20 @@
+recipe_name: a103dc1b421e
+version: '1.0'
+description: 'Pipeline Variant: median+onehot+none+correlation+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: a103dc1b421e
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

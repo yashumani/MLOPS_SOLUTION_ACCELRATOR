@@ -1,0 +1,24 @@
+recipe_name: recipe_clas_high_performance_0002
+version: '1.0'
+description: Preprocessing level 40, Feature engineering level 80
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mode
+  imbalance_handling:
+    method: none
+  encoding:
+    categorical_method: onehot
+    handle_unknown: error
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: rfe
+    n_features: 20
+v1_metadata:
+  compatibility_score: 0.95
+  expected_quality: High Performance
+  max_runtime_seconds: 90
+  level: 40
+  original_name: 'High Performance: mode+onehot+standard+rfe'

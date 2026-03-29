@@ -1,0 +1,22 @@
+recipe_name: 62186d148267
+version: '1.0'
+description: 'Pipeline Variant: mean+onehot+standard+correlation'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: standard
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.9
+variant_metadata:
+  variant_id: 62186d148267
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

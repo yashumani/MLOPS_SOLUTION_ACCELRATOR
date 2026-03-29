@@ -1,0 +1,22 @@
+recipe_name: 13025dfa16d8
+version: '1.0'
+description: 'Pipeline Variant: iterative+target+robust+none+iqr'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: target
+  scaling:
+    method: robust
+  outlier_handling:
+    method: iqr
+    multiplier: 1.5
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 13025dfa16d8
+  leakage_risk: low
+  estimated_runtime_sec: 30
+  generation_mode: curated

@@ -1,0 +1,22 @@
+recipe_name: a7c76be8c66b
+version: '1.0'
+description: 'Pipeline Variant: mean+smotetomek+label+robust+correlation'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: robust
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.85
+variant_metadata:
+  variant_id: a7c76be8c66b
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

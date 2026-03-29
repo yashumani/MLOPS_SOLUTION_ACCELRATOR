@@ -1,0 +1,23 @@
+recipe_name: e456b40c86dd
+version: '1.0'
+description: 'Pipeline Variant: iterative+onehot+robust+correlation+winsorize'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: robust
+  outlier_handling:
+    method: winsorize
+    action: clip
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: e456b40c86dd
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

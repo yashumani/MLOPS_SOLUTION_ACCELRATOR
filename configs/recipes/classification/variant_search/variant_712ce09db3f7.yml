@@ -1,0 +1,22 @@
+recipe_name: 712ce09db3f7
+version: '1.0'
+description: 'Pipeline Variant: mode+label+robust+none+mutual_info'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: label
+  scaling:
+    method: robust
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 712ce09db3f7
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

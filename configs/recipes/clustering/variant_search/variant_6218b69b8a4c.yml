@@ -1,0 +1,19 @@
+recipe_name: 6218b69b8a4c
+version: '1.0'
+description: 'Pipeline Variant: mean+frequency+minmax+none'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: frequency
+  scaling:
+    method: minmax
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 6218b69b8a4c
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

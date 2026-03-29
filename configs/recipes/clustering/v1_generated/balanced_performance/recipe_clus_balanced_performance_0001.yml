@@ -1,0 +1,22 @@
+recipe_name: recipe_clus_balanced_performance_0001
+version: '1.0'
+description: Preprocessing level 20, Feature engineering level 20
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: label
+    handle_unknown: error
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+v1_metadata:
+  compatibility_score: 0.95
+  expected_quality: Balanced Performance
+  max_runtime_seconds: 20
+  level: 20
+  original_name: 'Balanced Performance: median+label+standard+variance'

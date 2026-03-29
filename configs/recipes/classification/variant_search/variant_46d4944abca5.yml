@@ -1,0 +1,22 @@
+recipe_name: 46d4944abca5
+version: '1.0'
+description: 'Pipeline Variant: mean+label+none+correlation'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: none
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.85
+variant_metadata:
+  variant_id: 46d4944abca5
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

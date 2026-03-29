@@ -1,0 +1,23 @@
+recipe_name: 6d6e8e98c8e7
+version: '1.0'
+description: 'Pipeline Variant: median+target+robust+mutual_info+winsorize'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: target
+  scaling:
+    method: robust
+  outlier_handling:
+    method: winsorize
+    action: clip
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 6d6e8e98c8e7
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

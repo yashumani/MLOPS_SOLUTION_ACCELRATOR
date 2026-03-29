@@ -1,0 +1,22 @@
+recipe_name: ce1e6db86fba
+version: '1.0'
+description: 'Pipeline Variant: median+onehot+robust+smoteenn+correlation'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: robust
+  imbalance_handling:
+    method: smoteenn
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.85
+variant_metadata:
+  variant_id: ce1e6db86fba
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

@@ -1,0 +1,23 @@
+recipe_name: recipe_clas_quick_exploration_0001
+version: '1.0'
+description: Preprocessing level 10, Feature engineering level 10
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  imbalance_handling:
+    method: none
+  encoding:
+    categorical_method: label
+    handle_unknown: error
+  scaling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+v1_metadata:
+  compatibility_score: 1.0
+  expected_quality: Quick Exploration
+  max_runtime_seconds: 20
+  level: 10
+  original_name: 'Quick Exploration: mean+label+none+none'

@@ -1,0 +1,97 @@
+experiment_name: telecom_churn_v3_azure
+preset: production
+task_type: classification
+
+dataset:
+  name: telecom_churn
+  target_column: churn
+  # The relative path inside datastore; stage1 builds the full URI dynamically
+  blob_path: telecom_churn.csv
+  datastore_name: mlops_blob
+
+# V4 Enhancement: Stage 1 data quality configuration
+stage1:
+  min_rows: 1000  # Minimum rows required for modeling
+  max_missing_pct: 50  # Maximum allowed missing data percentage
+  classification_min_samples_per_class: 30  # Minimum samples per class
+  generate_sweetviz: true  # Generate sweetviz HTML report (production: false, debug: true)
+  eda_sample_size: 10000  # Sample size for sweetviz to avoid memory issues
+
+# V3 Redesign: Stage 2 advanced preparation
+stage2:
+  imputation_strategy: "from_stage1"  # Use Stage 1 intelligent recommendations
+  statistical_tests_enabled: true  # Run normality, outlier, correlation tests
+
+# V3 Redesign: Stage 3 smart preprocessing
+stage3:
+  adaptive_scaling: true  # Use test results to choose Standard vs Robust scaler
+  multicollinearity_check: true  # VIF analysis
+
+# V3 Redesign: Stage 4 advanced feature engineering (Stakeholder Requirements)
+stage4:
+  selection_method: "boruta"  # Options: boruta (preferred), mutual_info, variance
+  apply_pca_threshold: 100  # Apply PCA if features > this threshold
+  pca_variance_retained: 0.95  # Keep 95% variance when applying PCA
+  imbalance_detection: true  # Detect class imbalance and recommend SMOTE/weights
+
+azureml:
+  subscription_id: 93044a08-5661-4f1b-b424-5eafe066a9d1
+  resource_group: mvpv1
+  workspace_name: mlops-accelerator
+  compute_target: mlopsv2computecluster
+  environment_name_preprocessing: mlops-v3-preprocessing
+  environment_name_training: mlops-v3-training
+
+# 🚀 VARIANT SEARCH SYSTEM - Production Configuration Space Explorer
+# Replaces v1_generated (DEPRECATED) with constraint-validated pipeline variants
+# Generated via: python configs/generate_variant_library.py --task_type classification --mode progressive --max_variants 200
+phases:
+  # LEGACY: Hardcoded 2-variant architecture (use --use_phase1=false)
+  phase_b_recipes:
+    library: variant_search  # Production variant search system (180 variants generated, testing 2)
+    tier: progressive  # Progressive narrowing (cheap_eval → full_eval → HPO)
+    max_recipes: 20  # Expanded: 20 variants x 2 engines = 40 Phase B steps
+    runtime_budget_sec: 180  # Filter: 3-minute runtime budget per variant
+    random_selection: false  # False = deterministic selection by variant_id (alphabetical)
+
+  # PHASE 1: Intelligent Variant Recommendation System (use --use_phase1=true)
+  phase_b:
+    enable_profiling: true  # Profile dataset to understand characteristics
+    profiling_output_path: "outputs/dataset_profile.json"
+
+    # Variant selection
+    library_dir: "configs/recipes/classification/variant_search"
+    max_variants: 20  # How many variants to test (down from 180 via intelligent selection)
+    selection_strategy: "scored"  # scored (intelligent) | alphabetical | random_seeded
+    min_relevance_score: 30.0  # Minimum threshold (0-100)
+    diversity_boost: true  # Ensure diverse preprocessing strategies
+
+    # Runtime constraints
+    runtime_budget_sec: 180  # Filter variants by estimated runtime
+    time_budget_per_variant: 600  # Max time per variant training (10 min) — adaptive budget
+
+    # Engines
+    engines: ["pycaret", "flaml"]
+
+    # Imputation preset: filters variants by imputation family at submission time
+    # Options: "auto" (all methods), "statistical" (mean/median/mode),
+    #          "ml_based" (knn/iterative), "removal" (drop),
+    #          "pandas_native" (forward_fill/backward_fill/interpolate/constant),
+    #          "advanced" (all Tier 1 expanded methods)
+    imputation_preset: "auto"
+
+    # V3-PROPOSED: Adaptive Planner Mode (use --enable_planner flag)
+    planner:
+      enabled: false  # Enable via --enable_planner CLI flag
+      round1_max_variants: 40  # Max variants for Round 1 proxy training
+      round2_max_variants: 10  # Max variants for Round 2 full training
+      proxy_prune_threshold: 0.50  # Proxy metric threshold for pruning
+      cache_enabled: true  # Enable preprocessing cache
+
+  # Phase C: Hyperparameter optimization with Optuna
+  phase_c_hpo:
+    n_trials: 50  # Number of Optuna trials (production: 50-100, diagnostic: 10-20)
+    timeout_seconds: 3600  # Max time for HPO (1 hour)
+
+recipes:
+  - file: recipes/baseline_recipe.yml

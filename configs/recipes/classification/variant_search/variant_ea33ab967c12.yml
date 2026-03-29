@@ -1,0 +1,21 @@
+recipe_name: ea33ab967c12
+version: '1.0'
+description: 'Pipeline Variant: mean+smotetomek+label+standard+variance'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: standard
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+variant_metadata:
+  variant_id: ea33ab967c12
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

@@ -1,0 +1,22 @@
+recipe_name: fc993d169518
+version: '1.0'
+description: 'Pipeline Variant: mode+onehot+standard+smotetomek+variance'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: standard
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: fc993d169518
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

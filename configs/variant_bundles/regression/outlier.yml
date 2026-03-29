@@ -1,0 +1,13 @@
+bundle_name: "outlier"
+description: >
+  Variants with explicit outlier handling — activated when IQR outlier
+  rate exceeds 5%.  Includes IQR capping, winsorisation, isolation forest.
+tags: ["outlier", "robust", "regression"]
+default_enabled: false
+gating_rules:
+  - signal: "outlier_rate"
+    operator: ">"
+    threshold: 0.05
+    reason: "Outlier rate exceeds 5% — outlier handling recommended"
+variant_glob: "configs/recipes/regression/v1_generated/balanced_performance/*.yml"
+max_variants: 10

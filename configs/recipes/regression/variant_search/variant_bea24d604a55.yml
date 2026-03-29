@@ -1,0 +1,20 @@
+recipe_name: bea24d604a55
+version: '1.0'
+description: 'Pipeline Variant: knn+onehot+minmax+variance+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: minmax
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: bea24d604a55
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

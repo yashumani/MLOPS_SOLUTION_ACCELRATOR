@@ -1,0 +1,29 @@
+name: stage2_preparation
+version: 7
+display_name: V3 Stage 2 - Preparation
+type: command
+is_deterministic: false
+inputs:
+  config_name:
+    type: string
+  dataset_in:
+    type: uri_file
+  eda_report:
+    type: uri_folder
+    optional: true
+outputs:
+  prep_report:
+    type: uri_folder
+  dataset_out:
+    type: uri_file
+code: ../
+command: >-
+  python src/steps/stage2_preparation.py
+  --config configs/${{inputs.config_name}}
+  --dataset_in ${{inputs.dataset_in}}
+  --report_dir ${{outputs.prep_report}}
+  --dataset_out ${{outputs.dataset_out}}
+  $[[--eda_dir ${{inputs.eda_report}}]]
+environment: azureml:mlops-v3-unified:23
+history:
+  enableMLflowTracking: true

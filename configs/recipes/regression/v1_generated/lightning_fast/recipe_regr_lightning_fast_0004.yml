@@ -1,0 +1,23 @@
+recipe_name: recipe_regr_lightning_fast_0004
+version: '1.0'
+description: Preprocessing level 10, Feature engineering level 10
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mean
+  outlier_handling:
+    method: none
+  encoding:
+    categorical_method: label
+    handle_unknown: error
+  scaling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+v1_metadata:
+  compatibility_score: 1.0
+  expected_quality: Lightning Fast
+  max_runtime_seconds: 16
+  level: 10
+  original_name: 'Lightning Fast: mean+label+none+none'

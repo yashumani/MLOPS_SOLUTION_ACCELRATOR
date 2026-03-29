@@ -1,0 +1,22 @@
+recipe_name: 318fceda40b8
+version: '1.0'
+description: 'Pipeline Variant: knn+onehot+power+none+iqr'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: power
+  outlier_handling:
+    method: iqr
+    multiplier: 1.5
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 318fceda40b8
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

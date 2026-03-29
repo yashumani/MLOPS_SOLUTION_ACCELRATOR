@@ -1,0 +1,21 @@
+recipe_name: 0ca87e7ff3c6
+version: '1.0'
+description: 'Pipeline Variant: mean+label+none+none'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: none
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 0ca87e7ff3c6
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

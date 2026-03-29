@@ -1,0 +1,12 @@
+bundle_name: "high_cardinality"
+description: >
+  Regression variants for datasets with high-cardinality categoricals.
+tags: ["encoding", "high_cardinality"]
+default_enabled: false
+gating_rules:
+  - signal: "max_cardinality"
+    operator: ">"
+    threshold: 50
+    reason: "At least one categorical feature has >50 unique values"
+variant_glob: "configs/recipes/regression/v1_generated/balanced_performance/*.yml"
+max_variants: 6

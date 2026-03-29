@@ -1,0 +1,10 @@
+available_recipes:
+  - name: baseline
+    file: recipes/baseline_recipe.yml
+    description: Minimal preprocessing - use raw features
+  - name: smote_target_standard
+    file: recipes/recipe_smote_target_standard.yml
+    description: SMOTE + Target encoding + Standard scaling
+  - name: knn_onehot_minmax
+    file: recipes/recipe_knn_onehot_minmax.yml
+    description: KNN imputation + OneHot encoding + MinMax scaling

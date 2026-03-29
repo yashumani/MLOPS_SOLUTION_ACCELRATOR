@@ -1,0 +1,23 @@
+recipe_name: 3fb969825770
+version: '1.0'
+description: 'Pipeline Variant: median+label+robust+variance+winsorize'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: label
+  scaling:
+    method: robust
+  outlier_handling:
+    method: winsorize
+    action: clip
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: 3fb969825770
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

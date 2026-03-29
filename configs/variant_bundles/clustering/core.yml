@@ -1,0 +1,11 @@
+bundle_name: "core"
+description: >
+  Essential baseline variants for clustering — always enabled.
+  Standard scaling with k-means as default.
+tags: ["core", "baseline", "always"]
+default_enabled: true
+gating_rules: []
+variant_paths:
+  - "configs/recipes/clustering/baseline_recipe.yml"
+variant_glob: "configs/recipes/clustering/v1_generated/lightning_fast/*.yml"
+max_variants: 6

@@ -1,0 +1,27 @@
+recipe_name: recipe_clas_state_of_the_art_0001
+version: '1.0'
+description: Preprocessing level 60, Feature engineering level 60
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: knn
+    n_neighbors: 5
+  imbalance_handling:
+    method: smote
+    sampling_strategy: auto
+    k_neighbors: 5
+  encoding:
+    categorical_method: target
+    handle_unknown: value
+  scaling:
+    method: robust
+stage4_feature_engineering:
+  feature_selection:
+    method: chi2
+    k_features: 20
+v1_metadata:
+  compatibility_score: 0.8075
+  expected_quality: State-of-the-Art
+  max_runtime_seconds: 89
+  level: 60
+  original_name: 'State-of-the-Art: knn_5+target+robust+chi2'

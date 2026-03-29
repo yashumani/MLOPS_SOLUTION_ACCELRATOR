@@ -1,0 +1,13 @@
+bundle_name: "high_cardinality"
+description: >
+  Variants for datasets with high-cardinality categorical features.
+  Uses target encoding and CatBoost-native encoding instead of one-hot.
+tags: ["encoding", "high_cardinality", "target_encoding"]
+default_enabled: false
+gating_rules:
+  - signal: "max_cardinality"
+    operator: ">"
+    threshold: 50
+    reason: "At least one categorical feature has >50 unique values"
+variant_glob: "configs/recipes/classification/v1_generated/progressive/*.yml"
+max_variants: 6

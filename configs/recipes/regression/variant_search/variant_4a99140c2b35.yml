@@ -1,0 +1,24 @@
+recipe_name: 4a99140c2b35
+version: '1.0'
+description: 'Pipeline Variant: constant+frequency+maxabs+mutual_info+percentile'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: constant
+  encoding:
+    categorical_method: frequency
+  scaling:
+    method: maxabs
+  outlier_handling:
+    method: percentile
+    lower: 5
+    upper: 95
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 4a99140c2b35
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

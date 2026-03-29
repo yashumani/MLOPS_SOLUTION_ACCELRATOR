@@ -1,0 +1,14 @@
+bundle_name: "robust"
+description: >
+  Robust preprocessing variants — activated when significant outliers or
+  skewed features are detected.  Uses robust scaling, winsorisation, and
+  outlier-tolerant models.
+tags: ["robust", "outlier", "skewness"]
+default_enabled: false
+gating_rules:
+  - signal: "outlier_rate"
+    operator: ">"
+    threshold: 0.05
+    reason: "Outlier rate exceeds 5% — robust preprocessing warranted"
+variant_glob: "configs/recipes/classification/v1_generated/balanced_performance/*.yml"
+max_variants: 8

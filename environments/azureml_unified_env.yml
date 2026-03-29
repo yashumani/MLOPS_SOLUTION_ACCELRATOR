@@ -1,0 +1,6 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: mlops-v3-unified
+version: "23"
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+conda_file: unified_conda.yml
+description: Unified environment v23 with full ML stack (PyCaret, FLAML, Optuna, XGBoost, LightGBM, CatBoost)

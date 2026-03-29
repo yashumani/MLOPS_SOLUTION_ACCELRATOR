@@ -1,0 +1,34 @@
+name: v3_final_evaluation
+version: 9
+display_name: s10 - V3 Final Evaluation
+type: command
+is_deterministic: false
+inputs:
+  config_name:
+    type: string
+  dataset_in:
+    type: uri_file
+  baseline_champion:
+    type: uri_folder
+  phaseb_champion:
+    type: uri_folder
+  phasec_champion:
+    type: uri_folder
+outputs:
+  final_report:
+    type: uri_file
+  final_champion_model:
+    type: uri_folder
+code: ../
+command: >-
+  python src/steps/final_evaluation.py
+  --config configs/${{inputs.config_name}}
+  --dataset_in ${{inputs.dataset_in}}
+  --baseline_model ${{inputs.baseline_champion}}
+  --phaseb_model ${{inputs.phaseb_champion}}
+  --phasec_model ${{inputs.phasec_champion}}
+  --report_out ${{outputs.final_report}}
+  --champion_out ${{outputs.final_champion_model}}
+environment: azureml:mlops-v3-unified:23
+history:
+  enableMLflowTracking: true

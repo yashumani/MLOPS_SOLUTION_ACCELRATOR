@@ -1,0 +1,22 @@
+recipe_name: 9c7e33abd19e
+version: '1.0'
+description: 'Pipeline Variant: iterative+label+minmax+none+rfe'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: label
+  scaling:
+    method: minmax
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: rfe
+    threshold: 0.5
+variant_metadata:
+  variant_id: 9c7e33abd19e
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

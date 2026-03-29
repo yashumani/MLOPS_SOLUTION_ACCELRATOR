@@ -1,0 +1,22 @@
+recipe_name: 922c3aabcaec
+version: '1.0'
+description: 'Pipeline Variant: median+target+minmax+smote+variance'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: target
+  scaling:
+    method: minmax
+  imbalance_handling:
+    method: smote
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: 922c3aabcaec
+  leakage_risk: low
+  estimated_runtime_sec: 30
+  generation_mode: curated

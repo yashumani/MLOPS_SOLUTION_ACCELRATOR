@@ -1,0 +1,23 @@
+recipe_name: f985e5fc97e5
+version: '1.0'
+description: 'Pipeline Variant: constant+target+robust+none+clip'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: constant
+  encoding:
+    categorical_method: target
+  scaling:
+    method: robust
+  outlier_handling:
+    method: clip
+    lower_percentile: 0.01
+    upper_percentile: 0.99
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: f985e5fc97e5
+  leakage_risk: low
+  estimated_runtime_sec: 30
+  generation_mode: curated

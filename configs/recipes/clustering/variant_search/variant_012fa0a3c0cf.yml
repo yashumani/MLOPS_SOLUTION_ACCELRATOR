@@ -1,0 +1,20 @@
+recipe_name: 012fa0a3c0cf
+version: '1.0'
+description: 'Pipeline Variant: mode+ordinal+maxabs+mutual_info'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: maxabs
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 012fa0a3c0cf
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

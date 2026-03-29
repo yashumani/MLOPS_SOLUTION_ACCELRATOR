@@ -1,0 +1,21 @@
+recipe_name: 1fb2bff4f80a
+version: '1.0'
+description: 'Pipeline Variant: mean+onehot+yeo_johnson+variance'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: yeo_johnson
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+variant_metadata:
+  variant_id: 1fb2bff4f80a
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

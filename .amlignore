@@ -1,0 +1,24 @@
+# Azure ML ignore file - exclude from code uploads
+.git/
+.vscode/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+mlruns/
+outputs/
+catboost_info/
+job_logs/
+results/
+archive/
+docs/
+tests/*.ipynb
+*.log
+.conda/
+.DS_Store
+analysis_outputs/
+*.clean
+*.csv
+tmp_logs/
+outputs_review_feb23/
+tools/

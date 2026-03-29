@@ -1,0 +1,22 @@
+recipe_name: 2d7156726c8c
+version: '1.0'
+description: 'Pipeline Variant: iterative+ordinal+minmax+smoteenn+rfe'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: minmax
+  imbalance_handling:
+    method: smoteenn
+stage4_feature_engineering:
+  feature_selection:
+    method: rfe
+    threshold: 0.5
+variant_metadata:
+  variant_id: 2d7156726c8c
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

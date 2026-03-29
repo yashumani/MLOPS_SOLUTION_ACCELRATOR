@@ -1,0 +1,21 @@
+recipe_name: 3d106ce9b772
+version: '1.0'
+description: 'Pipeline Variant: mean+smotetomek+onehot+robust+variance'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: robust
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+variant_metadata:
+  variant_id: 3d106ce9b772
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

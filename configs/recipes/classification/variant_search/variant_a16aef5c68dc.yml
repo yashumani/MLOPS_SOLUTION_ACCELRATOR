@@ -1,0 +1,22 @@
+recipe_name: a16aef5c68dc
+version: '1.0'
+description: 'Pipeline Variant: mode+onehot+standard+adasyn+mutual_info'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: standard
+  imbalance_handling:
+    method: adasyn
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: a16aef5c68dc
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

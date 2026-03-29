@@ -1,0 +1,23 @@
+recipe_name: 7d6fe7ce4cbd
+version: '1.0'
+description: 'Pipeline Variant: median+target+standard+variance+iqr'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: target
+  scaling:
+    method: standard
+  outlier_handling:
+    method: iqr
+    multiplier: 1.5
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: 7d6fe7ce4cbd
+  leakage_risk: low
+  estimated_runtime_sec: 30
+  generation_mode: curated

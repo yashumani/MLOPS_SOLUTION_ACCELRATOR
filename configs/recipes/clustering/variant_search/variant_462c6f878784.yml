@@ -1,0 +1,20 @@
+recipe_name: 462c6f878784
+version: '1.0'
+description: 'Pipeline Variant: mode+label+none+variance'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: label
+  scaling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: 462c6f878784
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

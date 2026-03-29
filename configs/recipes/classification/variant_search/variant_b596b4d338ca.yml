@@ -1,0 +1,22 @@
+recipe_name: b596b4d338ca
+version: '1.0'
+description: 'Pipeline Variant: mean+smotetomek+onehot+standard+correlation'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: standard
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.85
+variant_metadata:
+  variant_id: b596b4d338ca
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

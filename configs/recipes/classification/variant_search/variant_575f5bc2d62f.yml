@@ -1,0 +1,21 @@
+recipe_name: 575f5bc2d62f
+version: '1.0'
+description: 'Pipeline Variant: knn+ordinal+robust+smotetomek+none'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: robust
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 575f5bc2d62f
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

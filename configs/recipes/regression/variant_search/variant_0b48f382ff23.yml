@@ -1,0 +1,20 @@
+recipe_name: 0b48f382ff23
+version: '1.0'
+description: 'Pipeline Variant: mean+onehot+standard+correlation+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: 0b48f382ff23
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

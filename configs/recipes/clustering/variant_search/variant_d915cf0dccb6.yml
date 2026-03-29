@@ -1,0 +1,19 @@
+recipe_name: d915cf0dccb6
+version: '1.0'
+description: 'Pipeline Variant: knn+ordinal+power+none'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: power
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: d915cf0dccb6
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

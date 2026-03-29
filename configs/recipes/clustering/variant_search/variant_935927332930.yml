@@ -1,0 +1,19 @@
+recipe_name: '935927332930'
+version: '1.0'
+description: 'Pipeline Variant: mode+label+standard+none'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: label
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: '935927332930'
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

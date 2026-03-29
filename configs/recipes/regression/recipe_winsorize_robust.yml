@@ -1,0 +1,28 @@
+recipe_name: winsorize_robust
+version: 1.0
+description: Winsorization + Robust scaling for regression with extreme values
+task_type: regression
+
+stage3_preprocessing:
+  imputation:
+    method: median
+    # Median is robust to outliers
+  outlier_handling:
+    method: winsorize
+    # Cap extreme values at percentiles
+    lower_percentile: 0.05
+    upper_percentile: 0.95
+  imbalance_handling:
+    method: none
+    # Not applicable to regression
+  encoding:
+    categorical_method: onehot
+    handle_unknown: ignore
+  scaling:
+    method: robust
+    # Robust scaler uses median and IQR, resistant to outliers
+
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01

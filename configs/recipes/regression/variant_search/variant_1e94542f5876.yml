@@ -1,0 +1,23 @@
+recipe_name: 1e94542f5876
+version: '1.0'
+description: 'Pipeline Variant: knn+frequency+none+mutual_info+iqr'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: frequency
+  scaling:
+    method: none
+  outlier_handling:
+    method: iqr
+    multiplier: 1.5
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 1e94542f5876
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

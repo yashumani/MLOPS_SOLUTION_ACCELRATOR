@@ -1,0 +1,17 @@
+bundle_name: "imbalance"
+description: >
+  Variants emphasising class imbalance handling (SMOTE, ADASYN, SMOTEENN).
+  Enabled when the minority class fraction is below 30% of the majority class.
+tags: ["imbalance", "smote", "classification"]
+default_enabled: false
+gating_rules:
+  - signal: "imbalance_ratio"
+    operator: "<"
+    threshold: 0.3
+    reason: "Minority/majority ratio below 0.3 — imbalance handling recommended"
+  - signal: "n_rows"
+    operator: ">="
+    threshold: 200
+    reason: "Need at least 200 rows for synthetic oversampling to be meaningful"
+variant_glob: "configs/recipes/classification/v1_generated/balanced_performance/*.yml"
+max_variants: 10

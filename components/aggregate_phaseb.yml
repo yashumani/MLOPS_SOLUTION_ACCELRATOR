@@ -1,0 +1,46 @@
+name: v3_aggregate_phaseb
+version: 5
+display_name: V3 Phase B - Aggregate
+type: command
+is_deterministic: false
+inputs:
+  config_name:
+    type: string
+  r1_pycaret_manifest:
+    type: uri_file
+  r1_pycaret_model:
+    type: uri_folder
+  r1_flaml_manifest:
+    type: uri_file
+  r1_flaml_model:
+    type: uri_folder
+  r2_pycaret_manifest:
+    type: uri_file
+  r2_pycaret_model:
+    type: uri_folder
+  r2_flaml_manifest:
+    type: uri_file
+  r2_flaml_model:
+    type: uri_folder
+outputs:
+  aggregate_report:
+    type: uri_file
+  champion_model:
+    type: uri_folder
+code: ../
+command: >-
+  python src/steps/aggregate_phaseb.py
+  --config configs/${{inputs.config_name}}
+  --r1_pycaret_manifest ${{inputs.r1_pycaret_manifest}}
+  --r1_pycaret_model ${{inputs.r1_pycaret_model}}
+  --r1_flaml_manifest ${{inputs.r1_flaml_manifest}}
+  --r1_flaml_model ${{inputs.r1_flaml_model}}
+  --r2_pycaret_manifest ${{inputs.r2_pycaret_manifest}}
+  --r2_pycaret_model ${{inputs.r2_pycaret_model}}
+  --r2_flaml_manifest ${{inputs.r2_flaml_manifest}}
+  --r2_flaml_model ${{inputs.r2_flaml_model}}
+  --report_out ${{outputs.aggregate_report}}
+  --champion_out ${{outputs.champion_model}}
+environment: azureml:mlops-v3-unified:23
+history:
+  enableMLflowTracking: true

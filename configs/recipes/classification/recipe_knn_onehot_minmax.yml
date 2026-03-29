@@ -1,0 +1,16 @@
+recipe_name: knn_onehot_minmax
+version: 1.0
+description: KNN imputation + OneHot encoding + MinMax scaling
+stage3_preprocessing:
+  imputation:
+    method: knn
+    n_neighbors: 5
+  imbalance_handling:
+    method: none
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: minmax
+stage4_feature_engineering:
+  feature_selection:
+    method: variance

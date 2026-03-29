@@ -1,0 +1,19 @@
+recipe_name: 1b9dbab7f2bc
+version: '1.0'
+description: 'Pipeline Variant: knn+label+robust+none+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: label
+  scaling:
+    method: robust
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 1b9dbab7f2bc
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

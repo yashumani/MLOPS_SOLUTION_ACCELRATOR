@@ -1,0 +1,13 @@
+bundle_name: "robust"
+description: >
+  Regression variants with robust scaling + feature selection for
+  skewed or collinear data.
+tags: ["robust", "scaling", "feature_selection"]
+default_enabled: false
+gating_rules:
+  - signal: "mean_abs_skewness"
+    operator: ">"
+    threshold: 1.0
+    reason: "Average absolute skewness > 1 — robust scaling/transforms recommended"
+variant_glob: "configs/recipes/regression/v1_generated/progressive/*.yml"
+max_variants: 8

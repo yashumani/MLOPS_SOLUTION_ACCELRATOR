@@ -1,0 +1,21 @@
+recipe_name: 18bc115b4c80
+version: '1.0'
+description: 'Pipeline Variant: mean+onehot+none+none'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: none
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 18bc115b4c80
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample
