@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+outputs/
+archive/
+deliverables/
+scripts/submission_logs/
+*.egg-info/
+.submit.lock

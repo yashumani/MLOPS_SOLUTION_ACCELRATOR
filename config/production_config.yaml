@@ -76,3 +76,14 @@ model_training:
 evaluation:
   metrics: ["accuracy", "precision", "recall", "f1", "auc"]
   threshold: 0.5
+
+# Drift monitoring settings (s13)
+drift_monitoring:
+  enabled: true
+  # PSI thresholds for feature drift classification
+  psi_green: 0.1          # Below this = no drift
+  psi_yellow: 0.25        # Below this = moderate, above = severe
+  # Concept drift: max acceptable metric drop vs previous baseline
+  concept_drift_threshold: 0.05
+  # Override cadence (optional): WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, null=auto
+  cadence_override: null

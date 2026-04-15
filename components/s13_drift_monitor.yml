@@ -1,0 +1,64 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+
+name: v3_s13_drift_monitor
+display_name: "s13 — Drift Monitor (Baseline & Cadence)"
+version: 2
+type: command
+is_deterministic: false
+
+inputs:
+  config_name:
+    type: string
+    description: Config YAML filename
+  dataset_in:
+    type: uri_file
+    description: Processed dataset CSV (from s4 feature engineering)
+  final_report:
+    type: uri_file
+    description: Final evaluation report JSON (from s10/s11)
+  registry_info:
+    type: uri_file
+    optional: true
+    description: Model registration info JSON (from s12, optional)
+  baseline_in:
+    type: uri_folder
+    optional: true
+    description: Previous run drift baseline folder (for comparison drift detection)
+
+outputs:
+  drift_report:
+    type: uri_file
+    description: Drift analysis report JSON with PSI scores, drift checks, and cadence
+  drift_baseline:
+    type: uri_folder
+    description: Baseline statistics and reference distributions (input for next run)
+
+code: ../
+
+command: >
+  python src/steps/s13_drift_monitor.py
+  --config_name ${{inputs.config_name}}
+  --dataset_in ${{inputs.dataset_in}}
+  --final_report ${{inputs.final_report}}
+  $[[--registry_info ${{inputs.registry_info}}]]
+  $[[--baseline_in ${{inputs.baseline_in}}]]
+  --drift_report ${{outputs.drift_report}}
+  --drift_baseline ${{outputs.drift_baseline}}
+
+environment: azureml:mlops-v3-unified:23
+
+resources:
+  instance_count: 1
+
+distribution:
+  type: mpi
+
+tags:
+  stage: s13
+  purpose: drift_monitoring
+  stage: s13
+  purpose: drift_monitoring
+  detector: psi
+
+history:
+  enableMLflowTracking: true

@@ -41,3 +41,11 @@ azure_ml:
   # Compute and datastore settings (to be configured based on your setup)
   datastore_name: "workspaceblobstore"  # Default datastore name
   compute_target: "mlopspipelineciDS3V2"  # Update with your actual compute target name
+
+# Drift monitoring settings (s13)
+drift_monitoring:
+  enabled: true
+  psi_green: 0.1
+  psi_yellow: 0.25
+  concept_drift_threshold: 0.05
+  cadence_override: null

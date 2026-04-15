@@ -39,4 +39,11 @@ def load_config(config_path: str) -> Dict[str, Any]:
     # Set defaults
     config.setdefault("imbalance_handling", False)
     config.setdefault("azure_ml", {})
+    config.setdefault("drift_monitoring", {
+        "enabled": True,
+        "psi_green": 0.1,
+        "psi_yellow": 0.25,
+        "concept_drift_threshold": 0.05,
+        "cadence_override": None,
+    })
     return config

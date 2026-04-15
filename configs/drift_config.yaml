@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────────────────
+# Drift Detection Configuration
+# ─────────────────────────────────────────────────────────────────────
+# Controls which statistical methods are used per drift type, when
+# thresholds trigger alerts or pipeline re-runs, and scheduling.
+
+drift_methods:
+  feature: "psi"                     # PSI (Population Stability Index) for feature distributions
+  prediction: "ks"                   # Kolmogorov–Smirnov test for prediction column
+  concept: "accuracy_threshold"      # Accuracy-drop check for concept drift
+  label: "chi_square"                # Chi-squared test for label distribution shift
+
+thresholds:
+  feature_drift: 0.15               # Mean PSI across features; > threshold = drift
+  prediction_drift: 0.10            # KS statistic on predictions; > threshold = drift
+  concept_drift_accuracy_drop: 0.05 # Absolute accuracy drop vs baseline; > threshold = drift
+  label_drift: 0.10                 # Chi-squared p-value complement; > threshold = drift
+
+schedule:
+  frequency: "daily"                 # Options: hourly, daily, weekly
+  time: "02:00"                      # UTC time for scheduled drift checks
+
+actions:
+  on_drift_detected: "trigger_full_pipeline"   # Action when any drift exceeds threshold
+  alert_channels:
+    - "email"
+    - "mlflow_dashboard"
+
+# ─── Artifact Paths ─────────────────────────────────────────────────
+artifact_paths:
+  baseline_dir: "outputs/drift_baseline"       # Where baseline reference is stored
+  reports_dir: "outputs/drift_reports"          # Where Evidently HTML reports go
+  logs_dir: "outputs/drift_logs"               # Drift event logs
+
+# ─── Column Mapping Defaults ────────────────────────────────────────
+column_mapping:
+  prediction_column: "prediction"              # Name of prediction column in monitoring data
+  target_column: null                          # Set per-dataset; overridden at runtime
+  id_column: null                              # Optional row identifier column
