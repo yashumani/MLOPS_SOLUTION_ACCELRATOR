@@ -1,0 +1,17 @@
+# Exclude large directories from Azure ML upload
+archive/
+outputs/
+deliverables/
+.git/
+__pycache__/
+*.pyc
+*.pyo
+scripts/submission_logs/
+tests/
+examples/
+docs/
+catboost_info/
+mlruns/
+*.egg-info/
+.submit.lock
+tmp_logs/
