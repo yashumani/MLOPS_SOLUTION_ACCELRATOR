@@ -138,15 +138,49 @@ def main():
         dataset_folder=Input(path=dataset_folder_uri, type="uri_folder"),
     )
 
-    # If baseline_job provided, construct Input for previous drift baseline
+    # If baseline_job provided, resolve drift_baseline output as a data asset URI
     if args.baseline_job:
-        baseline_uri = (
-            f"azureml://jobs/{args.baseline_job}/outputs/drift_baseline"
-        )
-        pipeline_kwargs["drift_baseline_in"] = Input(
-            path=baseline_uri, type="uri_folder"
-        )
-        print(f"🔗 Using baseline from job: {args.baseline_job}")
+        print(f"🔗 Resolving baseline from job: {args.baseline_job} ...")
+        try:
+            import requests
+            # Use Azure ML History API to get the registered data asset URI
+            cred = DefaultAzureCredential()
+            token = cred.get_token("https://ml.azure.com/.default").token
+            # First, determine the workspace region
+            ws_info_url = (
+                f"https://management.azure.com/subscriptions/{args.subscription_id}"
+                f"/resourceGroups/{args.resource_group}"
+                f"/providers/Microsoft.MachineLearningServices/workspaces/{args.workspace_name}"
+                f"?api-version=2023-04-01-preview"
+            )
+            mgmt_token = cred.get_token("https://management.azure.com/.default").token
+            ws_resp = requests.get(ws_info_url, headers={"Authorization": f"Bearer {mgmt_token}"})
+            ws_region = ws_resp.json().get("location", "eastus2")
+            # Query the pipeline run details for the drift_baseline output asset ID
+            history_url = (
+                f"https://{ws_region}.api.azureml.ms/history/v1.0"
+                f"/subscriptions/{args.subscription_id}"
+                f"/resourceGroups/{args.resource_group}"
+                f"/providers/Microsoft.MachineLearningServices"
+                f"/workspaces/{args.workspace_name}"
+                f"/runs/{args.baseline_job}/details"
+            )
+            resp = requests.get(history_url, headers={"Authorization": f"Bearer {token}"})
+            run_details = resp.json()
+            outputs = run_details.get("outputs", {})
+            baseline_output = outputs.get("drift_baseline", {})
+            baseline_asset_id = baseline_output.get("assetId")
+            if baseline_asset_id:
+                pipeline_kwargs["drift_baseline_in"] = Input(
+                    path=baseline_asset_id, type="uri_folder"
+                )
+                print(f"  ✅ Resolved drift_baseline asset: {baseline_asset_id}")
+            else:
+                print(f"  ⚠️ No drift_baseline output found in job {args.baseline_job}")
+                print(f"     Available outputs: {list(outputs.keys())}")
+        except Exception as e:
+            print(f"  ⚠️ Failed to resolve baseline: {e}")
+            print(f"     Pipeline will run without comparison drift")
 
     job = full_pipeline(**pipeline_kwargs)
     job.settings.default_compute = args.compute
