@@ -83,6 +83,11 @@ def main():
         default=None,
         help="Previous pipeline job name whose drift_baseline output to use for comparison drift",
     )
+    parser.add_argument(
+        "--force_rerun",
+        action="store_true",
+        help="Disable component reuse — force all steps to run fresh (no caching)",
+    )
     args = parser.parse_args()
 
     # If CLI context missing, try to read from local config YAML (when path is local)
@@ -184,6 +189,9 @@ def main():
 
     job = full_pipeline(**pipeline_kwargs)
     job.settings.default_compute = args.compute
+    if args.force_rerun:
+        job.settings.force_rerun = True
+        print("🔄 Force rerun enabled — all steps will execute fresh (no component reuse)")
     job.experiment_name = args.experiment_name
     job.display_name = args.display_name
 
