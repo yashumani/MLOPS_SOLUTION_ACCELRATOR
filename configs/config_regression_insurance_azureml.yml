@@ -1,0 +1,20 @@
+experiment_name: insurance_v3_azure
+preset: production
+task_type: regression
+
+dataset:
+  name: insurance
+  target_column: charges
+  blob_path: insurance.csv
+  datastore_name: mlops_blob
+
+azureml:
+  subscription_id: 93044a08-5661-4f1b-b424-5eafe066a9d1
+  resource_group: mvpv1
+  workspace_name: mlops-accelerator
+  compute_target: mlopsv2computecluster
+  environment_name_preprocessing: mlops-v3-preprocessing
+  environment_name_training: mlops-v3-training
+
+recipes:
+  - file: recipes/baseline_recipe.yml

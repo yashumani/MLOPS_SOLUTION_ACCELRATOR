@@ -1,0 +1,20 @@
+experiment_name: credit_default_v3_azure
+preset: production
+task_type: classification
+
+dataset:
+  name: credit_default
+  target_column: y
+  blob_path: default-of-credit-card-clients.csv
+  datastore_name: mlops_blob
+
+azureml:
+  subscription_id: 93044a08-5661-4f1b-b424-5eafe066a9d1
+  resource_group: mvpv1
+  workspace_name: mlops-accelerator
+  compute_target: mlopsv2computecluster
+  environment_name_preprocessing: mlops-v3-preprocessing
+  environment_name_training: mlops-v3-training
+
+recipes:
+  - file: recipes/baseline_recipe.yml

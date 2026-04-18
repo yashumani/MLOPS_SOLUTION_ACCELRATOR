@@ -49,15 +49,26 @@ from utils.drift_detector import (
 
 # Evidently for baseline-comparison drift detection
 try:
-    from evidently.legacy.report import Report
-    from evidently.legacy.metric_preset import DataDriftPreset
-    from evidently.legacy.metrics import (
+    # evidently 0.4.x (compatible with fsspec<=2023.10.0 / azureml-fsspec)
+    from evidently.report import Report
+    from evidently.metric_preset import DataDriftPreset
+    from evidently.metrics import (
         ColumnDriftMetric,
         DatasetDriftMetric,
     )
     HAS_EVIDENTLY = True
 except ImportError:
-    HAS_EVIDENTLY = False
+    try:
+        # evidently >=0.5 moved old API under .legacy
+        from evidently.legacy.report import Report
+        from evidently.legacy.metric_preset import DataDriftPreset
+        from evidently.legacy.metrics import (
+            ColumnDriftMetric,
+            DatasetDriftMetric,
+        )
+        HAS_EVIDENTLY = True
+    except ImportError:
+        HAS_EVIDENTLY = False
 
 # Optional: metrics logger (T11 pattern)
 try:

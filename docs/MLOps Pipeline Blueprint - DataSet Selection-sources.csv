@@ -1,0 +1,605 @@
+List of Industries from AI COnsulting Services-> Savyminds.com,,Data Sources Stats,,,,,,,,,,,,
+"Datasets for classification, CLustering, Regression",,OpenML Datasets > 1M rows-348-> Selection criteria 50=> 1/7th of subset,https://www.openml.org/search?type=data&sort=runs&status=active&qualities.NumberOfInstances=gte_1000000&order=asc,,,,,,,,,,,
+Pre-Requisites for Dataset Selection,,"UCI source 2. Datsets with 63M rows,","https://archive-beta.ics.uci.edu/datasets?order={""instanceCount"":""desc""}",,,,,,,,,,,
+"1. Minimum Rows -> 1M, Min Raw Columns More than 15-20",,,,,,,,,,,,,,
+"Find Top 50 Datasets in Open ml, uci (read1,2,4)-criteria",,,,,,,,,,,,,,
+Categorize those 50 Datasets into different industry/sector/problem type,,,,,,,,,,,,,,
+"Create a table(Rows, Industry/Sector, Problem Type)",,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,Azure Jobs,,Industry,Classification,Regression,Clustering,,,,,,
+,,,Azure Jobs,,Finance,https://ml.azure.com/experiments/id/0130d718-7da4-459a-b2b9-804bb567841c/runs/witty_kettle_lw8ydhwwm3?wsid=/subscriptions/93044a08-5661-4f1b-b424-5eafe066a9d1/resourceGroups/mvpv1/providers/Microsoft.MachineLearningServices/workspaces/mlops-accelerator&tid=3bc05bc3-19d1-4d30-89c5-134f4b278b11,,,,,,,,
+,,,Azure Jobs,,Retail,,,,,,,,,
+,,,Azure Jobs,,Transport,,,,,,,,,
+,,,Azure Jobs,,Healthcare,,,,,,,,,
+,,,Azure Jobs,,Telecom,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,Industry,Classification,Regression,Clustering,,,,,,
+,,,,,,,,,,,,,,
+,,,KAGGLE,,Finance,PaySim – Fraud Detection,Huge Stock Market Dataset,Home Credit Default Risk,,,,,,
+,,,KAGGLE,,Retail,Online Retail II (UCI/Kaggle),Instacart Market Basket Analysis,Online Retail II (Customer Segmentation),,,,,,
+,,,KAGGLE,,Transport,NYC Taxi Trip Data – Kaggle subset,NYC Taxi Trip Data – Fare/Duration,NYC Taxi Trip Data – Route/Time Clusters,,,,,,
+,,,KAGGLE,,Healthcare,Hospital Length of Stay (Microsoft),Medical Cost Personal Dataset,Hospital Inpatient Discharges – SPARCS 2015,,,,,,
+,,,KAGGLE,,Telecom,Telecom Churn Dataset (India),Telco Customer Churn (IBM) – charges as target,Telecom Customer (100k × 100),,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,Industry,Classification (link),Regression (link),Clustering (link),,,,,,
+,,,OPENML,,Finance & Banking,CreditCardFraudDetection – credit card transaction fraud (≈284k rows). (OpenML),Workers Compensation – claim costs – predict UltimateIncurredClaimCost (insurance / finance). (Actuarial Data Science),default-of-credit-card-clients – cluster customers by credit behavior. (Proceedings of NeurIPS),,,,,,
+,,,OPENML,,Marketing & Retail,bank-marketing – term-deposit subscription (direct marketing). (OpenML),"house_sales – house price prediction (real-estate commerce, 21k+ rows). (Hugging Face)",Online-Retail-II-UCI – 1M+ online transactions; use for customer / basket clustering. (OpenML),,,,,,
+,,,OPENML,,Transport & Mobility,Airlines_DepDelay_1M – 1M flight records; classify “delayed vs on-time”. (OpenML),nyc-taxi-green-dec-2016 – NYC taxi trips; regress on fare or trip time (≈581k rows). (OpenML),Airline Ticket Price (atp1d) – cluster routes/tickets by price bands. (OpenML),,,,,,
+,,,OPENML,,Healthcare,Diabetes130US – 100k diabetic hospital encounters; classify readmitted (Yes/No). (Invene),medical_charges – Medicare inpatient charges; regression on total payment (163k rows). (OpenML),chronic-kidney-disease – cluster patients by labs/clinical features. (OpenML),,,,,,
+,,,OPENML,,Telecom & Customer Analytics,"telco-customer-churn – IBM telco churn, 7,043 customers; binary classification. (OpenML)",KDDCup09_churn – large telco churn dataset; you can treat churn probability / usage as regression target. (OpenML),churn-uplift-mlg – telecom marketing uplift / churn; good for unsupervised customer segmentation. (OpenML),,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,Classification,Regression,Clustering,"Write a short description in bulletize format on how to use the dataset in machine learning  ops pipeline , task type Classification. Output: Bulletized and bolded appropriately, and share what is the target column name in bold","Write a short description in bulletize format on how to use the dataset in machine learning  ops pipeline  , task type Regression Output: Bulletized and bolded appropriately, and share what is the target column name in bold","Write a short description in bulletize format on how to use the dataset in machine learning  ops pipeline , task type Clustering Output: Bulletized and bolded appropriately, and share what is the target column name in bold",Extract  dataset name and target column,,
+,,,OPENML,,Finance & Banking,"{""data_set_description"":{""id"":""42175"",""name"":""CreditCardFraudDetection"",""version"":""1"",""description"":""Context\nIt is important that credit card companies are able to recognize fraudulent credit card transactions so that customers are not charged for items that they did not purchase.\n\nContent\nThe datasets contains transactions made by credit cards in September 2013 by european cardholders. This dataset presents transactions that occurred in two days, where we have 492 frauds out of 284,807 transactions. The dataset is highly unbalanced, the positive class (frauds) account for 0.172% of all transactions.\n\nIt contains only numerical input variables which are the result of a PCA transformation. Unfortunately, due to confidentiality issues, we cannot provide the original features and more background information about the data. Features V1, V2, ... V28 are the principal components obtained with PCA, the only features which have not been transformed with PCA are 'Time' and 'Amount'. Feature 'Time' contains the seconds elapsed between each transaction and the first transaction in the dataset. The feature 'Amount' is the transaction Amount, this feature can be used for example-dependant cost-senstive learning. Feature 'Class' is the response variable and it takes value 1 in case of fraud and 0 otherwise.\n\nInspiration\nIdentify fraudulent credit card transactions.\n\nGiven the class imbalance ratio, we recommend measuring the accuracy using the Area Under the Precision-Recall Curve (AUPRC). Confusion matrix accuracy is not meaningful for unbalanced classification.\n\nAcknowledgements\nThe dataset has been collected and analysed during a research collaboration of Worldline and the Machine Learning Group (http:\/\/mlg.ulb.ac.be) of ULB (Universite Libre de Bruxelles) on big data mining and fraud detection. More details on current and past projects on related topics are available on https:\/\/www.researchgate.net\/project\/Fraud-detection-5 and the page of the DefeatFraud project\n\nPlease cite the following works:\n\nAndrea Dal Pozzolo, Olivier Caelen, Reid A. Johnson and Gianluca Bontempi. Calibrating Probability with Undersampling for Unbalanced Classification. In Symposium on Computational Intelligence and Data Mining (CIDM), IEEE, 2015\n\nDal Pozzolo, Andrea; Caelen, Olivier; Le Borgne, Yann-Ael; Waterschoot, Serge; Bontempi, Gianluca. Learned lessons in credit card fraud detection from a practitioner perspective, Expert systems with applications,41,10,4915-4928,2014, Pergamon\n\nDal Pozzolo, Andrea; Boracchi, Giacomo; Caelen, Olivier; Alippi, Cesare; Bontempi, Gianluca. Credit card fraud detection: a realistic modeling and a novel learning strategy, IEEE transactions on neural networks and learning systems,29,8,3784-3797,2018,IEEE\n\nDal Pozzolo, Andrea Adaptive Machine learning for credit card fraud detection ULB MLG PhD thesis (supervised by G. Bontempi)\n\nCarcillo, Fabrizio; Dal Pozzolo, Andrea; Le Borgne, Yann-Ael; Caelen, Olivier; Mazzer, Yannis; Bontempi, Gianluca. Scarff: a scalable framework for streaming credit card fraud detection with Spark, Information fusion,41, 182-194,2018,Elsevier\n\nCarcillo, Fabrizio; Le Borgne, Yann-Ael; Caelen, Olivier; Bontempi, Gianluca. Streaming active learning strategies for real-life credit card fraud detection: assessment and visualization, International Journal of Data Science and Analytics, 5,4,285-300,2018,Springer International Publishing\n\nBertrand Lebichot, Yann-Ael Le Borgne, Liyun He, Frederic Oble, Gianluca Bontempi Deep-Learning Domain Adaptation Techniques for Credit Cards Fraud Detection, INNSBDDL 2019: Recent Advances in Big Data and Deep Learning, pp 78-88, 2019\n\nFabrizio Carcillo, Yann-Ael Le Borgne, Olivier Caelen, Frederic Oble, Gianluca Bontempi Combining Unsupervised and Supervised Learning in Credit Card Fraud Detection Information Sciences, 2019.\n\nbye"",""description_version"":""7"",""format"":""arff"",""creator"":""jhonatan"",""contributor"":""Andreas Mueller"",""upload_date"":""2019-10-14T16:39:17"",""language"":""English"",""licence"":""Public"",""url"":""https:\/\/api.openml.org\/data\/v1\/download\/21756045\/CreditCardFraudDetection.arff"",""parquet_url"":""https:\/\/data.openml.org\/datasets\/0004\/42175\/dataset_42175.pq"",""file_id"":""21756045"",""default_target_attribute"":""Class"",""citation"":""Andrea Dal Pozzolo, Olivier Caelen, Reid A. Johnson and Gianluca Bontempi. Calibrating Probability with Undersampling for Unbalanced Classification. In Symposium on Computational Intelligence and Data Mining (CIDM), IEEE, 2015"",""visibility"":""public"",""minio_url"":""https:\/\/data.openml.org\/datasets\/0004\/42175\/dataset_42175.pq"",""status"":""active"",""processing_date"":""2019-10-14 16:42:30"",""md5_checksum"":""f9af8fd7966f2d2b8a3e5e67158a7757""}}
+{
+    ""data_set_description"": {
+        ""id"": ""42175"",
+        ""name"": ""CreditCardFraudDetection"",
+        ""version"": ""1"",
+        ""description"": ""Context\nIt is important that credit card companies are able to recognize fraudulent credit card transactions so that customers are not charged for items that they did not purchase.\n\nContent\nThe datasets contains transactions made by credit cards in September 2013 by european cardholders. This dataset presents transactions that occurred in two days, where we have 492 frauds out of 284,807 transactions. The dataset is highly unbalanced, the positive class (frauds) account for 0.172% of all transactions.\n\nIt contains only numerical input variables which are the result of a PCA transformation. Unfortunately, due to confidentiality issues, we cannot provide the original features and more background information about the data. Features V1, V2, ... V28 are the principal components obtained with PCA, the only features which have not been transformed with PCA are 'Time' and 'Amount'. Feature 'Time' contains the seconds elapsed between each transaction and the first transaction in the dataset. The feature 'Amount' is the transaction Amount, this feature can be used for example-dependant cost-senstive learning. Feature 'Class' is the response variable and it takes value 1 in case of fraud and 0 otherwise.\n\nInspiration\nIdentify fraudulent credit card transactions.\n\nGiven the class imbalance ratio, we recommend measuring the accuracy using the Area Under the Precision-Recall Curve (AUPRC). Confusion matrix accuracy is not meaningful for unbalanced classification.\n\nAcknowledgements\nThe dataset has been collected and analysed during a research collaboration of Worldline and the Machine Learning Group (http://mlg.ulb.ac.be) of ULB (Universite Libre de Bruxelles) on big data mining and fraud detection. More details on current and past projects on related topics are available on https://www.researchgate.net/project/Fraud-detection-5 and the page of the DefeatFraud project\n\nPlease cite the following works:\n\nAndrea Dal Pozzolo, Olivier Caelen, Reid A. Johnson and Gianluca Bontempi. Calibrating Probability with Undersampling for Unbalanced Classification. In Symposium on Computational Intelligence and Data Mining (CIDM), IEEE, 2015\n\nDal Pozzolo, Andrea; Caelen, Olivier; Le Borgne, Yann-Ael; Waterschoot, Serge; Bontempi, Gianluca. Learned lessons in credit card fraud detection from a practitioner perspective, Expert systems with applications,41,10,4915-4928,2014, Pergamon\n\nDal Pozzolo, Andrea; Boracchi, Giacomo; Caelen, Olivier; Alippi, Cesare; Bontempi, Gianluca. Credit card fraud detection: a realistic modeling and a novel learning strategy, IEEE transactions on neural networks and learning systems,29,8,3784-3797,2018,IEEE\n\nDal Pozzolo, Andrea Adaptive Machine learning for credit card fraud detection ULB MLG PhD thesis (supervised by G. Bontempi)\n\nCarcillo, Fabrizio; Dal Pozzolo, Andrea; Le Borgne, Yann-Ael; Caelen, Olivier; Mazzer, Yannis; Bontempi, Gianluca. Scarff: a scalable framework for streaming credit card fraud detection with Spark, Information fusion,41, 182-194,2018,Elsevier\n\nCarcillo, Fabrizio; Le Borgne, Yann-Ael; Caelen, Olivier; Bontempi, Gianluca. Streaming active learning strategies for real-life credit card fraud detection: assessment and visualization, International Journal of Data Science and Analytics, 5,4,285-300,2018,Springer International Publishing\n\nBertrand Lebichot, Yann-Ael Le Borgne, Liyun He, Frederic Oble, Gianluca Bontempi Deep-Learning Domain Adaptation Techniques for Credit Cards Fraud Detection, INNSBDDL 2019: Recent Advances in Big Data and Deep Learning, pp 78-88, 2019\n\nFabrizio Carcillo, Yann-Ael Le Borgne, Olivier Caelen, Frederic Oble, Gianluca Bontempi Combining Unsupervised and Supervised Learning in Credit Card Fraud Detection Information Sciences, 2019.\n\nbye"",
+        ""description_version"": ""7"",
+        ""format"": ""arff"",
+        ""creator"": ""jhonatan"",
+        ""contributor"": ""Andreas Mueller"",
+        ""upload_date"": ""2019-10-14T16:39:17"",
+        ""language"": ""English"",
+        ""licence"": ""Public"",
+        ""url"": ""https://api.openml.org/data/v1/download/21756045/CreditCardFraudDetection.arff"",
+        ""parquet_url"": ""https://data.openml.org/datasets/0004/42175/dataset_42175.pq"",
+        ""file_id"": ""21756045"",
+        ""default_target_attribute"": ""Class"",
+        ""citation"": ""Andrea Dal Pozzolo, Olivier Caelen, Reid A. Johnson and Gianluca Bontempi. Calibrating Probability with Undersampling for Unbalanced Classification. In Symposium on Computational Intelligence and Data Mining (CIDM), IEEE, 2015"",
+        ""visibility"": ""public"",
+        ""minio_url"": ""https://data.openml.org/datasets/0004/42175/dataset_42175.pq"",
+        ""status"": ""active"",
+        ""processing_date"": ""2019-10-14 16:42:30"",
+        ""md5_checksum"": ""f9af8fd7966f2d2b8a3e5e67158a7757""
+    }
+}","{
+  ""data_set_description"": {
+    ""id"": ""42876"",
+    ""name"": ""WorkersCompensation"",
+    ""version"": ""1"",
+    ""description"": ""This dataset describes 100,000 realistic, synthetically generated worker compensation insurance claims. Along the ultimate financial losses, each claim is described by the initial case estimate, date of accident and reporting date, a text describing the accident and demographic info on the worker.\n\nThe dataset was kindly created and provided by Colin Priest. While similar, it is not identical to the dataset used in www.kaggle.com/c/actuarial-loss-estimation."",
+    ""description_version"": ""1"",
+    ""format"": ""ARFF"",
+    ""creator"": ""Colin Priest"",
+    ""contributor"": ""Colin Priest"",
+    ""upload_date"": ""2021-05-11T13:39:47"",
+    ""licence"": ""CC0"",
+    ""url"": ""https://api.openml.org/data/v1/download/22045494/WorkersCompensation.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/42876/dataset_42876.pq"",
+    ""file_id"": ""22045494"",
+    ""default_target_attribute"": ""UltimateIncurredClaimCost"",
+    ""row_id_attribute"": ""ClaimNumber"",
+    ""visibility"": ""public"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/42876/dataset_42876.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2021-05-11 13:40:05"",
+    ""md5_checksum"": ""96c58ad3dd50c2c72d96961d6728b017""
+  }
+}","{
+  ""data_set_description"": {
+    ""id"": ""42477"",
+    ""name"": ""default-of-credit-card-clients"",
+    ""version"": ""1"",
+    ""description"": ""**Author**: Yeh, I. C., & Lien, C. H\n**Source**: [original](https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients#) - 2016-01-26  \n**Please cite**: Yeh, I. C., & Lien, C. H. (2009). The comparisons of data mining techniques for the predictive accuracy of probability of default of credit card clients. Expert Systems with Applications, 36(2), 2473-2480.\n\n   \n\nData Set Information:\n\nThis research aimed at the case of customersâ€™ default payments in Taiwan and compares the predictive accuracy of probability of default among six data mining methods. From the perspective of risk management, the result of predictive accuracy of the estimated probability of default will be more valuable than the binary result of classification - credible or not credible clients. Because the real probability of default is unknown, this study presented the novel Sorting Smoothing Method to estimate the real probability of default. With the real probability of default as the response variable (Y), and the predictive probability of default as the independent variable (X), the simple linear regression result (Y ' A + BX) shows that the forecasting model produced by artificial neural network has the highest coefficient of determination; its regression intercept (A) is close to zero, and regression coefficient (B) to one. Therefore, among the six data mining techniques, artificial neural network is the only one that can accurately estimate the real probability of default.\n\n\n## Attribute Information:\n\nThis research employed a binary variable, default payment (Yes ' 1, No ' 0), as the response variable. This study reviewed the literature and used the following 23 variables as explanatory variables:\nX1: Amount of the given credit (NT dollar): it includes both the individual consumer credit and his/her family (supplementary) credit.\nX2: Gender (1 ' male; 2 ' female).\nX3: Education (1 ' graduate school; 2 ' university; 3 ' high school; 4 ' others).\nX4: Marital status (1 ' married; 2 ' single; 3 ' others).\nX5: Age (year).\nX6 - X11: History of past payment. We tracked the past monthly payment records (from April to September, 2005) as follows: X6 ' the repayment status in September, 2005; X7 ' the repayment status in August, 2005; . . .;X11 ' the repayment status in April, 2005. The measurement scale for the repayment status is: -1 ' pay duly; 1 ' payment delay for one month; 2 ' payment delay for two months; . . .; 8 ' payment delay for eight months; 9 ' payment delay for nine months and above.\nX12-X17: Amount of bill statement (NT dollar). X12 ' amount of bill statement in September, 2005; X13 ' amount of bill statement in August, 2005; . . .; X17 ' amount of bill statement in April, 2005.\nX18-X23: Amount of previous payment (NT dollar). X18 ' amount paid in September, 2005; X19 ' amount paid in August, 2005; . . .;X23 ' amount paid in April, 2005.\n\n\n## Relevant Papers:\n\nYeh, I. C., & Lien, C. H. (2009). The comparisons of data mining techniques for the predictive accuracy of probability of default of credit card clients. Expert Systems with Applications, 36(2), 2473-2480."",
+    ""description_version"": ""1"",
+    ""format"": ""ARFF"",
+    ""collection_date"": ""2016-01-26"",
+    ""upload_date"": ""2020-06-11T01:28:28"",
+    ""licence"": ""CC0"",
+    ""url"": ""https://api.openml.org/data/v1/download/21854402/default-of-credit-card-clients.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/42477/dataset_42477.pq"",
+    ""file_id"": ""21854402"",
+    ""default_target_attribute"": ""y"",
+    ""row_id_attribute"": ""id"",
+    ""visibility"": ""public"",
+    ""original_data_url"": ""https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients#"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/42477/dataset_42477.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2020-06-11 01:31:18"",
+    ""md5_checksum"": ""4efbcc48d388c8cff428950006198b4e""
+  }
+}","* **Data Acquisition and Preparation:** The **CreditCardFraudDetection** dataset contains 284,807 transactions, with **Time** and **Amount** as original features, and **V1** through **V28** as PCA-transformed numerical features. It must be prepared for the classification task.
+  * **Classification Task:** The goal is to identify fraudulent credit card transactions. This is a classification problem where the positive class (fraud) is highly unbalanced (0.172% of transactions).
+  * **Model Training and Evaluation:** Due to the severe class imbalance, accuracy should be measured using the Area Under the Precision-Recall Curve (AUPRC), as confusion matrix accuracy is not meaningful.
+  * **Target Column:** The response variable for classification is **Class**.","* **Data Gathering:** The **WorkersCompensation** dataset, which contains 100,000 synthetic workers' compensation claims, would be gathered as the input data source.
+  * **Data Preprocessing:** Clean and prepare the data, including handling missing values, standardizing numerical features, and converting relevant text descriptions (accident description) and demographic info into machine-readable formats.
+  * **Model Training (Regression):** Use the processed data to train a regression model to predict the financial loss. The model's objective is to estimate continuous numerical values.
+  * **Model Evaluation and Validation:** Evaluate the trained model's performance using appropriate regression metrics (e.g., Mean Squared Error) and validate that the new model performs satisfactorily before deployment.
+  * **Model Deployment:** Deploy the validated model to make predictions on new, unseen compensation claims.
+  * **Monitoring and Maintenance:** Continuously monitor the model's performance in production and retrain the model on new data based on a schedule or trigger to maintain accuracy.
+  * The target column name for this regression task is **UltimateIncurredClaimCost**.","* **Data Ingestion**: Load the ""default-of-credit-card-clients"" dataset into the pipeline.
+  * **Preprocessing and Feature Selection**: Clean the data (handle missing values, normalize/standardize numerical features like X1, X5, X12-X23), and select relevant explanatory variables (X1 through X23). The response variable (default payment) is often excluded or used only for post-clustering analysis/validation in pure clustering tasks.
+  * **Model Training (Clustering)**: Apply a clustering algorithm (e.g., K-Means, DBSCAN) to the processed explanatory variables (X1-X23) to group credit card clients based on similarity of their attributes (credit amount, demographics, payment history, bill amounts, previous payments).
+  * **Evaluation**: Assess the quality of the clusters using internal metrics (e.g., Silhouette score) and external metrics if the true labels (**y**) are used for validation (e.g., Adjusted Rand Index).
+  * **Deployment and Monitoring**: Deploy the trained clustering model to categorize new clients. Monitor cluster characteristics over time to detect concept drift.The default target column name is **y**.","Dataset Name: CreditCardFraudDetection
+Target Column: Class","Dataset Name: WorkersCompensation
+Target Column: UltimateIncurredClaimCost","Dataset Name: default-of-credit-card-clients
+Target Column: y"
+,,,OPENML,,Marketing & Retail,"{
+  ""data_set_description"": {
+    ""id"": ""1461"",
+    ""name"": ""bank-marketing"",
+    ""version"": ""1"",
+    ""description"": ""Author: Paulo Cortez, Sérgio Moro\nSource: UCI (https://archive.ics.uci.edu/ml/datasets/bank+marketing)\nPlease cite: S. Moro, R. Laureano and P. Cortez. Using Data Mining for Bank Direct Marketing: An Application of the CRISP-DM Methodology. In P. Novais et al. (Eds.), Proceedings of the European Simulation and Modelling Conference - ESM'2011, pp. 117-121, Guimarães, Portugal, October, 2011. EUROSIS.\n\nBank Marketing\nThe data is related to direct marketing campaigns of a Portuguese banking institution. The marketing campaigns were based on phone calls. Often, more than one contact to the same client was required to assess if the product (bank term deposit) would be (or not) subscribed.\n\nThe classification goal is to predict if the client will subscribe to a term deposit (variable y).\n\nAttribute information:\nInput variables:\n- Bank client data:\n  1. age (numeric)\n  2. job: type of job (categorical: \""admin.\"", \""unknown\"", \""unemployed\"", \""management\"", \""housemaid\"", \""entrepreneur\"", \""student\"", \""blue-collar\"", \""self-employed\"", \""retired\"", \""technician\"", \""services\"")\n  3. marital: marital status (categorical: \""married\"", \""divorced\"", \""single\""; note: \""divorced\"" means divorced or widowed)\n  4. education (categorical: \""unknown\"", \""secondary\"", \""primary\"", \""tertiary\"")\n  5. default: has credit in default? (binary: \""yes\"", \""no\"")\n  6. balance: average yearly balance, in euros (numeric)\n  7. housing: has housing loan? (binary: \""yes\"", \""no\"")\n  8. loan: has personal loan? (binary: \""yes\"", \""no\"")\n\n- Related with the last contact of the current campaign:\n  9. contact: contact communication type (categorical: \""unknown\"", \""telephone\"", \""cellular\"")\n  10. day: last contact day of the month (numeric)\n  11. month: last contact month of year (categorical: \""jan\"", \""feb\"", \""mar\"", ..., \""nov\"", \""dec\"")\n  12. duration: last contact duration, in seconds (numeric)\n\n- Other attributes:\n  13. campaign: number of contacts performed during this campaign and for this client (numeric, includes last contact)\n  14. pdays: number of days that passed by after the client was last contacted from a previous campaign (numeric, -1 means client was not previously contacted)\n  15. previous: number of contacts performed before this campaign and for this client (numeric)\n  16. poutcome: outcome of the previous marketing campaign (categorical: \""unknown\"", \""other\"", \""failure\"", \""success\"")\n\n- Output variable (desired target):\n  17. y: has the client subscribed to a term deposit? (binary: \""yes\"", \""no\"")"",
+    ""description_version"": ""1"",
+    ""format"": ""ARFF"",
+    ""upload_date"": ""2015-05-21T22:16:49"",
+    ""licence"": ""Public"",
+    ""url"": ""https://api.openml.org/data/v1/download/1586218/bank-marketing.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0000/1461/dataset_1461.pq"",
+    ""file_id"": ""1586218"",
+    ""default_target_attribute"": ""Class"",
+    ""tag"": [
+      ""Banking"",
+      ""Data Analysis"",
+      ""Finance"",
+      ""Kaggle"",
+      ""OpenML-CC18"",
+      ""OpenML100"",
+      ""study_123"",
+      ""study_135"",
+      ""study_14"",
+      ""study_218"",
+      ""study_241"",
+      ""study_50"",
+      ""study_99""
+    ],
+    ""visibility"": ""public"",
+    ""original_data_url"": ""https://archive.ics.uci.edu/ml/datasets/bank+marketing"",
+    ""minio_url"": ""https://data.openml.org/datasets/0000/1461/dataset_1461.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2018-10-03 21:41:18"",
+    ""md5_checksum"": ""b29d2eb78e508569fd41172c97bda00e""
+  }
+}","{
+  ""data_set_description"": {
+    ""id"": ""42731"",
+    ""name"": ""house_sales"",
+    ""version"": ""3"",
+    ""description"": ""Date converted to year/mo/day numerics.This dataset contains house sale prices for King County, which includes Seattle. It includes homes sold between May 2014 and May 2015.\n\nIt contains 19 house features plus the price and the id columns, along with 21613 observations.\nIt's a great dataset for evaluating simple regression models."",
+    ""description_version"": ""1"",
+    ""format"": ""arff"",
+    ""creator"": ""https://www.kaggle.com/harlfoxem/"",
+    ""contributor"": ""https://www.kaggle.com/harlfoxem/"",
+    ""collection_date"": ""2016-08-25"",
+    ""upload_date"": ""2020-11-18T08:51:57"",
+    ""language"": ""English"",
+    ""licence"": ""CC0 Public Domain"",
+    ""url"": ""https://api.openml.org/data/v1/download/22044765/house_sales.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/42731/dataset_42731.pq"",
+    ""file_id"": ""22044765"",
+    ""default_target_attribute"": ""price"",
+    ""row_id_attribute"": ""id"",
+    ""visibility"": ""public"",
+    ""original_data_url"": ""https://www.kaggle.com/harlfoxem/housesalesprediction"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/42731/dataset_42731.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2020-11-18 08:52:04"",
+    ""md5_checksum"": ""ea7b46e10234119ae2ac9a262c320420""
+  }
+}","{
+  ""data_set_description"": {
+    ""id"": ""43368"",
+    ""name"": ""Online-Retail-II-UCI"",
+    ""version"": ""1"",
+    ""description"": ""Context\nThis Online Retail II data set contains all the transactions occurring for a UK-based and registered, non-store online retail between 01/12/2009 and 09/12/2011.The company mainly sells unique all-occasion gift-ware. Many customers of the company are wholesalers.\nContent\nAttribute Information:\nInvoiceNo: Invoice number. Nominal. A 6-digit integral number uniquely assigned to each transaction. If this code starts with the letter 'c', it indicates a cancellation.\nStockCode: Product (item) code. Nominal. A 5-digit integral number uniquely assigned to each distinct product.\nDescription: Product (item) name. Nominal.\nQuantity: The quantities of each product (item) per transaction. Numeric.\nInvoiceDate: Invice date and time. Numeric. The day and time when a transaction was generated.\nUnitPrice: Unit price. Numeric. Product price per unit in sterling ().\nCustomerID: Customer number. Nominal. A 5-digit integral number uniquely assigned to each customer.\nCountry: Country name. Nominal. The name of the country where a customer resides.\nAcknowledgements\nChen, D. Sain, S.L., and Guo, K. (2012), Data mining for the online retail industry: A case study of RFM model-based customer segmentation using data mining, Journal of Database Marketing and Customer Strategy Management, Vol. 19, No. 3, pp. 197-208. doi: [Web Link].\nChen, D., Guo, K. and Ubakanma, G. (2015), Predicting customer profitability over time based on RFM time series, International Journal of Business Forecasting and Marketing Intelligence, Vol. 2, No. 1, pp.1-18. doi: [Web Link].\nChen, D., Guo, K., and Li, Bo (2019), Predicting Customer Profitability Dynamically over Time: An Experimental Comparative Study, 24th Iberoamerican Congress on Pattern Recognition (CIARP 2019), Havana, Cuba, 28-31 Oct, 2019.\nLaha Ale, Ning Zhang, Huici Wu, Dajiang Chen, and Tao Han, Online Proactive Caching in Mobile Edge Computing Using Bidirectional Deep Recurrent Neural Network, IEEE Internet of Things Journal, Vol. 6, Issue 3, pp. 5520-5530, 2019.\nRina Singh, Jeffrey A. Graves, Douglas A. Talbert, William Eberle, Prefix and Suffix Sequential Pattern Mining, Industrial Conference on Data Mining 2018: Advances in Data Mining. Applications and Theoretical Aspects, pp. 309-324. 2018."",
+    ""description_version"": ""1"",
+    ""format"": ""arff"",
+    ""collection_date"": ""02-12-2019"",
+    ""upload_date"": ""2022-03-23T12:42:41"",
+    ""language"": ""English"",
+    ""licence"": ""CC0: Public Domain"",
+    ""url"": ""https://api.openml.org/data/v1/download/22102193/Online-Retail-II-UCI.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/43368/dataset_43368.pq"",
+    ""file_id"": ""22102193"",
+    ""version_label"": ""v1.0"",
+    ""visibility"": ""public"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/43368/dataset_43368.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2022-03-23 12:44:22"",
+    ""md5_checksum"": ""6462c7b9563f97edcf50a7d728e9eefa""
+  }
+}","* **Data Acquisition:** The ""bank-marketing"" dataset is obtained from a source like UCI or OpenML, related to direct marketing campaigns of a Portuguese banking institution.
+  * **Data Preparation:** Clean, preprocess, and feature engineer the input variables (age, job, marital, education, balance, housing, loan, contact, day, month, duration, campaign, pdays, previous, poutcome) for the classification task. This includes handling categorical variables, scaling numeric features, and addressing missing values if any.
+  * **Model Training:** Train a classification model (e.g., Logistic Regression, Decision Tree, or an ensemble method) using the prepared input features to predict the outcome variable.
+  * **Model Evaluation:** Evaluate the model performance using appropriate classification metrics (e.g., accuracy, precision, recall, F1-score, AUC) on a validation or test set.
+  * **Model Deployment:** Once the model meets performance criteria, deploy it to a production environment (ML Ops) to make real-time predictions on whether a client will subscribe to a term deposit.
+  * **Monitoring and Maintenance:** Continuously monitor the model's performance in production for data drift or decay and retrain/update the model as necessary.The target column name is **y**.","* **Data Ingestion and Preparation**: The **house\_sales** dataset, containing 19 house features and 21613 observations, is collected. Data cleaning and feature engineering are performed to prepare it for the model.
+  * **Model Training and Testing**: Since the task type is **Regression**, a suitable regression model (e.g., Linear Regression) is trained to predict a continuous outcome.
+  * **Continuous Integration/Continuous Delivery (CI/CD)**: The pipeline ensures continuous validation and testing of the model and data, and automatically deploys the newly trained model for use.
+  * **Monitoring and Iteration**: The model's performance (predicting house prices) is monitored in production, and if performance degrades, continuous training is triggered for redeployment.The target column name is **price**.","**MLOps Pipeline for Clustering (Customer Segmentation using Online-Retail-II-UCI):**  * **Data Ingestion & Preparation:**
+      * Ingest the raw transaction data (InvoiceNo, StockCode, Quantity, UnitPrice, CustomerID, Country).
+      * Handle missing values (e.g., missing CustomerIDs).
+      * Clean data (e.g., remove cancelled transactions indicated by 'c' in InvoiceNo, handle zero or negative quantities/prices).
+      * **Feature Engineering (RFM):** Calculate Recency (days since last purchase), Frequency (total number of purchases), and Monetary (total spend) for each customer. This transforms transactional data into a customer-centric feature set.
+  * **Model Training:**
+      * Apply scaling (e.g., Standard or MinMax) to the RFM features.
+      * Train a clustering model (e.g., K-Means, DBSCAN, Hierarchical Clustering) on the processed RFM features.
+      * Determine the optimal number of clusters (K) using methods like the elbow method or silhouette score.
+  * **Model Validation & Evaluation:**
+      * Evaluate the clusters using internal metrics (e.g., silhouette score) and domain knowledge (e.g., analyzing the characteristics of each resulting customer segment).
+      * Confirm the segments are meaningful for business strategy.
+  * **Model Deployment & Monitoring:**
+      * Deploy the trained clustering model to predict customer segments for new data in a production environment.
+      * Monitor segment distribution drift over time, as customer behavior changes, triggering retraining if necessary.Clustering is an unsupervised task and does not require a traditional target column. However, the goal is often to segment customers based on calculated features (like RFM). Therefore, there is **no specific target column name** for clustering.","Dataset Name: bank-marketing
+Target Column: y: has the client subscribed to a term deposit? (binary: ""yes"", ""no"")","Dataset Name: house_sales
+Target Column: price","Dataset Name: Online-Retail-II-UCI
+
+Target Column: No explicit target column is named. The dataset attributes are:
+InvoiceNo
+StockCode
+Description
+Quantity
+InvoiceDate
+UnitPrice
+CustomerID
+Country"
+,,,OPENML,,Transport & Mobility,"{
+  ""data_set_description"": {
+    ""id"": ""42721"",
+    ""name"": ""Airlines Departure Delay 1M"",
+    ""version"": ""1"",
+    ""description"": ""Author: Bureau of Transportation Statistics, Airline Service Quality Performance. Source: original - 2013. Please cite: Airlines Departure Delay Prediction (Regression). Original data can be found at: http://www.transtats.bts.gov. This is a processed version of the original data, designed to predict departure delay (in seconds). A CSV of the raw data (years 1987-2013) can be found here: https://h2o-airlines-unpacked.s3.amazonaws.com/allyears.1987.2013.csv. This is the first 1 million rows (and a subset of the columns) of this CSV file, in ARFF format."",
+    ""description_version"": ""1"",
+    ""format"": ""ARFF"",
+    ""collection_date"": ""2013"",
+    ""upload_date"": ""2020-11-14T02:59:33"",
+    ""licence"": ""CC0"",
+    ""url"": ""https://api.openml.org/data/v1/download/22044748/Airlines_DepDelay_1M.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/42721/dataset_42721.pq"",
+    ""file_id"": ""22044748"",
+    ""default_target_attribute"": ""DepDelay"",
+    ""visibility"": ""public"",
+    ""original_data_url"": ""http://www.transtats.bts.gov"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/42721/dataset_42721.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2020-11-14 03:00:09"",
+    ""md5_checksum"": ""353192b3e67086d8b43e646992d008d3""
+  }
+}","{
+  ""data_set_description"": {
+    ""id"": ""42729"",
+    ""name"": ""nyc-taxi-green-dec-2016"",
+    ""version"": ""3"",
+    ""description"": ""String datetime information extracted to numeric columns.Trip Record Data provided by the New York City Taxi and Limousine Commission (TLC) [http://www.nyc.gov/html/tlc/html/about/trip_record_data.shtml]. The dataset includes TLC trips of the green line in December 2016. Data was downloaded on 03.11.2018. For a description of all variables in the dataset checkout the TLC homepage [http://www.nyc.gov/html/tlc/downloads/pdf/data_dictionary_trip_records_green.pdf]. The variable 'tip_amount' was chosen as target variable. The variable 'total_amount' is ignored by default, otherwise the target could be predicted deterministically. The date variables 'lpep_pickup_datetime' and 'lpep_dropoff_datetime' (ignored by default) could be used to compute additional time features. In this version, we chose only trips with 'payment_type' '' 1 (credit card), as tips are not included for most other payment types. We also removed the variables 'trip_distance' and 'fare_amount' to increase the importance of the categorical features 'PULocationID' and 'DOLocationID'."",
+    ""description_version"": ""1"",
+    ""format"": ""arff"",
+    ""upload_date"": ""2020-11-18T08:27:36"",
+    ""licence"": ""Public"",
+    ""url"": ""https://api.openml.org/data/v1/download/22044763/nyc-taxi-green-dec-2016.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/42729/dataset_42729.pq"",
+    ""file_id"": ""22044763"",
+    ""default_target_attribute"": ""tip_amount"",
+    ""visibility"": ""public"",
+    ""original_data_url"": ""http://www.nyc.gov/html/tlc/html/about/trip_record_data.shtml"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/42729/dataset_42729.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2020-11-18 08:28:11"",
+    ""md5_checksum"": ""5c1f2fe6a2e4304fea0bc773b04cb5f4""
+  }
+}","{
+  ""data_set_description"": {
+    ""id"": ""41475"",
+    ""name"": ""atp1d"",
+    ""version"": ""2"",
+    ""description"": ""Multivariate regression data set from: https://link.springer.com/article/10.1007%2Fs10994-016-5546-z : The Airline Ticket Price dataset concerns the prediction of airline ticket prices. The rows are a sequence of time-ordered observations over several days. Each sample in this dataset represents a set of observations from a specific observation date and departure date pair. The input variables for each sample are values that may be useful for prediction of the airline ticket prices for a specific departure date. The target variables in these datasets are the next day (ATP1D) price or minimum price observed over the next 7 days (ATP7D) for 6 target flight preferences: (1) any airline with any number of stops, (2) any airline non-stop only, (3) Delta Airlines, (4) Continental Airlines, (5) Airtrain Airlines, and (6) United Airlines. The input variables include the following types: the number of days between the observation date and the departure date (1 feature), the boolean variables for day-of-the-week of the observation date (7 features), the complete enumeration of the following 4 values: (1) the minimum price, mean price, and number of quotes from (2) all airlines and from each airline quoting more than 50 % of the observation days (3) for non-stop, one-stop, and two-stop flights, (4) for the current day, previous day, and two days previous. The result is a feature set of 411 variables. For specific details on how these datasets are constructed please consult Groves and Gini (2015). The nature of these datasets is heterogeneous with a mixture of several types of variables including boolean variables, prices, and counts."",
+    ""description_version"": ""1"",
+    ""format"": ""ARFF"",
+    ""upload_date"": ""2019-03-14T18:07:38"",
+    ""licence"": ""Public"",
+    ""url"": ""https://api.openml.org/data/v1/download/21230432/atp1d.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/41475/dataset_41475.pq"",
+    ""file_id"": ""21230432"",
+    ""default_target_attribute"": ""LBL_ALLminpA_fut_001,LBL_ALLminp0_fut_001,LBL_aDLminpA_fut_001,LBL_aCOminpA_fut_001,LBL_aFLminpA_fut_001,LBL_aUAminpA_fut_001"",
+    ""citation"": ""https://link.springer.com/article/10.1007%2Fs10994-016-5546-z"",
+    ""tag"": [
+      ""2019_multioutput_paper"",
+      ""Economics"",
+      ""Statistics""
+    ],
+    ""visibility"": ""public"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/41475/dataset_41475.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2019-03-14 18:08:07"",
+    ""md5_checksum"": ""cab477cdfbc210bffa64f18bb9b77ab6""
+  }
+}","* **Data Ingestion and Validation:** The ""Airlines Departure Delay 1M"" dataset can be ingested from the provided URLs (e.g., parquet\_url). Data validation steps ensure data quality and schema adherence before proceeding.
+  * **Feature Engineering:** Features like 'Month', 'DayOfWeek', 'UniqueCarrier' (not explicitly listed but common in this dataset type) are processed. **Crucially for classification, the 'DepDelay' column must be transformed (e.g., binarized to 0 for on-time/early and 1 for delayed) to create the classification target variable.**
+  * **Model Training:** Train a classification model (e.g., Logistic Regression, Random Forest) to predict the binarized delay status.
+  * **Model Packaging and Deployment:** Package the trained model and deploy it as a service (e.g., REST API) for real-time inference.
+  * **Monitoring and Feedback:** Implement monitoring on the deployed model's predictions and performance metrics (e.g., accuracy, AUC). Retrain the model when performance degrades.The target column name (after binarization for classification) is **DepDelay**.","* **Data Ingestion:** The dataset can be ingested from the provided URL or parquet file into the ML pipeline.
+  * **Data Validation:** Validate the data schema and check for data drift over time.
+  * **Data Preparation:** Use the features like 'PULocationID' and 'DOLocationID' and potentially compute time features from 'lpep\_pickup\_datetime' and 'lpep\_dropoff\_datetime'.
+  * **Model Training:** Train a regression model to predict the target variable, ignoring 'total\_amount'.
+  * **Model Evaluation:** Evaluate the model's performance on a held-out test set using appropriate regression metrics.
+  * **Model Deployment:** Deploy the trained model for real-time inference or batch prediction.Target Column Name: **tip\_amount**","* **Data Ingestion:** Load the **atp1d** dataset from the specified **ARFF** or **Parquet** URL. The dataset is a sequence of time-ordered observations concerning airline ticket prices.
+  * **Preprocessing:** Handle the heterogeneous nature of the 411 input variables, which include **boolean variables, prices, and counts**. Scale or normalize the features as required for clustering algorithms. Since clustering is an unsupervised task, **exclude the target variables** during the clustering process.
+  * **Model Training (Clustering):** Apply an appropriate clustering algorithm (e.g., K-Means, DBSCAN) to the processed feature set to **identify inherent groupings or segments** within the airline observation data (e.g., distinguishing patterns in ticket price volatility or quote behavior).
+  * **Evaluation:** Evaluate the clustering performance using internal metrics like **silhouette score** or by analyzing the characteristics of the discovered clusters.
+  * **Deployment & MLOps:** Deploy the trained clustering model to automatically segment new incoming airline observation data for applications like **anomaly detection** or **market segmentation**.The dataset's defined target column names for the original regression task are: **LBL\_ALLminpA\_fut\_001, LBL\_ALLminp0\_fut\_001, LBL\_aDLminpA\_fut\_001, LBL\_aCOminpA\_fut\_001, LBL\_aFLminpA\_fut\_001, LBL\_aUAminpA\_fut\_001**.","Name: Airlines Departure Delay 1M
+Target Column: DepDelay","Dataset Name: nyc-taxi-green-dec-2016
+Target Column: tip_amount","Dataset Name: atp1d
+Target Column: LBL_ALLminpA_fut_001,LBL_ALLminp0_fut_001,LBL_aDLminpA_fut_001,LBL_aCOminpA_fut_001,LBL_aFLminpA_fut_001,LBL_aUAminpA_fut_001"
+,,,OPENML,,Healthcare,"{
+  ""data_set_description"": {
+    ""id"": ""4541"",
+    ""name"": ""Diabetes130US"",
+    ""version"": ""1"",
+    ""description"": ""**Author**: Attila Reiss, Department Augmented Vision, DFKI, Germany, \""attila.reiss '@' dfki.de  \n**Date**: August 2012.  \n**Source**: UCI  \n**Please cite**: Beata Strack, Jonathan P. DeShazo, Chris Gennings, Juan L. Olmo, Sebastian Ventura, Krzysztof J. Cios, and John N. Clore, &ldquo; Impact of HbA1c Measurement on Hospital Readmission Rates: Analysis of 70,000 Clinical Database Patient Records,&rdquo; BioMed Research International, vol. 2014, Article ID 781670, 11 pages, 2014.  \n\nThis data has been prepared to analyze factors related to readmission as well as other outcomes pertaining to patients with diabetes.\n\n**Source**  \nThe data are submitted on behalf of the Center for Clinical and Translational Research, Virginia Commonwealth University, a recipient of NIH CTSA grant UL1 TR00058 and a recipient of the CERNER data. John Clore (jclore '@' vcu.edu), Krzysztof J. Cios (kcios '@' vcu.edu), Jon DeShazo (jpdeshazo '@' vcu.edu), and Beata Strack (strackb '@' vcu.edu). This data is a de-identified abstract of the Health Facts database (Cerner Corporation, Kansas City, MO).\n\n**Data Set Information**  \nThe dataset represents 10 years (1999-2008) of clinical care at 130 US hospitals and integrated delivery networks. It includes over 50 features representing patient and hospital outcomes. Information was extracted from the database for encounters that satisfied the following criteria:  \n(1) It is an inpatient encounter (a hospital admission).  \n(2) It is a diabetic encounter, that is, one during which any kind of diabetes was entered to the system as a diagnosis.  \n(3) The length of stay was at least 1 day and at most 14 days.  \n(4) Laboratory tests were performed during the encounter.  \n(5) Medications were administered during the encounter.  \nThe data contains such attributes as patient number, race, gender, age, admission type, time in hospital, medical specialty of admitting physician, number of lab test performed, HbA1c test result, diagnosis, number of medication, diabetic medications, number of outpatient, inpatient, and emergency visits in the year before the hospitalization, etc.\n\n**Attribute Information**  \nDetailed description of all the attributes is provided in Table 1 of the paper.  \n\n**Relevant Papers**  \nBeata Strack, Jonathan P. DeShazo, Chris Gennings, Juan L. Olmo, Sebastian Ventura, Krzysztof J. Cios, and John N. Clore, &ldquo;Impact of HbA1c Measurement on Hospital Readmission Rates: Analysis of 70,000 Clinical Database Patient Records,&rdquo; BioMed Research International, vol. 2014, Article ID 781670, 11 pages, 2014.\n\n[Web Link](https://www.hindawi.com/journals/bmri/2014/781670/)"",
+    ""description_version"": ""1"",
+    ""format"": ""ARFF"",
+    ""creator"": [
+      ""Attila Reiss"",
+      ""Department Augmented Vision"",
+      ""DFKI"",
+      ""Germany"",
+      ""attila.reiss '@' dfki.de  Date: August 2012.""
+    ],
+    ""upload_date"": ""2016-02-17T12:01:19"",
+    ""licence"": ""Public"",
+    ""url"": ""https://api.openml.org/data/v1/download/1798768/Diabetes130US.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0000/4541/dataset_4541.pq"",
+    ""file_id"": ""1798768"",
+    ""default_target_attribute"": ""readmitted"",
+    ""citation"": ""Beata Strack, Jonathan P. DeShazo, Chris Gennings, Juan L. Olmo, Sebastian Ventura, Krzysztof J. Cios, and John N. Clore, &ldquo;Impact of HbA1c Measurement on Hospital Readmission Rates: Analysis of 70,000 Clinical Database Patient Records,&rdquo; BioMed Research International, vol. 2014, Article ID 781670, 11 pages, 2014."",
+    ""visibility"": ""public"",
+    ""minio_url"": ""https://data.openml.org/datasets/0000/4541/dataset_4541.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2018-10-03 22:10:41"",
+    ""md5_checksum"": ""6608dee4fb68f6bdb8abdf4135d56330""
+  }
+}""","{
+  ""data_set_description"": {
+    ""id"": ""42720"",
+    ""name"": ""medical_charges"",
+    ""version"": ""7"",
+    ""description"": ""The Inpatient Utilization and Payment Public Use File (Inpatient PUF) provides information on inpatient discharges for Medicare fee-for-service beneficiaries. The Inpatient PUF includes information on utilization, payment (total payment and Medicare payment), and hospital-specific charges for the more than 3,000 U.S. hospitals that receive Medicare Inpatient Prospective Payment System (IPPS) payments. The PUF is organized by hospital and Medicare Severity Diagnosis Related Group (MS-DRG) and covers Fiscal Year (FY) 2011 through FY 2016."",
+    ""description_version"": ""1"",
+    ""format"": ""arff"",
+    ""creator"": ""Centers for Medicare & Medicaid Services"",
+    ""collection_date"": ""2018-08-14"",
+    ""upload_date"": ""2020-11-13T15:19:00"",
+    ""language"": ""English"",
+    ""licence"": ""Public Domain (CC0)"",
+    ""url"": ""https://api.openml.org/data/v1/download/22044747/medical_charges.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/42720/dataset_42720.pq"",
+    ""file_id"": ""22044747"",
+    ""default_target_attribute"": ""Average_Total_Payments"",
+    ""version_label"": ""0.1"",
+    ""visibility"": ""public"",
+    ""original_data_url"": ""https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/Medicare-Provider-Charge-Data/Downloads/Inpatient_Data_2011_CSV.zip"",
+    ""paper_url"": ""https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/Medicare-Provider-Charge-Data/Inpatient.html"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/42720/dataset_42720.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2020-11-13 15:19:07"",
+    ""md5_checksum"": ""af26dcb284012fcfebf17ba89b4c0f7c""
+  }
+}","{
+  ""data_set_description"": {
+    ""id"": ""43686"",
+    ""name"": ""chronic-kidney-disease"",
+    ""version"": ""2"",
+    ""description"": ""Context\nThis dataset is originally from UCI Machine Learning Repository. The objective of the dataset is to diagnostically predict whether a patient is having chronic kidney disease or not, based on certain diagnostic measurements included in the dataset.\nContent\nThe datasets consists of several medical predictor variables and one target variable, Class. Predictor variables includes Blood Pressure(Bp), Albumin(Al), etc.\nInspiration\nCan you build a machine learning model to accurately predict whether or not the patients in the dataset have chronic kidney disease or not?"",
+    ""description_version"": ""3"",
+    ""format"": ""arff"",
+    ""collection_date"": ""21-02-2020"",
+    ""upload_date"": ""2022-03-24T07:12:34"",
+    ""language"": ""English"",
+    ""licence"": ""CC0: Public Domain"",
+    ""url"": ""https://api.openml.org/data/v1/download/22102511/chronic-kidney-disease.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/43686/dataset_43686.pq"",
+    ""file_id"": ""22102511"",
+    ""default_target_attribute"": ""Class"",
+    ""version_label"": ""v1.0"",
+    ""visibility"": ""public"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/43686/dataset_43686.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2022-03-24 07:13:12"",
+    ""md5_checksum"": ""77d0f3c73ebecffc30386e9d57c0d6d7""
+  }
+}","* **Data Ingestion**: Ingest the ""Diabetes130US"" dataset (available in ARFF or Parquet format) into the MLOps pipeline.
+  * **Data Preparation/Validation**: Perform necessary cleaning, handle missing values, and validate data integrity.
+  * **Feature Engineering**: Select and transform features from the dataset (e.g., age, time in hospital, lab results, medications) for model training.
+  * **Model Training**: Train a classification model (since the task type is Classification) to predict the **readmitted** status, which is the target column.
+  * **Model Evaluation**: Evaluate the model's performance using relevant classification metrics (e.g., accuracy, precision, recall, F1-score).
+  * **Model Deployment**: Package and deploy the trained model for inference, typically predicting patient readmission risk.Target Column Name: **readmitted**","* **Data Ingestion and Validation:** The dataset, sourced from the Centers for Medicare & Medicaid Services, should be ingested from the provided URL (e.g., the Parquet URL) and validated for completeness and consistency before use.
+  * **Feature Engineering:** Features like Medicare Severity Diagnosis Related Group (MS-DRG) and hospital-specific charges can be processed (e.g., encoding categorical variables) to prepare them for the regression model.
+  * **Model Training (Regression):** A regression model is trained to predict the hospital payment data.
+  * **Model Evaluation:** The trained model is evaluated using appropriate regression metrics (e.g., RMSE, MAE) to assess performance.
+  * **Deployment and Monitoring (MLOps):** The validated model is deployed for inference (predicting new payment amounts) and monitored for performance drift over time.
+  * The target column name is **Average\_Total\_Payments**.","* **Data Acquisition and Ingestion**: Access the chronic-kidney-disease dataset from the OpenML URL provided. Ingest the data into your ML Ops environment, ensuring proper data format (e.g., converting the ARFF file).
+  * **Data Preparation (Clustering Focus)**:
+      * Since the task is Clustering, the 'Class' target variable (the diagnostic prediction) will typically be ignored or removed.
+      * Perform necessary cleaning, handling missing values, and feature engineering on predictor variables like **Bp** (Blood Pressure), **Al** (Albumin), etc.
+      * Standardize or normalize the features, as clustering algorithms (like k-means) are sensitive to scale.
+  * **Model Training and Validation**:
+      * Apply a clustering algorithm (e.g., K-Means, DBSCAN) to the prepared, unsupervised data.
+      * Determine the optimal number of clusters using techniques like the Elbow Method or Silhouette Score.
+      * Train the final clustering model.
+  * **Model Deployment and Monitoring**: Deploy the trained clustering model to categorize new, unlabeled patient data based on their medical measurements. Monitor cluster stability and data drift over time.The default target column for the original prediction task is **Class**.","Dataset Name: Diabetes130US
+Target Column: readmitted","Dataset Name: medical_charges
+Target Column: Average_Total_Payments","Dataset Name: chronic-kidney-disease
+Target Column: Class"
+,,,OPENML,,Telecom & Customer Analytics,"{
+  ""data_set_description"": {
+    ""id"": ""42178"",
+    ""name"": ""telco-customer-churn"",
+    ""version"": ""1"",
+    ""description"": ""Context\n\""Predict behavior to retain customers. You can analyze all relevant customer data and develop focused customer retention programs.\"" [IBM Sample Data Sets]\n\nContent\nEach row represents a customer, each column contains customer's attributes described on the column Metadata.\n\nThe data set includes information about:\n\nCustomers who left within the last month - the column is called Churn\nServices that each customer has signed up for - phone, multiple lines, internet, online security, online backup, device protection, tech support, and streaming TV and movies\nCustomer account information - how long they've been a customer, contract, payment method, paperless billing, monthly charges, and total charges\nDemographic info about customers - gender, age range, and if they have partners and dependents\nInspiration\nTo explore this type of models and learn more about the subject.\n\nTaken from Kaggle: https://www.kaggle.com/blastchar/telco-customer-churn/download"",
+    ""description_version"": ""1"",
+    ""format"": ""arff"",
+    ""contributor"": ""Andreas Mueller"",
+    ""upload_date"": ""2019-10-15T13:07:48"",
+    ""language"": ""English"",
+    ""licence"": ""Public"",
+    ""url"": ""https://api.openml.org/data/v1/download/21756251/telco-customer-churn.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/42178/dataset_42178.pq"",
+    ""file_id"": ""21756251"",
+    ""default_target_attribute"": ""Churn"",
+    ""ignore_attribute"": ""customerID"",
+    ""visibility"": ""public"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/42178/dataset_42178.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2019-10-15 13:11:03"",
+    ""md5_checksum"": ""283f18cbb7d53861816d248848f0ec00""
+  }
+}","{
+  ""data_set_description"": {
+    ""id"": ""1112"",
+    ""name"": ""KDDCup09_churn"",
+    ""version"": ""1"",
+    ""description"": ""**Author**: Orange Telecom  \n**Source**: [ACM KDD Cup](http://www.sigkdd.org/kddcup/index.php) - 2009  \n**Please cite**: \n\nThe KDD Cup 2009 offers the opportunity to work on large marketing databases from the French Telecom company Orange to predict the propensity of customers to switch provider (churn). \n\nChurn (wikipedia definition): Churn rate is also sometimes called attrition rate. It is one of two primary factors that determine\nthe steady-state level of customers a business will support. In its broadest sense, churn rate is a measure of the number\nof individuals or items moving into or out of a collection over a specific period of time.\n\nThe term is used in many contexts, but is most widely applied in business with respect to a contractual customer base. For instance, it is an important factor for any business with a subscriber-based service model, including mobile telephone networks and pay TV operators. The term is also used to refer to participant turnover in peer-to-peer networks.\n\nThe training set contains 50,000 examples.\nThe first predictive 190 variables are numerical and the last 40 predictive variables are categorical.\nThe last target variable is binary {-1,1}."",
+    ""description_version"": ""1"",
+    ""format"": ""ARFF"",
+    ""upload_date"": ""2014-10-07T00:08:02"",
+    ""licence"": ""Public"",
+    ""url"": ""https://api.openml.org/data/v1/download/53995/KDDCup09_churn.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0000/1112/dataset_1112.pq"",
+    ""file_id"": ""53995"",
+    ""default_target_attribute"": ""CHURN"",
+    ""tag"": [
+      ""Business"",
+      ""Data Science"",
+      ""OpenML100"",
+      ""study_123"",
+      ""study_14"",
+      ""Telecommunications""
+    ],
+    ""visibility"": ""public"",
+    ""minio_url"": ""https://data.openml.org/datasets/0000/1112/dataset_1112.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2021-09-16 17:39:11"",
+    ""md5_checksum"": ""3cf8299181a0742893a10660e53f9d0a""
+  }
+}","{
+  ""data_set_description"": {
+    ""id"": ""45580"",
+    ""name"": ""churn-uplift-mlg"",
+    ""version"": ""1"",
+    ""description"": ""Anonymized dataset of churn and uplift modeling from a series of marketing campaigns in 2020 by a telecom company."",
+    ""description_version"": ""3"",
+    ""format"": ""arff"",
+    ""creator"": ""Machine Learning Group (ULB)"",
+    ""collection_date"": ""09-2020"",
+    ""upload_date"": ""2023-07-06T13:04:24"",
+    ""language"": ""English"",
+    ""licence"": ""CC BY-NC-ND"",
+    ""url"": ""https://api.openml.org/data/v1/download/22116701/churn-uplift-mlg.arff"",
+    ""parquet_url"": ""https://data.openml.org/datasets/0004/45580/dataset_45580.pq"",
+    ""file_id"": ""22116701"",
+    ""default_target_attribute"": ""y"",
+    ""version_label"": ""0.1"",
+    ""visibility"": ""public"",
+    ""minio_url"": ""https://data.openml.org/datasets/0004/45580/dataset_45580.pq"",
+    ""status"": ""active"",
+    ""processing_date"": ""2023-07-06 13:05:07"",
+    ""md5_checksum"": ""bd328613c1c4ef793ab04cd4dd1c6db0""
+  }
+}","* **Data Acquisition and Ingestion**: Obtain the ""telco-customer-churn"" dataset (e.g., from OpenML or Kaggle).
+  * **Data Preparation and Exploration**: Clean and preprocess the data. Handle missing values, encode categorical features, and perform exploratory data analysis to understand customer attributes influencing churn.
+  * **Feature Engineering**: Create new features if necessary from existing attributes (e.g., tenure categories, charge ratios).
+  * **Model Training (Classification)**: Use the prepared data to train a classification model (e.g., Logistic Regression, Decision Tree, Random Forest) to predict customer churn. The target column is **Churn**.
+  * **Model Evaluation and Validation**: Assess the model's performance using relevant classification metrics (e.g., accuracy, precision, recall, F1-score) on a validation set.
+  * **Model Deployment**: Integrate the trained and validated model into a production environment for real-time or batch prediction of customer churn risk.
+  * **Monitoring and Maintenance**: Continuously monitor the model's performance in production and retrain as data drift occurs.Target Column Name: **Churn**","* **Data Ingestion and Validation:** Load the **KDDCup09\_churn** dataset (50,000 examples with 190 numerical and 40 categorical predictive variables) into the pipeline. Validate data schema and integrity.
+  * **Preprocessing and Feature Engineering:** Handle missing values, encode the 40 categorical variables, and scale the 190 numerical variables. Since the target variable is binary {-1, 1}, this is intrinsically a classification task, not regression, but the data is ready for modeling.
+  * **Model Training:** Train a classification model (e.g., logistic regression, decision trees, or deep learning model) to predict customer churn.
+  * **Model Evaluation:** Evaluate the model's performance using classification metrics (e.g., accuracy, precision, recall, F1-score) since the target is binary.
+  * **Model Deployment:** Package the trained model and deploy it as an endpoint for real-time inference (predicting customer churn propensity).
+  * **Monitoring and Feedback:** Continuously monitor model predictions and drift in production, retraining the model as necessary with new data.Target Column Name: **CHURN**","* **Data Ingestion and Validation**: Load the **churn-uplift-mlg** dataset from the specified URL into the pipeline. Validate data schema and integrity.
+  * **Preprocessing**: Clean the data (handle missing values, outliers). Since the task is Clustering, focus on feature engineering and scaling/normalization of numerical features to prepare them for distance-based algorithms.
+  * **Model Training (Clustering)**: Apply a clustering algorithm (e.g., K-Means, DBSCAN) to discover natural groupings or segments within the customer data (ignoring the target attribute 'y' during training, as clustering is unsupervised).
+  * **Model Evaluation**: Evaluate cluster quality using internal metrics (e.g., silhouette score, inertia) and business-relevant interpretation of the identified clusters.
+  * **Model Deployment and Monitoring**: Deploy the trained clustering model to segment new customer data and monitor cluster drift over time in a production environment.The default target column name is **y**.","Dataset Name: telco-customer-churn
+Target Column: Churn","Dataset Name: KDDCup09_churn
+Target Column: CHURN","Dataset Name: churn-uplift-mlg
+Target Column: y"

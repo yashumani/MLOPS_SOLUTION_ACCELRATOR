@@ -45,7 +45,7 @@ command: >
   --drift_report ${{outputs.drift_report}}
   --drift_baseline ${{outputs.drift_baseline}}
 
-environment: azureml:mlops-v3-unified:23
+environment: azureml:mlops-v3-unified:27
 
 resources:
   instance_count: 1

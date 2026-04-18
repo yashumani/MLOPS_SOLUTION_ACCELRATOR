@@ -1,0 +1,7 @@
+{
+  "name": "kind_nut_9jf5qr5tdq",
+  "display_name": "clustering_churn_uplift_v3_20260410_070740_756fb6b3",
+  "experiment": "clustering_churn_uplift_v3",
+  "submitted_at": "2026-04-10T07:14:21.676784",
+  "config": "config_clustering_churn_uplift_azureml.yml"
+}

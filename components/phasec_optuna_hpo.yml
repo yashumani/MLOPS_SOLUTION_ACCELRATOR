@@ -1,0 +1,25 @@
+name: v3_phasec_optuna_hpo
+version: 5
+display_name: V3 Phase C - Optuna HPO
+type: command
+inputs:
+  config_name:
+    type: string
+  dataset_in:
+    type: uri_file
+outputs:
+  hpo_metrics_json:
+    type: uri_file
+  hpo_study:
+    type: uri_folder
+  optimized_model:
+    type: uri_folder
+code: ../
+command: >-
+  python src/steps/phasec_optuna_hpo.py
+  --config configs/${{inputs.config_name}}
+  --dataset_in ${{inputs.dataset_in}}
+  --metrics_out ${{outputs.hpo_metrics_json}}
+  --study_out ${{outputs.hpo_study}}
+  --model_out ${{outputs.optimized_model}}
+environment: azureml:mlops-v3-unified:4
