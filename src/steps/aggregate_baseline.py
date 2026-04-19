@@ -180,10 +180,10 @@ def main():
         import shutil
         try:
             # Copy model folder (source) to champion output folder
+            # Use dirs_exist_ok=True because Azure ML pre-creates output directories as mount points
             champion_path = Path(args.champion_out)
-            if champion_path.exists():
-                shutil.rmtree(champion_path)
-            shutil.copytree(model_src, champion_path)
+            champion_path.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(model_src, champion_path, dirs_exist_ok=True)
             report["model_copied"] = True
             print(f"  ✅ Champion model copied to {champion_path}")
         except Exception as e:

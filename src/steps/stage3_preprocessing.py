@@ -26,6 +26,10 @@ def preprocess(df: pd.DataFrame, target_col: str | None) -> pd.DataFrame:
     # One-hot encode categorical
     df = pd.get_dummies(df, drop_first=False)
 
+    # Sanitize column names — LightGBM/XGBoost cannot handle special chars like [ ] { } ( ) " :
+    import re
+    df.columns = [re.sub(r'[^\w]', '_', c) for c in df.columns]
+
     # Standard scale numeric
     scaler = StandardScaler()
     df[df.columns] = scaler.fit_transform(df[df.columns])

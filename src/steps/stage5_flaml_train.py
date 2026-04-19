@@ -30,6 +30,22 @@ def main():
     time_budget = cfg.get("phases", {}).get("phase_a_baseline", {}).get("flaml_config", {}).get("time_budget", 120)
 
     df = pd.read_csv(args.dataset_in)
+
+    # FLAML does not support clustering — skip gracefully
+    if task_type == "clustering":
+        print("⏭️  FLAML AutoML does not support clustering task type; skipping")
+        metrics = {"status": "skipped", "reason": "FLAML does not support clustering"}
+        manifest = {"engine": "flaml", "models": [], "status": "skipped", "reason": "FLAML does not support clustering"}
+        Path(args.metrics_out).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.metrics_out, "w") as f:
+            json.dump(metrics, f)
+        with open(args.manifest_out, "w") as f:
+            json.dump(manifest, f)
+        model_dir = Path(args.model_out)
+        model_dir.mkdir(parents=True, exist_ok=True)
+        (model_dir / ".skipped").write_text("FLAML does not support clustering")
+        return
+
     if target_col not in df.columns:
         raise ValueError(f"Target column '{target_col}' missing in dataset for FLAML training")
 
@@ -54,12 +70,17 @@ def main():
         automl.fit(X_train=X, y_train=y, task=task, metric=metric, time_budget=time_budget, log_file_name="flaml.log")
         best_estimator = automl.best_estimator
         best_config = automl.best_config
-        best_metric = automl.best_loss
+        # best_loss is the loss value (lower=better). Convert to actual metric score for correct comparison.
+        if task == "classification":
+            best_metric = 1.0 - automl.best_loss  # best_loss = 1 - accuracy for classification
+        else:
+            best_metric = -automl.best_loss if automl.best_loss < 0 else automl.best_loss  # R2 stored as negative loss
         metrics["best_estimator"] = best_estimator
         metrics["best_config"] = best_config
         metrics["best_metric"] = best_metric
         manifest["best_estimator"] = best_estimator
         manifest["best_config"] = best_config
+        manifest["best_metric"] = best_metric
         # Try saving model if possible
         try:
             import joblib
@@ -104,10 +125,6 @@ def main():
             mlflow.log_param("flaml_error", metrics["error"])
     except Exception as mlflow_err:
         print(f"⚠️  MLflow logging failed (non-fatal): {mlflow_err}")
-        if "error" in metrics:
-            mlflow.log_param("flaml_error", metrics["error"])
-    except Exception as e:
-        print(f"⚠️  MLflow logging failed (non-fatal): {e}")
 
 
 if __name__ == "__main__":

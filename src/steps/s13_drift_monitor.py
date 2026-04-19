@@ -579,7 +579,7 @@ def run_drift_monitor(args):
 
     logger.info(f"  📁 Baseline artifacts → {baseline_dir}")
 
-    # ── Log metrics to MLflow ───────────────────────────────────
+    # ── Log metrics and artifacts to MLflow ──────────────────────
     try:
         mlflow.log_metric("overall_psi", overall_psi)
         mlflow.log_metric("max_feature_psi", max_psi)
@@ -607,7 +607,13 @@ def run_drift_monitor(args):
             mlflow.log_param("baseline_comparison", "true")
         else:
             mlflow.log_param("baseline_comparison", "false")
-        logger.info("  📊 Metrics logged to MLflow")
+
+        # Log output artifacts to MLflow (makes them visible in Outputs + logs)
+        clean_report = json.loads(json.dumps(drift_report, cls=NumpyEncoder))
+        mlflow.log_dict(clean_report, "drift_report.json")
+        clean_baseline = json.loads(json.dumps(baseline_artifact, cls=NumpyEncoder))
+        mlflow.log_dict(clean_baseline, "feature_baseline.json")
+        logger.info("  📊 Metrics and artifacts logged to MLflow")
     except Exception as e:
         logger.warning(f"  MLflow logging failed (non-fatal): {e}")
 

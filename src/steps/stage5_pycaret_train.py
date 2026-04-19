@@ -29,9 +29,11 @@ def main():
     target_col = cfg.get("dataset", {}).get("target_column")
 
     df = pd.read_csv(args.dataset_in)
-    if target_col not in df.columns:
-        raise ValueError(f"Target column '{target_col}' missing in dataset for PyCaret training")
 
+    # Validate target column (required for classification/regression, not clustering)
+    if task_type != "clustering":
+        if target_col not in df.columns:
+            raise ValueError(f"Target column '{target_col}' missing in dataset for PyCaret training")
     # Ensure MLflow model registry URI is set to a local file store to avoid unsupported azureml:// registry
     os.makedirs("/tmp/mlflow-registry", exist_ok=True)
     mlflow.set_registry_uri("file:///tmp/mlflow-registry")
@@ -46,6 +48,21 @@ def main():
             setup(data=df, target=target_col, session_id=42, verbose=False, log_experiment=False)
             best = compare_models()  # get best model
             leaderboard = pull()
+        elif task_type == "clustering":
+            import numpy as np
+            from pycaret.clustering import setup, create_model, pull, save_model
+            from sklearn.metrics import silhouette_score, davies_bouldin_score
+            # Cast numeric columns to float64 to prevent dtype mismatch errors
+            _numeric_cols = df.select_dtypes(include=[np.number]).columns
+            df[_numeric_cols] = df[_numeric_cols].astype(np.float64)
+            setup(data=df, session_id=42, verbose=False, log_experiment=False)
+            best = create_model("kmeans")
+            leaderboard = pull()
+            predictions = best.predict(df)
+            sil = silhouette_score(df.select_dtypes(include=[np.number]).astype(np.float64), predictions)
+            db = davies_bouldin_score(df.select_dtypes(include=[np.number]).astype(np.float64), predictions)
+            metrics["silhouette_score"] = round(sil, 4)
+            metrics["davies_bouldin_score"] = round(db, 4)
         else:
             from pycaret.regression import setup, compare_models, pull, save_model
             setup(data=df, target=target_col, session_id=42, verbose=False, log_experiment=False)
@@ -55,8 +72,17 @@ def main():
         metrics["best_model"] = str(best)
         metrics["leaderboard"] = leaderboard.to_dict()
         manifest["best_model_name"] = str(best)
+        manifest["leaderboard"] = leaderboard.to_dict()
         manifest["leaderboard_columns"] = leaderboard.columns.tolist()
         manifest["rows"] = int(leaderboard.shape[0])
+        # Store best_metric for cross-engine comparison in aggregate step
+        if task_type == "classification":
+            manifest["best_metric"] = float(leaderboard.iloc[0]["Accuracy"]) if "Accuracy" in leaderboard.columns else None
+        elif task_type == "clustering":
+            manifest["best_metric"] = metrics.get("silhouette_score")
+            manifest["metric_name"] = "silhouette_score"
+        else:
+            manifest["best_metric"] = float(leaderboard.iloc[0]["R2"]) if "R2" in leaderboard.columns else None
         # Save model to folder
         model_dir = Path(args.model_out).resolve()
         model_dir.mkdir(parents=True, exist_ok=True)

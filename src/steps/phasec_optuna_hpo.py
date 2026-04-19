@@ -39,6 +39,19 @@ def main():
     test_size = 1 - float(test_size)
 
     df = pd.read_csv(args.dataset_in)
+
+    # HPO (Optuna) does not support clustering — skip gracefully
+    if task_type == "clustering":
+        print("⏭️  Optuna HPO not applicable for clustering task; skipping")
+        metrics = {"status": "skipped", "reason": "HPO not applicable for clustering"}
+        Path(args.metrics_out).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.metrics_out, "w") as f:
+            json.dump(metrics, f)
+        model_dir = Path(args.model_out)
+        model_dir.mkdir(parents=True, exist_ok=True)
+        (model_dir / ".skipped").write_text("HPO not applicable for clustering")
+        return
+
     if target_col not in df.columns:
         raise ValueError(f"Target column '{target_col}' missing in dataset for HPO")
     X = df.drop(columns=[target_col])
@@ -72,7 +85,10 @@ def main():
             "n_jobs": -1,
         }
         if task_type == "classification":
-            model = xgb.XGBClassifier(**params, objective="binary:logistic")
+            n_classes = int(y_train.nunique())
+            obj = "binary:logistic" if n_classes <= 2 else "multi:softmax"
+            extra = {"num_class": n_classes} if n_classes > 2 else {}
+            model = xgb.XGBClassifier(**params, objective=obj, **extra)
             model.fit(X_train, y_train)
             preds = model.predict(X_test)
             score = accuracy_score(y_test, preds)
@@ -93,7 +109,10 @@ def main():
     # Train final model with best params
     import xgboost as xgb
     if task_type == "classification":
-        final_model = xgb.XGBClassifier(**best_params, objective="binary:logistic")
+        n_classes = int(y_train.nunique())
+        obj = "binary:logistic" if n_classes <= 2 else "multi:softmax"
+        extra = {"num_class": n_classes} if n_classes > 2 else {}
+        final_model = xgb.XGBClassifier(**best_params, objective=obj, **extra)
     else:
         final_model = xgb.XGBRegressor(**best_params, objective="reg:squarederror")
     final_model.fit(X_train, y_train)

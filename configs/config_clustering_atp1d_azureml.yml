@@ -1,0 +1,89 @@
+experiment_name: atp1d_clustering_v3_azure
+preset: production
+task_type: clustering
+
+dataset:
+  name: atp1d_clustering
+  # No target column for clustering (unsupervised learning)
+  # ATP1D dataset — very high dimensionality, few rows
+  # 337 rows, 417 cols
+  blob_path: atp1d.csv
+  datastore_name: mlops_blob
+
+# V4 Enhancement: Stage 1 data quality configuration
+stage1:
+  min_rows: 50  # Small dataset — lowered minimum row requirement
+  max_missing_pct: 50  # Maximum allowed missing data percentage
+  generate_sweetviz: true  # Generate sweetviz HTML report (production: false, debug: true)
+  eda_sample_size: 10000  # Sample size for sweetviz to avoid memory issues
+
+# V3 Redesign: Stage 2 advanced preparation
+stage2:
+  imputation_strategy: "from_stage1"  # Use Stage 1 intelligent recommendations
+  statistical_tests_enabled: true  # Run normality, outlier, correlation tests
+
+# V3 Redesign: Stage 3 smart preprocessing
+stage3:
+  adaptive_scaling: true  # Use test results to choose Standard vs Robust scaler
+  multicollinearity_check: true  # VIF analysis
+
+# V3 Redesign: Stage 4 advanced feature engineering
+stage4:
+  selection_method: "variance"  # Options: variance (clustering-friendly, no target needed), mutual_info, boruta
+  apply_pca_threshold: 50  # Should trigger PCA with 417 cols
+  pca_variance_retained: 0.95  # Keep 95% variance when applying PCA
+  imbalance_detection: false  # Not applicable for clustering
+
+azureml:
+  subscription_id: 93044a08-5661-4f1b-b424-5eafe066a9d1
+  resource_group: mvpv1
+  workspace_name: mlops-accelerator
+  compute_target: mlopsv2computecluster
+  environment_name_preprocessing: mlops-v3-preprocessing
+  environment_name_training: mlops-v3-training
+
+# 🚀 VARIANT SEARCH SYSTEM - Production Configuration Space Explorer
+# Clustering variants: NO SMOTE, NO target-dependent methods, focus on scaling + encoding
+phases:
+  # LEGACY: Hardcoded 2-variant architecture (use --use_phase1=false)
+  phase_b_recipes:
+    library: v1_generated  # Tiered recipe library for clustering
+    tier: balanced_performance  # lightning_fast, quick_exploration, balanced_performance, high_performance, state-of-the-art
+    max_recipes: 10  # 10 variants x 1 engine = 10 Phase B steps (clustering: PyCaret only)
+    runtime_budget_sec: 180  # Filter: 3-minute runtime budget per variant
+    random_selection: false  # False = deterministic selection by variant_id (alphabetical)
+
+  # PHASE 1: Intelligent Variant Recommendation System (use --use_phase1=true)
+  phase_b:
+    enable_profiling: true  # Profile dataset to understand characteristics
+    profiling_output_path: "outputs/dataset_profile.json"
+
+    # Variant selection
+    library_dir: "configs/recipes/clustering/v1_generated"
+    max_variants: 20  # How many variants to test (intelligent selection)
+    selection_strategy: "scored"  # scored (intelligent) | alphabetical | random_seeded
+    min_relevance_score: 30.0  # Minimum threshold (0-100)
+    diversity_boost: true  # Ensure diverse preprocessing strategies
+
+    # Runtime constraints
+    runtime_budget_sec: 180  # Filter variants by estimated runtime
+    time_budget_per_variant: 600  # Max time per variant training (10 min) — adaptive budget
+
+    # Engines — FLAML does not support clustering, only PyCaret will run
+    engines: ["pycaret"]
+
+    # V3-PROPOSED: Adaptive Planner Mode (use --enable_planner flag)
+    planner:
+      enabled: false  # Enable via --enable_planner CLI flag
+      round1_max_variants: 40  # Max variants for Round 1 proxy training
+      round2_max_variants: 10  # Max variants for Round 2 full training
+      proxy_prune_threshold: 0.50  # Proxy metric threshold for pruning
+      cache_enabled: true  # Enable preprocessing cache
+
+  # Phase C: Hyperparameter optimization with Optuna
+  phase_c_hpo:
+    n_trials: 50  # Number of Optuna trials (production: 50-100, diagnostic: 10-20)
+    timeout_seconds: 3600  # Max time for HPO (1 hour)
+
+recipes:
+  - file: recipes/baseline_recipe.yml

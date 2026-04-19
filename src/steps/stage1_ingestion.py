@@ -60,8 +60,9 @@ def main():
     dataset_uri = build_dataset_uri(cfg)
     print(f"🔗 Reading dataset (read-only): {dataset_uri}")
     
-    df = pd.read_csv(dataset_uri)
-    print(f"✅ Loaded {df.shape[0]} rows × {df.shape[1]} cols")
+    encoding = cfg.get("dataset", {}).get("encoding", "utf-8")
+    df = pd.read_csv(dataset_uri, encoding=encoding)
+    print(f"✅ Loaded {df.shape[0]} rows × {df.shape[1]} cols (encoding={encoding})")
 
     # Optional: enable async logging if environment variable is set
     try:

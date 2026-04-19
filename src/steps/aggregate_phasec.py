@@ -44,20 +44,16 @@ def main():
         import shutil
         try:
             # Handle both file and folder cases
+            # Use dirs_exist_ok=True because Azure ML pre-creates output directories as mount points
             output_path = Path(args.champion_out)
-            if output_path.exists():
-                if output_path.is_dir():
-                    shutil.rmtree(output_path)
-                else:
-                    output_path.unlink()
+            output_path.mkdir(parents=True, exist_ok=True)
             
             if src.is_dir():
                 # Copy folder structure
-                shutil.copytree(src, output_path)
+                shutil.copytree(src, output_path, dirs_exist_ok=True)
                 print(f"  ✅ Champion model (folder) copied to {output_path}")
             else:
                 # Copy single file
-                output_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, output_path)
                 print(f"  ✅ Champion model (file) copied to {output_path}")
             report["model_copied"] = True

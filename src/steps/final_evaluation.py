@@ -83,8 +83,75 @@ def main():
     test_size = 1 - float(test_size)
 
     df = pd.read_csv(args.dataset_in)
+
+    # Clustering: evaluate using silhouette score (no target column, no train/test split)
+    if task_type == "clustering":
+        from sklearn.metrics import silhouette_score, davies_bouldin_score
+        numeric_df = df.select_dtypes(include=[np.number]).astype(np.float64)
+
+        def eval_clustering_model(path):
+            model = load_model(path)
+            if model is None:
+                return None
+            try:
+                preds = model.predict(df)
+                sil = float(silhouette_score(numeric_df, preds))
+                db = float(davies_bouldin_score(numeric_df, preds))
+                return {"silhouette_score": round(sil, 4), "davies_bouldin_score": round(db, 4)}
+            except Exception:
+                return None
+
+        mb = eval_clustering_model(args.baseline_model)
+        pb = eval_clustering_model(args.phaseb_model)
+        pc = eval_clustering_model(args.phasec_model)
+
+        def primary_score(m):
+            if m is None:
+                return -np.inf
+            return m.get("silhouette_score", -np.inf)
+
+        candidates = {"baseline": (mb, args.baseline_model), "phaseb": (pb, args.phaseb_model), "phasec": (pc, args.phasec_model)}
+        best_key = None
+        best_val = -np.inf
+        for k, (metrics, path) in candidates.items():
+            val = primary_score(metrics)
+            if val > best_val:
+                best_key, best_val = k, val
+
+        report = {
+            "task": task_type,
+            "baseline_metrics": mb,
+            "phaseb_metrics": pb,
+            "phasec_metrics": pc,
+            "selection": {"key": best_key, "score": best_val},
+        }
+        Path(args.report_out).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.report_out, "w") as f:
+            json.dump(report, f)
+
+        chosen_path = candidates.get(best_key, (None, None))[1]
+        if chosen_path:
+            src = Path(chosen_path)
+            out_dir = Path(args.champion_out)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            if src.is_dir():
+                model_file = src / "model.pkl"
+                if model_file.exists():
+                    import shutil
+                    shutil.copy(str(model_file), str(out_dir / "model.pkl"))
+            elif src.exists() and src.suffix == ".pkl":
+                import shutil
+                shutil.copy(str(src), str(out_dir / "model.pkl"))
+        else:
+            Path(args.champion_out).mkdir(parents=True, exist_ok=True)
+        return
+
     X = df.drop(columns=[target_col])
     y = df[target_col]
+
+    # Sanitize column names to match what training steps used
+    import re
+    X.columns = [re.sub(r'[^\w]', '_', c) for c in X.columns]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y if task_type == "classification" else None)
 
     baseline = load_model(args.baseline_model)
