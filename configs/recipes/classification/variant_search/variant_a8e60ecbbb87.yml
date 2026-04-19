@@ -1,0 +1,22 @@
+recipe_name: a8e60ecbbb87
+version: '1.0'
+description: 'Pipeline Variant: mean+label+robust+correlation'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: robust
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.9
+variant_metadata:
+  variant_id: a8e60ecbbb87
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

@@ -1,0 +1,23 @@
+recipe_name: 4879d3521f76
+version: '1.0'
+description: 'Pipeline Variant: knn+label+standard+variance+winsorize'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: label
+  scaling:
+    method: standard
+  outlier_handling:
+    method: winsorize
+    action: clip
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: 4879d3521f76
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

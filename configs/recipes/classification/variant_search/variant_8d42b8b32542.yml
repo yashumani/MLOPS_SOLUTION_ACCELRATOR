@@ -1,0 +1,22 @@
+recipe_name: 8d42b8b32542
+version: '1.0'
+description: 'Pipeline Variant: mode+ordinal+maxabs+smoteenn+mutual_info'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: maxabs
+  imbalance_handling:
+    method: smoteenn
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 8d42b8b32542
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

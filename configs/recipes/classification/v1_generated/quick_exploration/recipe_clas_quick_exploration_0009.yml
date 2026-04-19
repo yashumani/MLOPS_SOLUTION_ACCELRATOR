@@ -1,0 +1,24 @@
+recipe_name: recipe_clas_quick_exploration_0009
+version: '1.0'
+description: Preprocessing level 30, Feature engineering level 30
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mode
+  imbalance_handling:
+    method: none
+  encoding:
+    categorical_method: onehot
+    handle_unknown: error
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+v1_metadata:
+  compatibility_score: 0.95
+  expected_quality: Quick Exploration
+  max_runtime_seconds: 42
+  level: 30
+  original_name: 'Quick Exploration: mode+onehot+standard+variance'

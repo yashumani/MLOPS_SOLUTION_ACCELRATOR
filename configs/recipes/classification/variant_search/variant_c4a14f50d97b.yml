@@ -1,0 +1,21 @@
+recipe_name: c4a14f50d97b
+version: '1.0'
+description: 'Pipeline Variant: mean+smotetomek+onehot+quantile+none'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: quantile
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: c4a14f50d97b
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

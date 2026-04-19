@@ -1,5 +1,5 @@
 name: v3_aggregate_phaseb
-version: 4
+version: 5
 display_name: V3 Phase B - Aggregate
 type: command
 inputs:
@@ -24,8 +24,10 @@ inputs:
 outputs:
   aggregate_report:
     type: uri_file
+    mode: upload
   champion_model:
     type: uri_folder
+    mode: upload
 code: ../
 command: >-
   python src/steps/aggregate_phaseb.py

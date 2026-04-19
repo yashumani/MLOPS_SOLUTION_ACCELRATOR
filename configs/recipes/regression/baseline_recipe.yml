@@ -1,0 +1,22 @@
+recipe_name: baseline_regression
+version: 1.0
+description: Basic regression recipe - Mean imputation + OneHot encoding + Standard scaling
+task_type: regression
+
+stage3_preprocessing:
+  imputation:
+    method: mean
+    # For regression, mean imputation is preferred for continuous targets
+  imbalance_handling:
+    method: none
+    # SMOTE is classification-only, not applicable to regression
+  encoding:
+    categorical_method: onehot
+    handle_unknown: ignore
+  scaling:
+    method: standard
+
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01

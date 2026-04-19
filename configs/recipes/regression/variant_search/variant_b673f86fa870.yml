@@ -1,0 +1,23 @@
+recipe_name: b673f86fa870
+version: '1.0'
+description: 'Pipeline Variant: mode+onehot+maxabs+rfe+zscore'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: maxabs
+  outlier_handling:
+    method: zscore
+    threshold: 3.0
+stage4_feature_engineering:
+  feature_selection:
+    method: rfe
+    threshold: 0.5
+variant_metadata:
+  variant_id: b673f86fa870
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

@@ -1,0 +1,20 @@
+recipe_name: c23fc2fcdcd1
+version: '1.0'
+description: 'Pipeline Variant: mean+target+minmax+variance+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: target
+  scaling:
+    method: minmax
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: c23fc2fcdcd1
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

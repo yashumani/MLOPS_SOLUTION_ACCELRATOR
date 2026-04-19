@@ -1,0 +1,20 @@
+recipe_name: c480e25409ea
+version: '1.0'
+description: 'Pipeline Variant: mean+label+robust+correlation+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: robust
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: c480e25409ea
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

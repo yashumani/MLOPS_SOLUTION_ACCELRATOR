@@ -1,0 +1,23 @@
+recipe_name: fafa16945ea8
+version: '1.0'
+description: 'Pipeline Variant: median+target+standard+none+zscore'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: target
+  scaling:
+    method: standard
+  outlier_handling:
+    method: zscore
+    action: remove
+    threshold: 3.0
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: fafa16945ea8
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

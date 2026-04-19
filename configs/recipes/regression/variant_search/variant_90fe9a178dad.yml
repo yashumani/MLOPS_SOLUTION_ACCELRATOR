@@ -1,0 +1,24 @@
+recipe_name: 90fe9a178dad
+version: '1.0'
+description: 'Pipeline Variant: knn+target+none+variance+percentile'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: target
+  scaling:
+    method: none
+  outlier_handling:
+    method: percentile
+    lower: 5
+    upper: 95
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+variant_metadata:
+  variant_id: 90fe9a178dad
+  leakage_risk: low
+  estimated_runtime_sec: 30
+  generation_mode: curated

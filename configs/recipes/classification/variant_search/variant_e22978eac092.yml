@@ -1,0 +1,21 @@
+recipe_name: e22978eac092
+version: '1.0'
+description: 'Pipeline Variant: mean+smotetomek+onehot+yeo_johnson+none'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: yeo_johnson
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: e22978eac092
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

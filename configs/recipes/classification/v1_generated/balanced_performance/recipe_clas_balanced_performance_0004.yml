@@ -1,0 +1,27 @@
+recipe_name: recipe_clas_balanced_performance_0004
+version: '1.0'
+description: Preprocessing level 50, Feature engineering level 50
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: knn
+    n_neighbors: 5
+  imbalance_handling:
+    method: smote
+    sampling_strategy: auto
+    k_neighbors: 5
+  encoding:
+    categorical_method: onehot
+    handle_unknown: error
+  scaling:
+    method: robust
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    k_features: 20
+v1_metadata:
+  compatibility_score: 0.95
+  expected_quality: Balanced Performance
+  max_runtime_seconds: 72
+  level: 50
+  original_name: 'Balanced Performance: knn_5+onehot+robust+mutual_info'

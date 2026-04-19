@@ -1,0 +1,23 @@
+recipe_name: 8e702f25b0d3
+version: '1.0'
+description: 'Pipeline Variant: iterative+ordinal+minmax+none+percentile'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: minmax
+  outlier_handling:
+    method: percentile
+    lower: 5
+    upper: 95
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 8e702f25b0d3
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

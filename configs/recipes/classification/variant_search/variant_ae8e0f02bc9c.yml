@@ -1,0 +1,22 @@
+recipe_name: ae8e0f02bc9c
+version: '1.0'
+description: 'Pipeline Variant: mean+onehot+minmax+correlation'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: minmax
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.9
+variant_metadata:
+  variant_id: ae8e0f02bc9c
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

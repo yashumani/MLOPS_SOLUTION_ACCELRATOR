@@ -1,0 +1,21 @@
+recipe_name: 13b0ee1eb7a8
+version: '1.0'
+description: 'Pipeline Variant: mean+label+quantile+none'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: quantile
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 13b0ee1eb7a8
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

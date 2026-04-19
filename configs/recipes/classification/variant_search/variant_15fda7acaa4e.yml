@@ -1,0 +1,22 @@
+recipe_name: 15fda7acaa4e
+version: '1.0'
+description: 'Pipeline Variant: mode+ordinal+none+adasyn+rfe'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: none
+  imbalance_handling:
+    method: adasyn
+stage4_feature_engineering:
+  feature_selection:
+    method: rfe
+    threshold: 0.5
+variant_metadata:
+  variant_id: 15fda7acaa4e
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

@@ -1,0 +1,22 @@
+recipe_name: 5ecf29e4a144
+version: '1.0'
+description: 'Pipeline Variant: median+label+none+adasyn+mutual_info'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: label
+  scaling:
+    method: none
+  imbalance_handling:
+    method: adasyn
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 5ecf29e4a144
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

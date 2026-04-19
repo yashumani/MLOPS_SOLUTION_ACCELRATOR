@@ -1,0 +1,22 @@
+recipe_name: 895cfc2b64bd
+version: '1.0'
+description: 'Pipeline Variant: mode+label+none+none+iqr'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: label
+  scaling:
+    method: none
+  outlier_handling:
+    method: iqr
+    multiplier: 1.5
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 895cfc2b64bd
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

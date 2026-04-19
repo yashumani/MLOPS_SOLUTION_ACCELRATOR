@@ -1,5 +1,5 @@
 name: v3_phasec_optuna_hpo
-version: 5
+version: 6
 display_name: V3 Phase C - Optuna HPO
 type: command
 inputs:
@@ -10,10 +10,13 @@ inputs:
 outputs:
   hpo_metrics_json:
     type: uri_file
+    mode: upload
   hpo_study:
     type: uri_folder
+    mode: upload
   optimized_model:
     type: uri_folder
+    mode: upload
 code: ../
 command: >-
   python src/steps/phasec_optuna_hpo.py

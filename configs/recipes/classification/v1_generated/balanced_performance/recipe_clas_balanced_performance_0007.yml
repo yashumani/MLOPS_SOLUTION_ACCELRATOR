@@ -1,0 +1,24 @@
+recipe_name: recipe_clas_balanced_performance_0007
+version: '1.0'
+description: Preprocessing level 30, Feature engineering level 40
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mode
+  imbalance_handling:
+    method: none
+  encoding:
+    categorical_method: onehot
+    handle_unknown: error
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    k_features: 20
+v1_metadata:
+  compatibility_score: 0.95
+  expected_quality: Balanced Performance
+  max_runtime_seconds: 49
+  level: 30
+  original_name: 'Balanced Performance: mode+onehot+standard+mutual_info'

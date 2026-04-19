@@ -1,0 +1,641 @@
+# Drift Detection — Architecture, Implementation & Execution Guide
+
+> **Branch:** `drift-detection-v1`  
+> **Step ID:** `s13` (Terminal step — last in the pipeline DAG)  
+> **Feature Status:** Implemented and wired into pipeline; runs on every pipeline execution.
+
+---
+
+## Table of Contents
+
+1. [Overview](#1-overview)
+2. [Pipeline Position (DAG)](#2-pipeline-position-dag)
+3. [Component I/O Contract](#3-component-io-contract)
+4. [Execution Flow](#4-execution-flow)
+5. [Algorithms & Metrics](#5-algorithms--metrics)
+   - [PSI (Population Stability Index)](#51-psi-population-stability-index)
+   - [Evidently Comparison Drift](#52-evidently-comparison-drift)
+   - [Concept Drift](#53-concept-drift)
+   - [Stability Score](#54-stability-score)
+   - [Retraining Cadence](#55-retraining-cadence)
+6. [Configuration](#6-configuration)
+7. [Output Artifacts](#7-output-artifacts)
+8. [MLflow Reporting](#8-mlflow-reporting)
+9. [Baseline Chaining Across Runs](#9-baseline-chaining-across-runs)
+10. [Standalone Drift Library](#10-standalone-drift-library)
+11. [Test Coverage](#11-test-coverage)
+12. [File Inventory](#12-file-inventory)
+13. [Architecture Diagrams](#13-architecture-diagrams)
+14. [Known Gaps & Future Work](#14-known-gaps--future-work)
+
+---
+
+## 1. Overview
+
+Drift detection in the MLOps V3 pipeline is implemented as **step s13 (Drift Monitor)**. It is a **training-time** step, not a real-time production monitor. Its purpose is to:
+
+1. **Establish a baseline profile** of the feature-engineered training data for future production monitoring.
+2. **Validate the PSI drift detector** via a self-check (train/test split on the same data — expects PSI ≈ 0).
+3. **Recommend a retraining cadence** (quarterly → weekly) based on dataset characteristics (size, complexity, volatility, imbalance).
+4. **Compare against a previous baseline** (if provided) using Evidently and concept drift checks.
+
+The step consumes the feature-engineered dataset from `s04` and the final evaluation report from `s11`, runs drift analysis, and outputs a drift report JSON plus a baseline artifact folder for chaining into future runs.
+
+---
+
+## 2. Pipeline Position (DAG)
+
+```
+s01 → s02 → s03 → s04 ─┬─ [s05a, s05b, s05t] → s05z
+(ingestion)  (prep)  (preproc)  (feat_eng)     (baselines)  (aggregate)
+                        │
+                        └──→ s06 → s08z → s10 → s10z → s11 → s13
+                           (PhaseB) (agg) (HPO) (agg)  (final_eval) (DRIFT MONITOR)
+                                                                       ↑
+                                                                  TERMINAL STEP
+```
+
+**Key data flows into s13:**
+
+| Input | Source Step | Content |
+|-------|-----------|---------|
+| `dataset_in` | **s04** (feature engineering) | Feature-engineered CSV — the processed training dataset |
+| `final_report` | **s11** (final evaluation) | Champion model info, metrics, algorithm, phase selection |
+| `baseline_in` *(optional)* | Previous pipeline run's `drift_baseline` output | Reference distributions, feature stats, reference CSV |
+
+**s13 is the last step** — it depends on s04 and s11 but nothing depends on s13. Its outputs (`drift_report`, `drift_baseline`) are pipeline-level outputs used for monitoring and chaining into subsequent runs.
+
+---
+
+## 3. Component I/O Contract
+
+### Component YAML: `components/s13_drift_monitor.yml`
+
+**Inputs:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `config_name` | `string` | Yes | Config YAML filename (e.g., `config_classification_telecom_churn_azureml.yml`) |
+| `dataset_in` | `uri_file` | Yes | Processed dataset CSV from s04 feature engineering |
+| `final_report` | `uri_file` | Yes | Final evaluation report JSON from s11 |
+| `registry_info` | `uri_file` | No | Model registration info JSON from s12 |
+| `baseline_in` | `uri_folder` | No | Previous run's drift baseline folder (enables comparison drift) |
+
+**Outputs:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `drift_report` | `uri_file` | JSON report with PSI scores, stability assessment, comparison drift results, warnings |
+| `drift_baseline` | `uri_folder` | Folder containing `feature_baseline.json`, `reference_distributions.json`, `reference_data.csv` |
+
+### CLI Arguments (s13_drift_monitor.py)
+
+```
+python src/steps/s13_drift_monitor.py \
+  --config_name <config.yml> \
+  --dataset_in <path/to/dataset.csv> \
+  --final_report <path/to/final_report.json> \
+  [--registry_info <path/to/registry_info.json>] \
+  [--baseline_in <path/to/previous_baseline_folder>] \
+  --drift_report <output/drift_report.json> \
+  --drift_baseline <output/drift_baseline/>
+```
+
+---
+
+## 4. Execution Flow
+
+When s13 runs, it follows this sequence:
+
+### Step 1: Load Configuration
+- Reads the pipeline config YAML to extract `task_type`, `target_column`, `dataset_name`.
+- Sets up MLflow tracking (converts `azureml://` → `https://`, disables autolog).
+
+### Step 2: Load Upstream Artifacts
+- Loads `final_report` JSON (champion model info, primary metric, algorithm).
+- Optionally loads `registry_info` JSON (model registration status).
+
+### Step 3: Load Dataset
+- Reads the feature-engineered CSV from s04.
+- Auto-detects delimiter (comma, tab, semicolon).
+- Separates features (`X`) from target (`y`) based on task type.
+  - **Classification/Regression:** Drops `target_column` from `X`, keeps it as `y`.
+  - **Clustering:** No target column — `X` = full dataset, `y` = None.
+
+### Step 4: Train/Test Split (Self-Check)
+- Splits data **80/20** with `random_state=42` (matches the evaluation step s11).
+- For classification: uses `stratify=y`.
+- Reference set = 80% (train), Test set = 20% (test).
+
+### Step 5: PSI Self-Check
+- Computes **per-feature PSI** between the reference and test splits.
+- Since both splits come from the same distribution, PSI should be ≈ 0.
+- This validates that the PSI detector is working correctly and there are no pathological features.
+- Flags features where PSI ≥ 0.1 (green threshold).
+- Self-check status: `PASS` if overall PSI < 0.1, else `WARN`.
+
+### Step 6: Baseline Statistics
+- Computes per-feature statistics for the full dataset:
+  - **Numeric:** mean, std, min, max, quantiles (p5, p25, p50, p75, p95), missing rate.
+  - **Categorical:** value counts (top 50 categories), n_unique, missing rate.
+
+### Step 7: Feature Volatility
+- Computes the **mean coefficient of variation** (CV = std / |mean|) across all numeric features.
+- Higher CV → more volatile features → less stable model.
+
+### Step 8: Stability Score & Cadence
+- Combines 5 weighted components into a **stability score (0–100)**.
+- Maps the score to a **retraining cadence recommendation** (quarterly → weekly).
+
+### Step 9: Comparison Drift (Optional)
+If a `baseline_in` folder from a previous run is provided:
+- **Evidently Feature Drift:** Runs `DataDriftPreset` comparing the previous reference data against the current dataset. Detects per-column statistical drift using appropriate tests (KS for numeric, chi-squared for categorical).
+- **Concept Drift:** Compares the champion model's primary metric from the current run against the previous run's metric. Flags if the drop exceeds 5%.
+
+### Step 10: Generate Outputs
+- Writes `drift_report.json` with all analysis results.
+- Writes `drift_baseline/` folder with:
+  - `feature_baseline.json` — per-feature statistics + champion metadata.
+  - `reference_distributions.json` — histogram bin edges/counts per numeric feature, category counts per categorical feature.
+  - `reference_data.csv` — the 80% reference split (used by Evidently in the next run's comparison).
+
+### Step 11: MLflow Logging
+- Logs metrics: `overall_psi`, `max_feature_psi`, `stability_score`, `recommended_days`, etc.
+- Logs params: `detector`, `cadence`, `self_check_status`, `dataset_name`, `baseline_comparison`.
+- If comparison drift was run: logs `evidently_dataset_drift`, `evidently_drifted_share`, `concept_drift_detected`, `concept_drift_drop`.
+
+---
+
+## 5. Algorithms & Metrics
+
+### 5.1 PSI (Population Stability Index)
+
+PSI measures how much a feature's distribution has shifted between two datasets.
+
+**Formula:**
+
+$$
+PSI = \sum_{i=1}^{n} (P_i^{test} - P_i^{ref}) \times \ln\left(\frac{P_i^{test}}{P_i^{ref}}\right)
+$$
+
+Where $P_i^{ref}$ and $P_i^{test}$ are proportions of observations in bin $i$ for the reference and test sets.
+
+**Implementation (`src/utils/drift_detector.py`):**
+
+- **Numeric features:** 10 equal-width bins from reference distribution. Bin edges extended to capture out-of-range test values. Laplace smoothing ($\epsilon = 10^{-6}$) prevents log(0).
+- **Categorical features:** Each unique category is a bin. Union of categories from both sets.
+
+**Thresholds (industry standard):**
+
+| PSI Range | Classification | Color |
+|-----------|---------------|-------|
+| < 0.1 | No significant drift | 🟢 GREEN |
+| 0.1 – 0.25 | Moderate drift (warning) | 🟡 YELLOW |
+| > 0.25 | Significant drift (action required) | 🔴 RED |
+
+### 5.2 Evidently Comparison Drift
+
+When a previous baseline is provided, Evidently's `DataDriftPreset` runs statistical tests on every feature:
+
+- **Numeric features:** Kolmogorov-Smirnov test (by default).
+- **Categorical features:** Chi-squared test (by default).
+- **Dataset-level:** Flags overall dataset drift if >50% of features are individually drifted.
+
+Outputs include:
+- `dataset_drift` (bool) — overall drift flag.
+- `share_of_drifted_columns` (float) — proportion of features that drifted.
+- `drifted_columns` (list) — individual drifted columns with drift scores and test names.
+
+### 5.3 Concept Drift
+
+Concept drift occurs when the relationship between features and the target changes — even if the feature distributions haven't.
+
+**Detection method:** Compare the champion model's primary metric between the current and previous run.
+
+```
+drop = baseline_metric - current_metric
+detected = drop > 0.05
+```
+
+- **Classification:** Compares `balanced_accuracy`.
+- **Regression:** Compares `r2_score`.
+- **Threshold:** 5% absolute drop triggers concept drift alert.
+
+### 5.4 Stability Score
+
+A composite score (0–100) that estimates how stable the dataset is and how likely it is to drift in production.
+
+**Components:**
+
+| Component | Weight | Scoring Logic |
+|-----------|--------|---------------|
+| **Self-check PSI** | 40% | $100 \times (1 - \frac{mean\_PSI}{0.25})$, clamped to [0, 100] |
+| **Dataset size** | 20% | $\frac{\log_{10}(n_{rows}) - 2}{4} \times 100$, clamped to [0, 100] |
+| **Feature complexity** | 20% | $100 \times (1 - \min(\frac{n_{features}}{n_{rows}} \times 100, 1))$, clamped to [0, 100] |
+| **Class balance** | 10% | $imbalance\_ratio \times 100$ (min/max class ratio). Neutral (75) for clustering/regression |
+| **Feature volatility** | 10% | $100 \times (1 - \min(\frac{mean\_CV}{2}, 1))$, clamped to [0, 100] |
+
+**Final score:**
+
+$$
+stability = 0.40 \times PSI_{score} + 0.20 \times Size_{score} + 0.20 \times Complexity_{score} + 0.10 \times Balance_{score} + 0.10 \times Volatility_{score}
+$$
+
+### 5.5 Retraining Cadence
+
+The stability score maps directly to a retraining cadence recommendation:
+
+| Score Range | Cadence | Days | Rationale |
+|-------------|---------|------|-----------|
+| ≥ 80 | Quarterly | 90 | Stable dataset with low drift risk. Large data volume and consistent distributions. |
+| ≥ 60 | Monthly | 30 | Moderate complexity with some feature volatility. |
+| ≥ 40 | Biweekly | 14 | Notable feature complexity or volatility detected. |
+| < 40 | Weekly | 7 | High drift risk due to small dataset, high volatility, or class imbalance. |
+
+---
+
+## 6. Configuration
+
+### Pipeline Config (in `configs/config_*.yml`)
+
+Drift behavior is controlled by the pipeline config's `drift_monitoring` section:
+
+```yaml
+drift_monitoring:
+  enabled: true
+  psi_green: 0.1          # Below this = stable (no drift)
+  psi_yellow: 0.25        # Below this = warning, above = significant drift
+  concept_drift_threshold: 0.05  # Accuracy drop threshold for concept drift
+  cadence_override: null   # Override auto-cadence with fixed interval (days)
+```
+
+### Standalone Drift Config (`configs/drift_config.yaml`)
+
+For the standalone drift library (`src/drift_detection/`):
+
+```yaml
+drift_methods:
+  feature: "psi"                     # PSI for feature distributions
+  prediction: "ks"                   # KS test for prediction column
+  concept: "accuracy_threshold"      # Accuracy-drop for concept drift
+  label: "chi_square"                # Chi-squared for label distribution
+
+thresholds:
+  feature_drift: 0.15
+  prediction_drift: 0.10
+  concept_drift_accuracy_drop: 0.05
+  label_drift: 0.10
+
+schedule:
+  frequency: "daily"
+  time: "02:00"                      # UTC
+
+actions:
+  on_drift_detected: "trigger_full_pipeline"
+  alert_channels: [email, mlflow_dashboard]
+
+artifact_paths:
+  baseline_dir: "outputs/drift_baseline"
+  reports_dir: "outputs/drift_reports"
+  logs_dir: "outputs/drift_logs"
+
+column_mapping:
+  prediction_column: "prediction"
+  target_column: null                # Overridden at runtime
+  id_column: null
+```
+
+---
+
+## 7. Output Artifacts
+
+### drift_report.json
+
+```json
+{
+  "execution_id": "s13_telecom_churn_1704067200",
+  "config_name": "config_classification_telecom_churn_azureml.yml",
+  "task_type": "classification",
+  "dataset_name": "telecom_churn",
+  "n_rows": 7043,
+  "n_features": 19,
+  "target_column": "Churn",
+  "detector": "psi",
+  "self_check": {
+    "method": "train_test_split_80_20_seed_42",
+    "overall_psi": 0.001234,
+    "max_feature_psi": 0.008567,
+    "max_feature_name": "TotalCharges",
+    "drifted_features": [],
+    "n_drifted": 0,
+    "status": "PASS"
+  },
+  "feature_psi_scores": {
+    "TotalCharges": 0.008567,
+    "MonthlyCharges": 0.005432,
+    "tenure": 0.003210,
+    ...
+  },
+  "stability_assessment": {
+    "stability_score": 82,
+    "components": {
+      "self_check_psi": {"raw": 0.001234, "score": 99.5, "weight": 0.40},
+      "dataset_size": {"raw": 7043, "score": 73.2, "weight": 0.20},
+      "feature_complexity": {"raw": 0.002698, "score": 99.7, "weight": 0.20},
+      "class_balance": {"raw": 0.3652, "score": 36.5, "weight": 0.10},
+      "feature_volatility": {"raw": 0.8421, "score": 57.9, "weight": 0.10}
+    },
+    "recommended_cadence": "quarterly",
+    "recommended_days": 90,
+    "rationale": "Stable dataset with low drift risk..."
+  },
+  "champion_info": {
+    "algorithm": "GradientBoostingClassifier",
+    "primary_metric": 0.912,
+    "phase": "phase_b_pycaret",
+    "registered": true,
+    "model_name": "telecom_churn_champion",
+    "model_version": "3"
+  },
+  "comparison_drift": {
+    "available": false
+  },
+  "warnings": [],
+  "runtime_seconds": 12.5
+}
+```
+
+### drift_baseline/ folder
+
+| File | Content |
+|------|---------|
+| `feature_baseline.json` | Per-feature statistics (mean, std, min, max, quantiles, missing rate), champion metric & algorithm, PSI bin count, reference split method |
+| `reference_distributions.json` | For each numeric feature: histogram bin edges + counts. For each categorical feature: category → count mapping. Used for PSI recomputation in production. |
+| `reference_data.csv` | The 80% reference split of the feature-engineered data. Used by Evidently in the next run's comparison drift check. |
+
+---
+
+## 8. MLflow Reporting
+
+All drift metrics and params are logged to the step's MLflow run within the parent pipeline run.
+
+### Metrics
+
+| Metric | Description |
+|--------|-------------|
+| `overall_psi` | Mean PSI across all features (self-check) |
+| `max_feature_psi` | Highest individual feature PSI (self-check) |
+| `stability_score` | Composite stability score (0–100) |
+| `recommended_days` | Retraining cadence in days |
+| `n_features_monitored` | Number of features profiled |
+| `n_drifted_features` | Number of features with PSI ≥ 0.1 |
+| `evidently_dataset_drift` | 1 if Evidently detected overall dataset drift, 0 otherwise (only when baseline provided) |
+| `evidently_drifted_share` | Share of drifted columns per Evidently (only when baseline provided) |
+| `concept_drift_detected` | 1 if concept drift detected, 0 otherwise (only when baseline provided) |
+| `concept_drift_drop` | Absolute metric drop from baseline (only when baseline provided) |
+
+### Parameters
+
+| Param | Description |
+|-------|-------------|
+| `detector` | Always `"psi"` |
+| `cadence` | Recommended cadence name (quarterly/monthly/biweekly/weekly) |
+| `self_check_status` | `"PASS"` or `"WARN"` |
+| `dataset_name` | Name of the dataset |
+| `baseline_comparison` | `"true"` or `"false"` |
+
+---
+
+## 9. Baseline Chaining Across Runs
+
+To enable comparison drift (detecting distribution shift between training runs), pass the previous run's `drift_baseline` output to the next run via `--baseline_job`:
+
+```bash
+# First run (no baseline — self-check only)
+python pipelines/submit_pipeline.py \
+  --config configs/config_classification_telecom_churn_azureml.yml \
+  --subscription_id <sub> --resource_group <rg> --workspace_name <ws> \
+  --compute mlopsv2computecluster --wait
+
+# Second run (with baseline from first run)
+python pipelines/submit_pipeline.py \
+  --config configs/config_classification_telecom_churn_azureml.yml \
+  --subscription_id <sub> --resource_group <rg> --workspace_name <ws> \
+  --compute mlopsv2computecluster --wait \
+  --baseline_job <first_run_job_name>
+```
+
+When `--baseline_job` is provided, `submit_pipeline.py` uses the Azure ML History API to locate the `drift_baseline` output asset from the specified job and passes it as the `baseline_in` input to s13. This enables:
+
+- **Evidently comparison drift** between the previous reference data and the current dataset.
+- **Concept drift** detection by comparing model metrics across runs.
+
+Without `--baseline_job`, s13 runs in **self-check only mode** — no comparison drift is performed, and `comparison_drift.available` will be `false` in the report.
+
+---
+
+## 10. Standalone Drift Library
+
+In addition to the pipeline step, the codebase includes a **standalone drift detection library** at `src/drift_detection/`. This is an importable Python package designed for broader use (e.g., production monitoring, batch scoring environments). It is **separate from and not imported by** the pipeline step.
+
+### Library Components
+
+| Module | Class/Function | Purpose |
+|--------|---------------|---------|
+| `drift_config.py` | `DriftConfig` | Typed dataclass config (6 nested dataclasses) loaded from `configs/drift_config.yaml` |
+| `baseline_capture.py` | `BaselineCapture` | Capture, save (parquet + JSON), and load reference baselines |
+| `drift_checker.py` | `DriftChecker` | 4 drift checks via Evidently: feature, prediction, concept, label |
+| `drift_checker.py` | `DriftResult` | Dataclass for individual check results (type, detected, score, details) |
+| `pipeline_trigger.py` | `PipelineTrigger` | Evaluate drift results → determine if retraining should trigger |
+| `report_generator.py` | `ReportGenerator` | Generate timestamped Evidently HTML drift reports |
+| `synthetic_data_generator.py` | `generate_drifted_data()` | Generate test data with none/mild/severe drift presets |
+
+### Library Usage Pattern
+
+```python
+from drift_detection import DriftConfig, BaselineCapture, DriftChecker, PipelineTrigger
+
+# Load config
+config = DriftConfig.from_yaml("configs/drift_config.yaml")
+
+# Capture baseline from training data
+baseline = BaselineCapture(config)
+baseline.capture(train_df, target_column="Churn", prediction_column="prediction")
+baseline.save("outputs/drift_baseline")
+
+# Check drift on new production data
+checker = DriftChecker(config, baseline)
+results = checker.run_all_checks(prod_df)
+# Returns: [DriftResult(type="feature", detected=True, score=0.18, ...), ...]
+
+# Evaluate and optionally trigger retraining
+trigger = PipelineTrigger(config)
+action = trigger.evaluate(results)
+# Returns: {"should_trigger": True, "action": "trigger_full_pipeline", "reasons": [...]}
+```
+
+### Drift Types in Library
+
+| Drift Type | Method | What It Detects |
+|------------|--------|----------------|
+| **Feature drift** | PSI via Evidently `DataDriftPreset` | Input feature distribution shift |
+| **Prediction drift** | KS test via Evidently `ColumnDriftMetric` | Model output distribution shift |
+| **Concept drift** | Accuracy drop comparison | Degradation in model-target relationship |
+| **Label drift** | Chi-squared via Evidently `ColumnDriftMetric` | Target variable distribution shift |
+
+---
+
+## 11. Test Coverage
+
+Four test files in `tests/test_drift_detection/`:
+
+| Test File | What It Tests |
+|-----------|--------------|
+| `test_synthetic_data.py` | `generate_drifted_data()`: shape preserved, distribution shift correct for presets, deterministic seeds, edge cases |
+| `test_baseline_capture.py` | `BaselineCapture`: capture stores reference, stats computed correctly, save/load round-trip (parquet + JSON), feature_columns excludes prediction/target |
+| `test_drift_checker.py` | `DriftChecker` + `DriftResult`: all 4 drift types detected correctly, `run_all_checks()` returns 4 results, DriftResult fields populated |
+| `test_pipeline_trigger.py` | `PipelineTrigger`: no trigger when no drift, trigger when drift detected (action = trigger_full_pipeline), dry_run flag, trigger_history tracking, save_trigger_log JSON output |
+
+---
+
+## 12. File Inventory
+
+### Pipeline Step (runs in Azure ML)
+
+| File | Lines | Role |
+|------|-------|------|
+| `src/steps/s13_drift_monitor.py` | ~650 | Main step: PSI self-check, Evidently comparison, stability scoring, MLflow logging |
+| `components/s13_drift_monitor.yml` | ~40 | Azure ML component definition (v2, non-deterministic) |
+| `src/utils/drift_detector.py` | ~335 | Core PSI computation, baseline stats, stability score, retraining cadence |
+
+### Standalone Library
+
+| File | Lines | Role |
+|------|-------|------|
+| `src/drift_detection/__init__.py` | 28 | Package API: exports 7 public symbols |
+| `src/drift_detection/drift_config.py` | ~155 | Typed dataclasses for YAML config |
+| `src/drift_detection/baseline_capture.py` | ~210 | Capture/persist/load reference baselines |
+| `src/drift_detection/drift_checker.py` | ~310 | 4 drift checks via Evidently |
+| `src/drift_detection/pipeline_trigger.py` | ~140 | Evaluate drift results → trigger retraining |
+| `src/drift_detection/report_generator.py` | ~95 | Generate Evidently HTML drift reports |
+| `src/drift_detection/synthetic_data_generator.py` | ~175 | Generate test data with controlled drift |
+
+### Configuration
+
+| File | Role |
+|------|------|
+| `configs/drift_config.yaml` | Standalone drift config: methods, thresholds, schedule, actions |
+| `config/sample_config.yaml` | Pipeline config with `drift_monitoring` section |
+| `config/production_config.yaml` | Production pipeline config with `drift_monitoring` section |
+
+### Tests
+
+| File | Role |
+|------|------|
+| `tests/test_drift_detection/test_synthetic_data.py` | Tests synthetic data generation |
+| `tests/test_drift_detection/test_baseline_capture.py` | Tests baseline capture/save/load |
+| `tests/test_drift_detection/test_drift_checker.py` | Tests all 4 drift types |
+| `tests/test_drift_detection/test_pipeline_trigger.py` | Tests trigger evaluation |
+
+---
+
+## 13. Architecture Diagrams
+
+### Pipeline Step Flow
+
+```
+                    ┌────────────────────────────────────────────────────────────┐
+                    │  s13_drift_monitor.py                                      │
+                    │                                                            │
+  dataset_in ──────►│  1. Load config (task_type, target_column)                │
+  (from s04)        │  2. Load final_report (champion info, metrics)             │
+                    │  3. Load dataset CSV → split X / y                        │
+  final_report ────►│  4. Train/Test split (80/20, seed=42)                     │
+  (from s11)        │  5. ┌──── PSI Self-Check ────────────────────┐            │
+                    │     │  compute_feature_psi(X_ref, X_test)    │            │
+                    │     │  → per-feature PSI scores               │            │
+                    │     │  → self_check: PASS/WARN               │            │
+                    │     └────────────────────────────────────────┘            │
+                    │  6. compute_baseline_statistics(X)                        │
+                    │  7. compute_feature_volatility(X)                         │
+                    │  8. compute_stability_score() → score 0-100              │
+                    │  9. determine_retraining_cadence() → quarterly/weekly     │
+                    │                                                            │
+  baseline_in ─────►│  10. If baseline provided:                                │
+  (optional,        │      ├── Evidently DataDriftPreset(ref vs current)        │
+  from prev run)    │      └── Concept drift (metric comparison)               │
+                    │                                                            │
+                    │  11. Write drift_report.json                              │──► drift_report
+                    │  12. Write drift_baseline/                                │──► drift_baseline
+                    │      ├── feature_baseline.json                            │
+                    │      ├── reference_distributions.json                     │
+                    │      └── reference_data.csv                               │
+                    │  13. Log to MLflow (metrics + params)                     │
+                    └────────────────────────────────────────────────────────────┘
+```
+
+### Baseline Chaining
+
+```
+  Run 1 (no baseline)                  Run 2 (with baseline from Run 1)
+  ════════════════════                 ════════════════════════════════
+
+  s04 → ... → s11 → s13               s04 → ... → s11 → s13
+                      │                                     │
+                      ▼                                     ▼
+                drift_baseline/ ──────────────────► baseline_in
+                ├── feature_baseline.json                   │
+                ├── reference_distributions.json            ├── Evidently comparison
+                └── reference_data.csv                      ├── Concept drift check
+                                                            └── drift_report (with comparison results)
+```
+
+### Standalone Library Flow
+
+```
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  src/drift_detection/                                               │
+  │                                                                     │
+  │  DriftConfig.from_yaml("configs/drift_config.yaml")                │
+  │        │                                                            │
+  │        ▼                                                            │
+  │  BaselineCapture.capture(train_df)                                 │
+  │        │                                                            │
+  │        ├──► .save("outputs/drift_baseline")                        │
+  │        │    ├── reference_data.parquet                              │
+  │        │    └── baseline_stats.json                                │
+  │        │                                                            │
+  │        ▼                                                            │
+  │  DriftChecker.run_all_checks(prod_df)                              │
+  │        ├── Feature drift  (PSI via Evidently DataDriftPreset)      │
+  │        ├── Prediction drift (KS test via ColumnDriftMetric)        │
+  │        ├── Concept drift  (accuracy drop comparison)               │
+  │        └── Label drift    (chi-squared via ColumnDriftMetric)      │
+  │              │                                                      │
+  │              ▼                                                      │
+  │  PipelineTrigger.evaluate(results)                                 │
+  │        └── should_trigger? → action dispatch                       │
+  │            └── trigger_log.json + MLflow logging                   │
+  │                                                                     │
+  │  ReportGenerator.generate(results) → Evidently HTML report         │
+  │  generate_drifted_data() → Synthetic test data (none/mild/severe)  │
+  └─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 14. Known Gaps & Future Work
+
+1. **Two parallel implementations:** The pipeline step (`s13` + `drift_detector.py`) and the standalone library (`src/drift_detection/`) overlap in functionality but are not integrated. The step does not import from the library. A future refactor should unify them so the step delegates to the library.
+
+2. **PipelineTrigger._execute_trigger() is a placeholder:** The standalone library's trigger mechanism evaluates whether retraining should happen but does not actually submit an Azure ML pipeline job. Wiring this to `submit_pipeline.py` would enable automatic retraining.
+
+3. **s13 not in blueprint CSV:** The `docs/MLOPS-v3-blueprint.CSV` lists steps s00–s12 only. The s11 row mentions "Drift detection" as a future enhancement. The blueprint should be updated to include s13.
+
+4. **Prediction drift & label drift only in standalone library:** The pipeline step only checks feature drift (PSI) and concept drift (metric comparison). Prediction drift (KS test on model outputs) and label drift (chi-squared on target) are only available in the standalone library.
+
+5. **No production scheduler:** The `drift_config.yaml` defines a schedule (`daily at 02:00 UTC`) but no scheduler implementation exists. The step currently runs only as part of the full pipeline DAG. For production monitoring, a separate scheduled Azure ML pipeline or cron job would need to be created.
+
+6. **Evidently API compatibility:** The code uses `evidently.legacy.*` fallback imports, indicating compatibility with Evidently 0.5.x while using the 0.4.x API surface. This should be updated when the environment stabilizes on a single Evidently version.
+
+7. **Clustering-specific drift:** For clustering tasks (`task_type == "clustering"`), drift detection works on features only (no target, no concept drift, no label drift). Feature PSI and stability scoring still apply. Class balance component defaults to neutral (75) for clustering.

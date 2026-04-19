@@ -1,0 +1,22 @@
+recipe_name: c502ffc11995
+version: '1.0'
+description: 'Pipeline Variant: constant+label+standard+smoteenn+rfe'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: constant
+  encoding:
+    categorical_method: label
+  scaling:
+    method: standard
+  imbalance_handling:
+    method: smoteenn
+stage4_feature_engineering:
+  feature_selection:
+    method: rfe
+    threshold: 0.5
+variant_metadata:
+  variant_id: c502ffc11995
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

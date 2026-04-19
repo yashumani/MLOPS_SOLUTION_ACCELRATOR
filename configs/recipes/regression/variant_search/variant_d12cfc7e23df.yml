@@ -1,0 +1,24 @@
+recipe_name: d12cfc7e23df
+version: '1.0'
+description: 'Pipeline Variant: median+ordinal+power+correlation+clip'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: power
+  outlier_handling:
+    method: clip
+    lower_percentile: 0.01
+    upper_percentile: 0.99
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: d12cfc7e23df
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

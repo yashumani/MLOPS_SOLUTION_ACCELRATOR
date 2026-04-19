@@ -1,0 +1,21 @@
+recipe_name: 1b6127d96972
+version: '1.0'
+description: 'Pipeline Variant: mean+smoteenn+onehot+minmax+variance'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: minmax
+  imbalance_handling:
+    method: smoteenn
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+variant_metadata:
+  variant_id: 1b6127d96972
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

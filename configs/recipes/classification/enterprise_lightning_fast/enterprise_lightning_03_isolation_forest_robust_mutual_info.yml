@@ -1,0 +1,45 @@
+recipe_name: enterprise_lightning_03_isolation_forest_robust_mutual_info
+version: '1.0'
+description: Isolation Forest outliers + Robust scaling + Mutual information selection
+research_citations:
+- 'Liu et al. (2008): Isolation Forest for anomaly detection'
+- 'Kraskov et al. (2004): Mutual information estimation'
+- 'Huber (1964): Robust M-estimators'
+stage3_preprocessing:
+  imputation:
+    method: median
+    research_note: Median is robust to outliers - M-estimator approach
+  outlier_handling:
+    method: isolation_forest
+    contamination: 0.1
+    max_samples: auto
+    random_state: 42
+    research_note: Isolation Forest - efficient anomaly detection with O(n log n)
+      complexity
+  imbalance_handling:
+    method: adasyn
+    sampling_strategy: auto
+    n_neighbors: 5
+    research_note: He et al. 2008 - ADASYN focuses on hard-to-learn examples
+  encoding:
+    categorical_method: onehot
+    handle_unknown: ignore
+    sparse_output: false
+  scaling:
+    method: robust
+    quantile_range:
+    - 25.0
+    - 75.0
+    research_note: Huber 1964 - robust to outliers using median and IQR
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    k_features: 30
+    random_state: 42
+    research_note: Mutual information - captures non-linear dependencies
+performance_tier: lightning_fast
+expected_runtime_seconds: 200
+recommended_for:
+- Datasets with outliers
+- Non-linear relationships
+- High cardinality features

@@ -1,0 +1,20 @@
+recipe_name: 1f5903a2fae3
+version: '1.0'
+description: 'Pipeline Variant: constant+label+none+mutual_info'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: constant
+  encoding:
+    categorical_method: label
+  scaling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 1f5903a2fae3
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

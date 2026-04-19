@@ -1,0 +1,19 @@
+recipe_name: e9a40311b118
+version: '1.0'
+description: 'Pipeline Variant: mode+target+robust+none+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: target
+  scaling:
+    method: robust
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: e9a40311b118
+  leakage_risk: low
+  estimated_runtime_sec: 30
+  generation_mode: curated

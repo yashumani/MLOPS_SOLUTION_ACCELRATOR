@@ -1,0 +1,20 @@
+recipe_name: 8bbaf8e53d4a
+version: '1.0'
+description: 'Pipeline Variant: median+onehot+none+correlation'
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: 8bbaf8e53d4a
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: curated

@@ -1,0 +1,23 @@
+recipe_name: 41b89674faa2
+version: '1.0'
+description: 'Pipeline Variant: iterative+frequency+robust+none+percentile'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: frequency
+  scaling:
+    method: robust
+  outlier_handling:
+    method: percentile
+    lower: 5
+    upper: 95
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 41b89674faa2
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

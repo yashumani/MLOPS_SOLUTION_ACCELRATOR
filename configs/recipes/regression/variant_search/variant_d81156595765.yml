@@ -1,0 +1,22 @@
+recipe_name: d81156595765
+version: '1.0'
+description: 'Pipeline Variant: mode+ordinal+maxabs+none+zscore'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: maxabs
+  outlier_handling:
+    method: zscore
+    threshold: 3.0
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: d81156595765
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

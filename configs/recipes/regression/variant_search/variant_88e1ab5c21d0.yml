@@ -1,0 +1,24 @@
+recipe_name: 88e1ab5c21d0
+version: '1.0'
+description: 'Pipeline Variant: mode+ordinal+minmax+mutual_info+winsorize'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: minmax
+  outlier_handling:
+    method: winsorize
+    lower_percentile: 0.05
+    upper_percentile: 0.95
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 88e1ab5c21d0
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

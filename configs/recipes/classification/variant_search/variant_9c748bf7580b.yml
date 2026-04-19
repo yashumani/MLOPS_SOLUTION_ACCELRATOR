@@ -1,0 +1,22 @@
+recipe_name: 9c748bf7580b
+version: '1.0'
+description: 'Pipeline Variant: constant+onehot+maxabs+smotetomek+mutual_info'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: constant
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: maxabs
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 9c748bf7580b
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

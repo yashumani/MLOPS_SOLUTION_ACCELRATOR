@@ -1,0 +1,19 @@
+recipe_name: 9b3679a25d19
+version: '1.0'
+description: 'Pipeline Variant: mean+onehot+robust+none+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: robust
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 9b3679a25d19
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

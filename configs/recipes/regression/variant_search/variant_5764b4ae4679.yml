@@ -1,0 +1,22 @@
+recipe_name: 5764b4ae4679
+version: '1.0'
+description: 'Pipeline Variant: constant+frequency+maxabs+none+iqr'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: constant
+  encoding:
+    categorical_method: frequency
+  scaling:
+    method: maxabs
+  outlier_handling:
+    method: iqr
+    multiplier: 1.5
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 5764b4ae4679
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

@@ -1,0 +1,26 @@
+recipe_name: recipe_regr_balanced_performance_0009
+version: '1.0'
+description: Preprocessing level 40, Feature engineering level 20
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mode
+  outlier_handling:
+    method: iqr
+    action: cap
+    threshold: 1.5
+  encoding:
+    categorical_method: onehot
+    handle_unknown: error
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+v1_metadata:
+  compatibility_score: 0.95
+  expected_quality: Balanced Performance
+  max_runtime_seconds: 32
+  level: 40
+  original_name: 'Balanced Performance: mode+onehot+standard+variance'

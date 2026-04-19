@@ -1,0 +1,21 @@
+recipe_name: 2277be66d1bf
+version: '1.0'
+description: 'Pipeline Variant: mean+onehot+yeo_johnson+none'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: yeo_johnson
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 2277be66d1bf
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

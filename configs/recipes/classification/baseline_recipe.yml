@@ -1,0 +1,21 @@
+recipe_name: baseline_classification
+version: 1.0
+description: Basic classification recipe - Mean imputation + OneHot encoding + Standard scaling
+task_type: classification
+
+stage3_preprocessing:
+  imputation:
+    method: mean
+  imbalance_handling:
+    method: none
+    # No SMOTE in baseline - use dedicated SMOTE recipes for imbalanced data
+  encoding:
+    categorical_method: onehot
+    handle_unknown: ignore
+  scaling:
+    method: standard
+
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01

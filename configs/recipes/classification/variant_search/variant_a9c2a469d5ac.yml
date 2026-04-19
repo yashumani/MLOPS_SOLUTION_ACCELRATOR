@@ -1,0 +1,21 @@
+recipe_name: a9c2a469d5ac
+version: '1.0'
+description: 'Pipeline Variant: mean+smoteenn+label+yeo_johnson+variance'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: yeo_johnson
+  imbalance_handling:
+    method: smoteenn
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+variant_metadata:
+  variant_id: a9c2a469d5ac
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

@@ -1,0 +1,21 @@
+recipe_name: recipe_clus_quick_exploration_0005
+version: '1.0'
+description: Preprocessing level 20, Feature engineering level 10
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: label
+    handle_unknown: error
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+v1_metadata:
+  compatibility_score: 0.95
+  expected_quality: Quick Exploration
+  max_runtime_seconds: 15
+  level: 20
+  original_name: 'Quick Exploration: median+label+standard+none'

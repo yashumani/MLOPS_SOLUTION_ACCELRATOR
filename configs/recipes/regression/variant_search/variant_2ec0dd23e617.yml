@@ -1,0 +1,24 @@
+recipe_name: 2ec0dd23e617
+version: '1.0'
+description: 'Pipeline Variant: mode+onehot+minmax+correlation+clip'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mode
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: minmax
+  outlier_handling:
+    method: clip
+    lower_percentile: 0.01
+    upper_percentile: 0.99
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: 2ec0dd23e617
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

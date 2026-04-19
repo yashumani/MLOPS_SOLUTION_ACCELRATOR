@@ -1,5 +1,5 @@
 name: v3_final_evaluation
-version: 6
+version: 7
 display_name: V3 Final Evaluation
 type: command
 inputs:
@@ -16,8 +16,10 @@ inputs:
 outputs:
   final_report:
     type: uri_file
+    mode: upload
   final_champion_model:
     type: uri_folder
+    mode: upload
 code: ../
 command: >-
   python src/steps/final_evaluation.py

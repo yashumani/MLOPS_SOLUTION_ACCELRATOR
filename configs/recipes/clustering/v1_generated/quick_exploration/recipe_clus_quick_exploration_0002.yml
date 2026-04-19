@@ -1,0 +1,22 @@
+recipe_name: recipe_clus_quick_exploration_0002
+version: '1.0'
+description: Preprocessing level 10, Feature engineering level 20
+task_type: clustering
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+    handle_unknown: error
+  scaling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+v1_metadata:
+  compatibility_score: 1.0
+  expected_quality: Quick Exploration
+  max_runtime_seconds: 17
+  level: 10
+  original_name: 'Quick Exploration: mean+label+none+variance'

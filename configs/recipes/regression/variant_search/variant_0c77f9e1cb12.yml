@@ -1,0 +1,24 @@
+recipe_name: 0c77f9e1cb12
+version: '1.0'
+description: 'Pipeline Variant: constant+ordinal+power+correlation+clip'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: constant
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: power
+  outlier_handling:
+    method: clip
+    lower_percentile: 0.01
+    upper_percentile: 0.99
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: 0c77f9e1cb12
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

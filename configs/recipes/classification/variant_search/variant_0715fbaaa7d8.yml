@@ -1,0 +1,22 @@
+recipe_name: 0715fbaaa7d8
+version: '1.0'
+description: 'Pipeline Variant: mean+label+minmax+correlation'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: minmax
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.85
+variant_metadata:
+  variant_id: 0715fbaaa7d8
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

@@ -1,0 +1,26 @@
+recipe_name: outlier_iqr_standard
+version: 1.0
+description: Outlier handling with IQR + Standard scaling for regression
+task_type: regression
+
+stage3_preprocessing:
+  imputation:
+    method: knn
+    n_neighbors: 5
+  outlier_handling:
+    method: iqr
+    # IQR method: Remove outliers beyond 1.5*IQR
+    multiplier: 1.5
+  imbalance_handling:
+    method: none
+    # Not applicable to regression
+  encoding:
+    categorical_method: onehot
+    handle_unknown: ignore
+  scaling:
+    method: standard
+
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    k_features: 20

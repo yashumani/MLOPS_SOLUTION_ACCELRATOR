@@ -1,5 +1,5 @@
 name: v3_aggregate_phasec
-version: 4
+version: 5
 display_name: V3 Phase C - Aggregate
 type: command
 inputs:
@@ -12,13 +12,15 @@ inputs:
 outputs:
   aggregate_report:
     type: uri_file
+    mode: upload
   optimized_champion_model:
     type: uri_folder
+    mode: upload
 code: ../
 command: >-
   python src/steps/aggregate_phasec.py
   --config configs/${{inputs.config_name}}
-  --hpo_metrics ${{inputs.hpo_metrics_json}}
+  --hpo_metrics_json ${{inputs.hpo_metrics_json}}
   --optimized_model ${{inputs.optimized_model}}
   --report_out ${{outputs.aggregate_report}}
   --champion_out ${{outputs.optimized_champion_model}}

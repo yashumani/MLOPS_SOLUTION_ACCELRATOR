@@ -1,0 +1,20 @@
+recipe_name: 8ca73805728d
+version: '1.0'
+description: 'Pipeline Variant: knn+target+robust+mutual_info+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: target
+  scaling:
+    method: robust
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 8ca73805728d
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

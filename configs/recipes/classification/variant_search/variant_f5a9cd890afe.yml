@@ -1,0 +1,21 @@
+recipe_name: f5a9cd890afe
+version: '1.0'
+description: 'Pipeline Variant: mean+smotetomek+label+minmax+none'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: minmax
+  imbalance_handling:
+    method: smotetomek
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: f5a9cd890afe
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

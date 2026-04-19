@@ -1,5 +1,5 @@
 name: v3_phaseb_pycaret_recipe
-version: 6
+version: 7
 display_name: V3 Phase B - PyCaret Recipe
 type: command
 inputs:
@@ -12,10 +12,13 @@ inputs:
 outputs:
   metrics_json:
     type: uri_file
+    mode: upload
   manifest_json:
     type: uri_file
+    mode: upload
   best_model:
     type: uri_folder
+    mode: upload
 code: ../
 command: >-
   python src/steps/phaseb_pycaret_recipe.py

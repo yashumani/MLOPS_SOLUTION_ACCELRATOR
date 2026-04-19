@@ -1,0 +1,25 @@
+recipe_name: recipe_regr_quick_exploration_0007
+version: '1.0'
+description: Preprocessing level 30, Feature engineering level 10
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: mode
+  outlier_handling:
+    method: iqr
+    action: remove
+    threshold: 1.5
+  encoding:
+    categorical_method: onehot
+    handle_unknown: error
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+v1_metadata:
+  compatibility_score: 0.95
+  expected_quality: Quick Exploration
+  max_runtime_seconds: 22
+  level: 30
+  original_name: 'Quick Exploration: mode+onehot+standard+none'

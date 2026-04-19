@@ -1,0 +1,21 @@
+recipe_name: 2f8d4ebb4190
+version: '1.0'
+description: 'Pipeline Variant: mean+onehot+minmax+none'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: minmax
+  imbalance_handling:
+    method: none
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: 2f8d4ebb4190
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

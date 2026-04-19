@@ -1,0 +1,23 @@
+recipe_name: e47d0de6eaa2
+version: '1.0'
+description: 'Pipeline Variant: knn+onehot+robust+none+winsorize'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: knn
+  encoding:
+    categorical_method: onehot
+  scaling:
+    method: robust
+  outlier_handling:
+    method: winsorize
+    lower_percentile: 0.05
+    upper_percentile: 0.95
+stage4_feature_engineering:
+  feature_selection:
+    method: none
+variant_metadata:
+  variant_id: e47d0de6eaa2
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

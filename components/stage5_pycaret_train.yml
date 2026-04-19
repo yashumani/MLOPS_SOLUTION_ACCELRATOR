@@ -1,5 +1,5 @@
 name: v3_stage5_pycaret_train
-version: 4
+version: 5
 display_name: V3 Stage 5a - Baseline PyCaret
 type: command
 inputs:
@@ -10,10 +10,13 @@ inputs:
 outputs:
   metrics_json:
     type: uri_file
+    mode: upload
   manifest_json:
     type: uri_file
+    mode: upload
   best_model:
     type: uri_folder
+    mode: upload
 code: ../
 command: >-
   python src/steps/stage5_pycaret_train.py

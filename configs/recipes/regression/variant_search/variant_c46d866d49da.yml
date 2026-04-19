@@ -1,0 +1,23 @@
+recipe_name: c46d866d49da
+version: '1.0'
+description: 'Pipeline Variant: median+ordinal+none+correlation+zscore'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: median
+  encoding:
+    categorical_method: ordinal
+  scaling:
+    method: none
+  outlier_handling:
+    method: zscore
+    threshold: 3.0
+stage4_feature_engineering:
+  feature_selection:
+    method: correlation
+    threshold: 0.95
+variant_metadata:
+  variant_id: c46d866d49da
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

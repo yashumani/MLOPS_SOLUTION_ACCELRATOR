@@ -1,0 +1,24 @@
+recipe_name: c465740f3035
+version: '1.0'
+description: 'Pipeline Variant: iterative+frequency+power+rfe+percentile'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: frequency
+  scaling:
+    method: power
+  outlier_handling:
+    method: percentile
+    lower: 5
+    upper: 95
+stage4_feature_engineering:
+  feature_selection:
+    method: rfe
+    threshold: 0.5
+variant_metadata:
+  variant_id: c465740f3035
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

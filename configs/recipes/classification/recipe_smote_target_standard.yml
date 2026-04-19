@@ -1,0 +1,20 @@
+recipe_name: smote_target_standard
+version: 1.0
+description: SMOTE oversampling + Target encoding + Standard scaling
+stage3_preprocessing:
+  imputation:
+    method: knn
+    n_neighbors: 5
+  imbalance_handling:
+    method: smote
+    sampling_strategy: auto
+    k_neighbors: 5
+  encoding:
+    categorical_method: target
+    handle_unknown: value
+  scaling:
+    method: standard
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    k_features: 20

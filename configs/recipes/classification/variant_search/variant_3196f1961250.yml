@@ -1,0 +1,21 @@
+recipe_name: 3196f1961250
+version: '1.0'
+description: 'Pipeline Variant: mean+smoteenn+label+minmax+variance'
+task_type: classification
+stage3_preprocessing:
+  imputation:
+    method: mean
+  encoding:
+    categorical_method: label
+  scaling:
+    method: minmax
+  imbalance_handling:
+    method: smoteenn
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+variant_metadata:
+  variant_id: 3196f1961250
+  leakage_risk: medium
+  estimated_runtime_sec: 30
+  generation_mode: grid_sample

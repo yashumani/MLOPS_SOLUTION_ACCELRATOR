@@ -1,0 +1,25 @@
+recipe_name: baseline_clustering
+version: 1.0
+description: Basic clustering recipe - Mean imputation + OneHot encoding + Standard scaling
+task_type: clustering
+
+stage3_preprocessing:
+  imputation:
+    method: mean
+  imbalance_handling:
+    method: none
+    # Not applicable to clustering (unsupervised)
+  encoding:
+    categorical_method: onehot
+    handle_unknown: ignore
+  scaling:
+    method: standard
+    # Scaling is critical for clustering (distance-based algorithms)
+
+stage4_feature_engineering:
+  feature_selection:
+    method: variance
+    threshold: 0.01
+  dimensionality_reduction:
+    method: none
+    # Can add PCA later for high-dimensional data

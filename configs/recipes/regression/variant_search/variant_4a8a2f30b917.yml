@@ -1,0 +1,20 @@
+recipe_name: 4a8a2f30b917
+version: '1.0'
+description: 'Pipeline Variant: iterative+label+minmax+mutual_info+none'
+task_type: regression
+stage3_preprocessing:
+  imputation:
+    method: iterative
+  encoding:
+    categorical_method: label
+  scaling:
+    method: minmax
+stage4_feature_engineering:
+  feature_selection:
+    method: mutual_info
+    threshold: 0.05
+variant_metadata:
+  variant_id: 4a8a2f30b917
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: curated

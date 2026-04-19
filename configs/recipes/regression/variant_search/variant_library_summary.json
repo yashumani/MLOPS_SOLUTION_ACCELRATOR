@@ -1,0 +1,156 @@
+{
+  "task_type": "regression",
+  "total_variants": 30,
+  "variants": [
+    {
+      "variant_id": "1e80eb99c61c",
+      "file": "variant_1e80eb99c61c.yml",
+      "description": "mean+onehot+standard+none+none"
+    },
+    {
+      "variant_id": "9b3679a25d19",
+      "file": "variant_9b3679a25d19.yml",
+      "description": "mean+onehot+robust+none+none"
+    },
+    {
+      "variant_id": "0b48f382ff23",
+      "file": "variant_0b48f382ff23.yml",
+      "description": "mean+onehot+standard+correlation+none"
+    },
+    {
+      "variant_id": "ef77e35bee26",
+      "file": "variant_ef77e35bee26.yml",
+      "description": "mean+label+standard+none+none"
+    },
+    {
+      "variant_id": "c480e25409ea",
+      "file": "variant_c480e25409ea.yml",
+      "description": "mean+label+robust+correlation+none"
+    },
+    {
+      "variant_id": "ff457b64a722",
+      "file": "variant_ff457b64a722.yml",
+      "description": "mean+target+standard+none+none"
+    },
+    {
+      "variant_id": "c23fc2fcdcd1",
+      "file": "variant_c23fc2fcdcd1.yml",
+      "description": "mean+target+minmax+variance+none"
+    },
+    {
+      "variant_id": "6838deba1cb1",
+      "file": "variant_6838deba1cb1.yml",
+      "description": "median+onehot+standard+none+iqr"
+    },
+    {
+      "variant_id": "4ce00c66ec41",
+      "file": "variant_4ce00c66ec41.yml",
+      "description": "median+onehot+robust+none+winsorize"
+    },
+    {
+      "variant_id": "5d797052918c",
+      "file": "variant_5d797052918c.yml",
+      "description": "median+label+standard+correlation+iqr"
+    },
+    {
+      "variant_id": "3fb969825770",
+      "file": "variant_3fb969825770.yml",
+      "description": "median+label+robust+variance+winsorize"
+    },
+    {
+      "variant_id": "fafa16945ea8",
+      "file": "variant_fafa16945ea8.yml",
+      "description": "median+target+standard+none+zscore"
+    },
+    {
+      "variant_id": "125980a58217",
+      "file": "variant_125980a58217.yml",
+      "description": "median+target+minmax+mutual_info+none"
+    },
+    {
+      "variant_id": "6e6c2ceeeed4",
+      "file": "variant_6e6c2ceeeed4.yml",
+      "description": "knn+onehot+standard+none+none"
+    },
+    {
+      "variant_id": "39fd73fc69e6",
+      "file": "variant_39fd73fc69e6.yml",
+      "description": "knn+onehot+robust+correlation+iqr"
+    },
+    {
+      "variant_id": "4879d3521f76",
+      "file": "variant_4879d3521f76.yml",
+      "description": "knn+label+standard+variance+winsorize"
+    },
+    {
+      "variant_id": "18ceb3fdfe92",
+      "file": "variant_18ceb3fdfe92.yml",
+      "description": "knn+label+minmax+none+none"
+    },
+    {
+      "variant_id": "8ca73805728d",
+      "file": "variant_8ca73805728d.yml",
+      "description": "knn+target+robust+mutual_info+none"
+    },
+    {
+      "variant_id": "28f5b2151a08",
+      "file": "variant_28f5b2151a08.yml",
+      "description": "iterative+onehot+standard+none+none"
+    },
+    {
+      "variant_id": "e456b40c86dd",
+      "file": "variant_e456b40c86dd.yml",
+      "description": "iterative+onehot+robust+correlation+winsorize"
+    },
+    {
+      "variant_id": "c972ad795fee",
+      "file": "variant_c972ad795fee.yml",
+      "description": "iterative+label+standard+variance+iqr"
+    },
+    {
+      "variant_id": "4a8a2f30b917",
+      "file": "variant_4a8a2f30b917.yml",
+      "description": "iterative+label+minmax+mutual_info+none"
+    },
+    {
+      "variant_id": "2e02e4c22bed",
+      "file": "variant_2e02e4c22bed.yml",
+      "description": "iterative+target+robust+none+zscore"
+    },
+    {
+      "variant_id": "d24706a513cb",
+      "file": "variant_d24706a513cb.yml",
+      "description": "mean+onehot+minmax+mutual_info+iqr"
+    },
+    {
+      "variant_id": "8be2d6c356a0",
+      "file": "variant_8be2d6c356a0.yml",
+      "description": "mean+label+none+none+winsorize"
+    },
+    {
+      "variant_id": "a103dc1b421e",
+      "file": "variant_a103dc1b421e.yml",
+      "description": "median+onehot+none+correlation+none"
+    },
+    {
+      "variant_id": "8f0022e3da14",
+      "file": "variant_8f0022e3da14.yml",
+      "description": "knn+target+standard+correlation+zscore"
+    },
+    {
+      "variant_id": "d6e22b9cd8a5",
+      "file": "variant_d6e22b9cd8a5.yml",
+      "description": "iterative+onehot+minmax+variance+iqr"
+    },
+    {
+      "variant_id": "6d6e8e98c8e7",
+      "file": "variant_6d6e8e98c8e7.yml",
+      "description": "median+target+robust+mutual_info+winsorize"
+    },
+    {
+      "variant_id": "1b9dbab7f2bc",
+      "file": "variant_1b9dbab7f2bc.yml",
+      "description": "knn+label+robust+none+none"
+    }
+  ]
+}

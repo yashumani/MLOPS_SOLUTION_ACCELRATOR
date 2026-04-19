@@ -1,5 +1,5 @@
 name: stage4_feature_engineering
-version: 4
+version: 5
 display_name: V3 Stage 4 - Engineering
 type: command
 inputs:
@@ -10,8 +10,10 @@ inputs:
 outputs:
   fe_report:
     type: uri_folder
+    mode: upload
   dataset_out:
     type: uri_file
+    mode: upload
 code: ../
 command: >-
   python src/steps/stage4_feature_engineering.py
