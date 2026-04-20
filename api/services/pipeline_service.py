@@ -13,11 +13,16 @@ from azure.ai.ml import Input, MLClient
 from api.core.azure_ml import get_ml_client
 from api.core.config import settings
 from api.schemas.pipeline import (
+    DriftResponse,
+    DriftResultItem,
     JobListResponse,
     JobStatus,
     JobSummary,
+    MetricsResponse,
+    ModelMetric,
     OutputInfo,
     OutputListResponse,
+    ResubmitRequest,
     StepStatus,
     SubmitRequest,
     SubmitResponse,
@@ -232,3 +237,136 @@ def download_output(job_name: str, output_name: str) -> Path:
     tmp = Path(tempfile.mkdtemp(prefix=f"mlops_output_{job_name}_"))
     ml_client.jobs.download(job_name, download_path=str(tmp), output_name=output_name)
     return tmp
+
+
+# ---------------------------------------------------------------------------
+# Metrics (Phase 0a)
+# ---------------------------------------------------------------------------
+
+
+def get_job_metrics(job_name: str) -> MetricsResponse:
+    """Retrieve per-model MLflow metrics logged by training steps."""
+    ml_client = get_ml_client()
+    parent = ml_client.jobs.get(job_name)
+    task_type = (parent.tags or {}).get("task", None)
+
+    models: list[ModelMetric] = []
+    try:
+        for child in ml_client.jobs.list(parent_job_name=job_name):
+            child_detail = ml_client.jobs.get(child.name)
+            # Only training/aggregate steps log model metrics
+            display = getattr(child_detail, "display_name", "") or child.name
+            tags = dict(child_detail.tags) if child_detail.tags else {}
+
+            # Try to retrieve nested per-model runs
+            try:
+                for grandchild in ml_client.jobs.list(parent_job_name=child.name):
+                    gc_detail = ml_client.jobs.get(grandchild.name)
+                    gc_name = getattr(gc_detail, "display_name", "") or grandchild.name
+                    gc_tags = dict(gc_detail.tags) if gc_detail.tags else {}
+
+                    # Collect numeric metrics from tags (MLflow logs appear as tags)
+                    metrics: dict[str, float] = {}
+                    for k, v in gc_tags.items():
+                        try:
+                            metrics[k] = float(v)
+                        except (ValueError, TypeError):
+                            continue
+
+                    if metrics:
+                        models.append(
+                            ModelMetric(
+                                model_name=gc_name,
+                                engine=gc_tags.get("engine"),
+                                phase=tags.get("phase", display),
+                                metrics=metrics,
+                                is_champion=gc_tags.get("champion", "").lower() == "true",
+                            )
+                        )
+            except Exception:
+                pass
+
+    except Exception:
+        pass
+
+    return MetricsResponse(job_name=job_name, task_type=task_type, models=models)
+
+
+# ---------------------------------------------------------------------------
+# Drift (Phase 0b)
+# ---------------------------------------------------------------------------
+
+
+def get_job_drift(job_name: str) -> DriftResponse:
+    """Retrieve drift detection results from a completed pipeline job."""
+    ml_client = get_ml_client()
+
+    # Attempt to download drift output
+    try:
+        tmp = Path(tempfile.mkdtemp(prefix=f"mlops_drift_{job_name}_"))
+        ml_client.jobs.download(
+            job_name, download_path=str(tmp), output_name="drift_report"
+        )
+        # Look for drift result JSON
+        import json
+
+        for f in tmp.rglob("*.json"):
+            try:
+                data = json.loads(f.read_text())
+                features = []
+                for feat in data.get("feature_drift", []):
+                    psi = float(feat.get("psi", 0))
+                    severity = (
+                        "severe" if psi >= 0.25
+                        else "moderate" if psi >= 0.1
+                        else "none"
+                    )
+                    features.append(
+                        DriftResultItem(
+                            feature=feat.get("feature", "unknown"),
+                            psi=psi,
+                            drift_detected=psi >= 0.1,
+                            severity=severity,
+                        )
+                    )
+                return DriftResponse(
+                    job_name=job_name,
+                    overall_drift_detected=data.get("drift_detected", False),
+                    stability_score=data.get("stability_score"),
+                    drift_type=data.get("drift_type"),
+                    drifted_columns=data.get("drifted_columns", []),
+                    features=features,
+                    evidently_report_path=data.get("evidently_report_path"),
+                )
+            except (json.JSONDecodeError, KeyError):
+                continue
+        shutil.rmtree(tmp, ignore_errors=True)
+    except Exception:
+        pass
+
+    return DriftResponse(job_name=job_name)
+
+
+# ---------------------------------------------------------------------------
+# Resubmit (Phase 0d)
+# ---------------------------------------------------------------------------
+
+
+def resubmit_pipeline(req: ResubmitRequest) -> SubmitResponse:
+    """Resubmit a pipeline job using the same configuration as the original."""
+    ml_client = get_ml_client()
+    original = ml_client.jobs.get(req.job_name)
+    tags = dict(original.tags) if original.tags else {}
+
+    config_name = tags.get("config_name", "")
+    if not config_name:
+        # Infer from experiment name
+        exp = getattr(original, "experiment_name", "") or ""
+        config_name = f"config_{exp.replace('_v3', '')}_azureml"
+
+    submit_req = SubmitRequest(
+        config_name=config_name,
+        force_rerun=req.force_rerun,
+        tags={"resubmit_from": req.job_name},
+    )
+    return submit_pipeline(submit_req)

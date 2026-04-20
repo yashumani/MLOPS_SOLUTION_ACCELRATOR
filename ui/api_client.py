@@ -1,0 +1,126 @@
+"""API client wrapper for the MLOps V3 FastAPI backend."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import requests
+import streamlit as st
+
+
+class APIClient:
+    """Synchronous client for the MLOps V3 Pipeline Management API."""
+
+    def __init__(self, base_url: str, api_key: str, timeout: int = 60):
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self._session = requests.Session()
+        self._session.headers.update({"X-API-Key": api_key})
+
+    # ── helpers ────────────────────────────────────────────
+
+    def _url(self, path: str) -> str:
+        return f"{self.base_url}{path}"
+
+    def _request(self, method: str, path: str, **kwargs) -> dict | list | None:
+        kwargs.setdefault("timeout", self.timeout)
+        resp = self._session.request(method, self._url(path), **kwargs)
+        resp.raise_for_status()
+        if resp.status_code == 204:
+            return None
+        return resp.json()
+
+    def _get(self, path: str, **params) -> Any:
+        return self._request("GET", path, params=params)
+
+    def _post(self, path: str, json: dict | None = None) -> Any:
+        return self._request("POST", path, json=json)
+
+    # ── health ─────────────────────────────────────────────
+
+    def health(self) -> dict:
+        return self._get("/api/v1/health")
+
+    # ── configs ────────────────────────────────────────────
+
+    def list_configs(self) -> dict:
+        return self._get("/api/v1/configs")
+
+    def get_config(self, config_name: str) -> dict:
+        return self._get(f"/api/v1/configs/{config_name}")
+
+    # ── pipelines ──────────────────────────────────────────
+
+    def submit_pipeline(
+        self,
+        config_name: str,
+        compute: str | None = None,
+        force_rerun: bool = False,
+        baseline_job: str | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> dict:
+        body: dict[str, Any] = {"config_name": config_name}
+        if compute:
+            body["compute"] = compute
+        if force_rerun:
+            body["force_rerun"] = True
+        if baseline_job:
+            body["baseline_job"] = baseline_job
+        if tags:
+            body["tags"] = tags
+        return self._post("/api/v1/pipelines/submit", json=body)
+
+    def list_jobs(
+        self,
+        experiment_name: str | None = None,
+        status: str | None = None,
+        max_results: int = 50,
+    ) -> dict:
+        params: dict[str, Any] = {"max_results": max_results}
+        if experiment_name:
+            params["experiment_name"] = experiment_name
+        if status:
+            params["status"] = status
+        return self._get("/api/v1/pipelines/jobs", **params)
+
+    def get_job(self, job_name: str) -> dict:
+        return self._get(f"/api/v1/pipelines/jobs/{job_name}")
+
+    def cancel_job(self, job_name: str) -> dict:
+        return self._post(f"/api/v1/pipelines/jobs/{job_name}/cancel")
+
+    def list_outputs(self, job_name: str) -> dict:
+        return self._get(f"/api/v1/pipelines/jobs/{job_name}/outputs")
+
+    def download_output(self, job_name: str, output_name: str) -> bytes:
+        resp = self._session.get(
+            self._url(f"/api/v1/pipelines/jobs/{job_name}/outputs/{output_name}/download"),
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return resp.content
+
+    # ── metrics (Phase 0a) ─────────────────────────────────
+
+    def get_job_metrics(self, job_name: str) -> dict:
+        return self._get(f"/api/v1/pipelines/jobs/{job_name}/metrics")
+
+    # ── drift (Phase 0b) ──────────────────────────────────
+
+    def get_job_drift(self, job_name: str) -> dict:
+        return self._get(f"/api/v1/pipelines/jobs/{job_name}/drift")
+
+    # ── resubmit (Phase 0d) ───────────────────────────────
+
+    def resubmit(self, job_name: str, force_rerun: bool = True) -> dict:
+        return self._post(
+            "/api/v1/pipelines/resubmit",
+            json={"job_name": job_name, "force_rerun": force_rerun},
+        )
+
+
+def get_client() -> APIClient:
+    """Return a cached APIClient from Streamlit session state."""
+    api_key = st.session_state.get("api_key", "")
+    base_url = st.session_state.get("api_base_url", "http://localhost:8000")
+    return APIClient(base_url=base_url, api_key=api_key)

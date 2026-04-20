@@ -8,9 +8,12 @@ from fastapi.responses import FileResponse
 
 from api.core.security import verify_api_key
 from api.schemas.pipeline import (
+    DriftResponse,
     JobListResponse,
     JobStatus,
+    MetricsResponse,
     OutputListResponse,
+    ResubmitRequest,
     SubmitRequest,
     SubmitResponse,
 )
@@ -111,3 +114,38 @@ async def download_output(job_name: str, output_name: str):
         filename=f"{job_name}_{output_name}.zip",
         media_type="application/zip",
     )
+
+
+# ── Metrics (Phase 0a) ───────────────────────────────────────
+
+@router.get("/jobs/{job_name}/metrics", response_model=MetricsResponse)
+async def get_job_metrics(job_name: str):
+    """Get per-model MLflow metrics for a pipeline job."""
+    try:
+        return pipeline_service.get_job_metrics(job_name)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Metrics not available: {exc}")
+
+
+# ── Drift (Phase 0b) ─────────────────────────────────────────
+
+@router.get("/jobs/{job_name}/drift", response_model=DriftResponse)
+async def get_job_drift(job_name: str):
+    """Get drift detection results for a pipeline job."""
+    try:
+        return pipeline_service.get_job_drift(job_name)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Drift data not available: {exc}")
+
+
+# ── Resubmit (Phase 0d) ──────────────────────────────────────
+
+@router.post("/resubmit", response_model=SubmitResponse, status_code=202)
+async def resubmit(req: ResubmitRequest):
+    """Resubmit a pipeline job using the same configuration."""
+    try:
+        return pipeline_service.resubmit_pipeline(req)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
