@@ -13,6 +13,8 @@ from azure.ai.ml import Input, MLClient
 from api.core.azure_ml import get_ml_client
 from api.core.config import settings
 from api.schemas.pipeline import (
+    BaselineCaptureRequest,
+    BaselineCaptureResponse,
     DriftResponse,
     DriftResultItem,
     JobListResponse,
@@ -27,6 +29,7 @@ from api.schemas.pipeline import (
     SubmitRequest,
     SubmitResponse,
 )
+from api.utils.azure_links import build_studio_url
 
 # Repo root so we can import pipeline_builder and read configs
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -47,13 +50,7 @@ def _derive_display_name(experiment_name: str) -> str:
     return f"{experiment_name}_{timestamp}_{unique_id}"
 
 
-def _studio_url(job_name: str) -> str:
-    return (
-        f"https://ml.azure.com/runs/{job_name}"
-        f"?wsid=/subscriptions/{settings.azure_subscription_id}"
-        f"/resourcegroups/{settings.azure_resource_group}"
-        f"/workspaces/{settings.azure_workspace_name}"
-    )
+# _studio_url removed — use build_studio_url(ml_client, job_name) instead
 
 
 def _load_config_yaml(config_name: str) -> dict:
@@ -136,7 +133,7 @@ def submit_pipeline(req: SubmitRequest) -> SubmitResponse:
         experiment_name=experiment_name,
         display_name=display_name,
         status=submitted.status or "Submitted",
-        studio_url=_studio_url(submitted.name),
+        studio_url=build_studio_url(ml_client, submitted.name),
     )
 
 
@@ -168,6 +165,7 @@ def list_jobs(
                 status=j.status or "Unknown",
                 start_time=getattr(j, "creation_context", None)
                 and getattr(j.creation_context, "created_at", None),
+                studio_url=build_studio_url(ml_client, j.name),
             )
         )
         if len(jobs) >= max_results:
@@ -204,6 +202,7 @@ def get_job(job_name: str) -> JobStatus:
         start_time=getattr(j, "creation_context", None)
         and getattr(j.creation_context, "created_at", None),
         end_time=None,
+        studio_url=build_studio_url(ml_client, j.name),
         tags=dict(j.tags) if j.tags else {},
         steps=steps,
     )
@@ -337,6 +336,7 @@ def get_job_drift(job_name: str) -> DriftResponse:
                     drifted_columns=data.get("drifted_columns", []),
                     features=features,
                     evidently_report_path=data.get("evidently_report_path"),
+                    studio_url=build_studio_url(ml_client, job_name),
                 )
             except (json.JSONDecodeError, KeyError):
                 continue
@@ -370,3 +370,26 @@ def resubmit_pipeline(req: ResubmitRequest) -> SubmitResponse:
         tags={"resubmit_from": req.job_name},
     )
     return submit_pipeline(submit_req)
+
+
+# ---------------------------------------------------------------------------
+# Baseline capture (Phase 0c)
+# ---------------------------------------------------------------------------
+
+
+def capture_baseline(req: BaselineCaptureRequest) -> BaselineCaptureResponse:
+    """Extract drift baseline artifacts from a completed pipeline job."""
+    ml_client = get_ml_client()
+    j = ml_client.jobs.get(req.job_name)
+
+    baseline_path: str | None = None
+    outputs = j.outputs or {}
+    if "drift_baseline" in outputs:
+        baseline_path = getattr(outputs["drift_baseline"], "path", None)
+
+    return BaselineCaptureResponse(
+        job_name=req.job_name,
+        baseline_path=baseline_path,
+        status="captured" if baseline_path else "no_baseline_output",
+        studio_url=build_studio_url(ml_client, req.job_name),
+    )

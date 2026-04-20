@@ -20,6 +20,10 @@ def render_job_card(job: dict):
         col2.markdown(f"**Status:** {badge}")
         col3.markdown(f"**Experiment:** {experiment}")
 
+        studio_url = job.get("studio_url")
+        if studio_url:
+            st.markdown(f"🔗 [Open in Azure ML Studio]({studio_url})")
+
         tags = job.get("tags", {})
         if tags:
             st.markdown("**Tags:**")

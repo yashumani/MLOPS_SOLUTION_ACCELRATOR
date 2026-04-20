@@ -47,6 +47,7 @@ class JobStatus(BaseModel):
     status: str
     start_time: datetime | None = None
     end_time: datetime | None = None
+    studio_url: str | None = None
     tags: dict[str, str] = Field(default_factory=dict)
     steps: list[StepStatus] = Field(default_factory=list)
 
@@ -59,6 +60,7 @@ class JobSummary(BaseModel):
     display_name: str | None = None
     status: str
     start_time: datetime | None = None
+    studio_url: str | None = None
 
 
 class JobListResponse(BaseModel):
@@ -111,6 +113,7 @@ class DriftResponse(BaseModel):
     drifted_columns: list[str] = Field(default_factory=list)
     features: list[DriftResultItem] = Field(default_factory=list)
     evidently_report_path: str | None = None
+    studio_url: str | None = None
 
 
 # ── Resubmit ──────────────────────────────────────────────────
@@ -118,3 +121,27 @@ class DriftResponse(BaseModel):
 class ResubmitRequest(BaseModel):
     job_name: str = Field(..., description="Name of the job to resubmit")
     force_rerun: bool = Field(True, description="Force re-run ignoring cache")
+
+
+# ── Baseline capture ──────────────────────────────────────────
+
+class BaselineCaptureRequest(BaseModel):
+    job_name: str = Field(
+        ..., description="Completed job to extract drift baseline from",
+    )
+
+
+class BaselineCaptureResponse(BaseModel):
+    job_name: str
+    baseline_path: str | None = None
+    status: str = "captured"
+    studio_url: str | None = None
+
+
+# ── Health ────────────────────────────────────────────────────
+
+class HealthResponse(BaseModel):
+    status: str = "ok"
+    azure_ml_connected: bool = False
+    workspace: str | None = None
+    timestamp: str | None = None

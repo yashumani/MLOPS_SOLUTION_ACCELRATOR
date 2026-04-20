@@ -83,6 +83,11 @@ if job_name_input:
         st.markdown(f"### {detail.get('job_name', job_name_input)}")
         st.markdown(f"**Status:** {status_badge(detail.get('status', 'Unknown'))}")
 
+        # Studio URL link
+        studio_url = detail.get("studio_url")
+        if studio_url:
+            st.markdown(f"🔗 [Open in Azure ML Studio]({studio_url})")
+
         # Step Timeline
         steps = detail.get("steps", [])
         if steps:

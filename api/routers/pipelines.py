@@ -8,6 +8,8 @@ from fastapi.responses import FileResponse
 
 from api.core.security import verify_api_key
 from api.schemas.pipeline import (
+    BaselineCaptureRequest,
+    BaselineCaptureResponse,
     DriftResponse,
     JobListResponse,
     JobStatus,
@@ -149,3 +151,14 @@ async def resubmit(req: ResubmitRequest):
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Baseline capture (Phase 0c) ──────────────────────────────
+
+@router.post("/baseline/capture", response_model=BaselineCaptureResponse)
+async def capture_baseline(req: BaselineCaptureRequest):
+    """Extract drift baseline artifacts from a completed job."""
+    try:
+        return pipeline_service.capture_baseline(req)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Baseline capture failed: {exc}")

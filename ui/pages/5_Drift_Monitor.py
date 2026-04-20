@@ -37,6 +37,11 @@ with st.spinner("Loading drift report..."):
         drift_results = []
         summary = {}
 
+# Studio URL link
+studio_url = data.get("studio_url") if data else None
+if studio_url:
+    st.markdown(f"🔗 [Open in Azure ML Studio]({studio_url})")
+
 if not drift_results:
     st.warning("No drift results found for this job. Ensure s13_drift_monitor ran successfully.")
     st.stop()
