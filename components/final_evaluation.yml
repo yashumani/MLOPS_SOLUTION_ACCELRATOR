@@ -1,7 +1,8 @@
 name: v3_final_evaluation
-version: 7
-display_name: V3 Final Evaluation
+version: 9
+display_name: s10 - V3 Final Evaluation
 type: command
+is_deterministic: false
 inputs:
   config_name:
     type: string
@@ -16,10 +17,8 @@ inputs:
 outputs:
   final_report:
     type: uri_file
-    mode: upload
   final_champion_model:
     type: uri_folder
-    mode: upload
 code: ../
 command: >-
   python src/steps/final_evaluation.py
@@ -30,4 +29,6 @@ command: >-
   --phasec_model ${{inputs.phasec_champion}}
   --report_out ${{outputs.final_report}}
   --champion_out ${{outputs.final_champion_model}}
-environment: azureml:mlops-v3-unified:4
+environment: azureml:mlops-v3-unified:23
+history:
+  enableMLflowTracking: true

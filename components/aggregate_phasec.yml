@@ -1,7 +1,8 @@
 name: v3_aggregate_phasec
-version: 5
-display_name: V3 Phase C - Aggregate
+version: 6
+display_name: s09 - V3 Phase C - Aggregate
 type: command
+is_deterministic: false
 inputs:
   config_name:
     type: string
@@ -12,16 +13,16 @@ inputs:
 outputs:
   aggregate_report:
     type: uri_file
-    mode: upload
   optimized_champion_model:
     type: uri_folder
-    mode: upload
 code: ../
 command: >-
   python src/steps/aggregate_phasec.py
   --config configs/${{inputs.config_name}}
-  --hpo_metrics_json ${{inputs.hpo_metrics_json}}
+  --hpo_metrics ${{inputs.hpo_metrics_json}}
   --optimized_model ${{inputs.optimized_model}}
   --report_out ${{outputs.aggregate_report}}
   --champion_out ${{outputs.optimized_champion_model}}
-environment: azureml:mlops-v3-unified:4
+environment: azureml:mlops-v3-unified:23
+history:
+  enableMLflowTracking: true

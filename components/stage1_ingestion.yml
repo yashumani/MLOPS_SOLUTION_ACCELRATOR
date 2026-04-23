@@ -1,7 +1,8 @@
 name: v3_stage1_ingestion
-version: 8
+version: 9
 display_name: V3 Stage 1 - Ingestion (Read-only)
 type: command
+is_deterministic: false
 inputs:
   config_name:
     type: string
@@ -9,11 +10,11 @@ inputs:
     type: uri_folder
 outputs:
   eda_report:
-    type: uri_folder
-    mode: upload
+    type: uri_folder  
   dataset_out:
     type: uri_file
-    mode: upload
 code: ../
 command: python src/steps/stage1_ingestion.py --config configs/${{inputs.config_name}} --dataset_in ${{inputs.dataset_in}} --eda_dir ${{outputs.eda_report}} --dataset_out ${{outputs.dataset_out}}
-environment: azureml:mlops-v3-unified:4
+environment: azureml:mlops-v3-unified:23
+history:
+  enableMLflowTracking: true

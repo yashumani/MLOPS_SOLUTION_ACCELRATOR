@@ -1,0 +1,89 @@
+# FORCE RE-REGISTRATION: 2026-02-08 - V3-Proposed Planner Mode (v7)
+name: v3_phaseb_variant_runner
+version: 7
+display_name: s06 - V3 Phase B - Variant Runner - Planner Mode
+type: command
+is_deterministic: false
+
+inputs:
+  config_name:
+    type: string
+    description: Config YAML filename
+  variants_list:
+    type: string
+    description: Comma-separated list of variant paths
+  engine_list:
+    type: string
+    default: "pycaret,flaml"
+    description: Comma-separated list of engines to run
+  dataset_in:
+    type: uri_file
+    description: Processed dataset from Stage 4
+  time_budget_per_variant:
+    type: integer
+    default: 300
+    description: Time budget per variant in seconds
+  flaml_min_budget:
+    type: integer
+    default: 120
+    description: Minimum FLAML time budget (floor to prevent 100%% timeout)
+  # V3-Proposed Planner inputs
+  planner_enabled:
+    type: boolean
+    default: false
+    description: Enable V3-Proposed adaptive planner mode
+  round1_max_variants:
+    type: integer
+    default: 40
+    description: Max variants for Round 1 proxy training
+  round2_max_variants:
+    type: integer
+    default: 10
+    description: Max variants for Round 2 full training
+  proxy_prune_threshold:
+    type: number
+    default: 0.50
+    description: Proxy metric threshold for pruning
+  cache_enabled:
+    type: boolean
+    default: true
+    description: Enable preprocessing cache
+
+outputs:
+  leaderboard_csv:
+    type: uri_file
+    description: Leaderboard of all variant×engine results
+  all_results_json:
+    type: uri_file
+    description: Complete results with full details
+  champion_manifest:
+    type: uri_file
+    description: Champion model manifest
+  champion_model:
+    type: uri_folder
+    description: Champion model artifacts
+
+code: ../
+
+command: >-
+  python src/steps/s06_phaseb_variant_runner.py
+  --config_path configs/${{inputs.config_name}}
+  --variants_list "${{inputs.variants_list}}"
+  --engine_list ${{inputs.engine_list}}
+  --dataset_in ${{inputs.dataset_in}}
+  --output_dir ${{outputs.champion_model}}
+  --time_budget_per_variant ${{inputs.time_budget_per_variant}}
+  --flaml_min_budget ${{inputs.flaml_min_budget}}
+  $[[--planner_enabled]]
+  --round1_max_variants ${{inputs.round1_max_variants}}
+  --round2_max_variants ${{inputs.round2_max_variants}}
+  --proxy_prune_threshold ${{inputs.proxy_prune_threshold}}
+  $[[--cache_enabled]]
+  && echo "Creating output files (handles zero results case)"
+  && (test -f ${{outputs.champion_model}}/leaderboard.csv && cp ${{outputs.champion_model}}/leaderboard.csv ${{outputs.leaderboard_csv}} || echo "variant_id,engine,metric" > ${{outputs.leaderboard_csv}})
+  && (test -f ${{outputs.champion_model}}/all_results.json && cp ${{outputs.champion_model}}/all_results.json ${{outputs.all_results_json}} || echo "[]" > ${{outputs.all_results_json}})
+  && (test -f ${{outputs.champion_model}}/champion_manifest.json && cp ${{outputs.champion_model}}/champion_manifest.json ${{outputs.champion_manifest}} || echo "{}" > ${{outputs.champion_manifest}})
+environment: azureml:mlops-v3-unified:23
+
+history:
+  enableMLflowTracking: true

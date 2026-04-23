@@ -1,0 +1,45 @@
+name: v3_stage0_data_validation
+version: 1
+display_name: V3 Stage 0 - Data Quality Gate
+type: command
+is_deterministic: false
+description: |
+  Validates input dataset against defined expectations using Great Expectations.
+  HARD FAIL on critical violations (schema, null values in required columns).
+  Logs warnings for minor issues. Prevents bad data from entering training pipeline.
+
+inputs:
+  config_name:
+    type: string
+    description: "Config file name (e.g., config_classification_telecom_churn_azureml.yml)"
+  dataset_in:
+    type: uri_folder
+    description: "Raw dataset directory from Azure ML datastore"
+  expectations_suite:
+    type: string
+    optional: true
+    default: "default"
+    description: "Name of expectations suite to use (default uses task-type defaults)"
+
+outputs:
+  validation_report:
+    type: uri_folder
+    description: "Validation report artifacts (HTML, JSON)"
+  validated_dataset:
+    type: uri_file
+    description: "Dataset reference (only output if validation passes)"
+
+code: ../
+
+command: >
+  python src/steps/stage0_data_validation.py
+  --config configs/${{inputs.config_name}}
+  --dataset_in ${{inputs.dataset_in}}
+  $[[--expectations_suite ${{inputs.expectations_suite}}]]
+  --validation_report ${{outputs.validation_report}}
+  --validated_dataset ${{outputs.validated_dataset}}
+
+environment: azureml:mlops-v3-unified:23
+
+history:
+  enableMLflowTracking: true

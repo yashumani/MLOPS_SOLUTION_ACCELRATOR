@@ -1,7 +1,8 @@
 name: v3_phaseb_flaml_recipe
-version: 7
+version: 10
 display_name: V3 Phase B - FLAML Recipe
 type: command
+is_deterministic: false
 inputs:
   config_name:
     type: string
@@ -12,13 +13,10 @@ inputs:
 outputs:
   metrics_json:
     type: uri_file
-    mode: upload
   manifest_json:
     type: uri_file
-    mode: upload
   best_model:
     type: uri_folder
-    mode: upload
 code: ../
 command: >-
   python src/steps/phaseb_flaml_recipe.py
@@ -28,4 +26,6 @@ command: >-
   --metrics_out ${{outputs.metrics_json}}
   --manifest_out ${{outputs.manifest_json}}
   --model_out ${{outputs.best_model}}
-environment: azureml:mlops-v3-unified:4
+environment: azureml:mlops-v3-unified:23
+history:
+  enableMLflowTracking: true

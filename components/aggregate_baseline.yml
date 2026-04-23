@@ -2,6 +2,7 @@ name: v3_aggregate_baseline
 version: 4
 display_name: V3 Stage 5z - Aggregate Baseline
 type: command
+is_deterministic: false
 inputs:
   config_name:
     type: string
@@ -16,10 +17,10 @@ inputs:
 outputs:
   aggregate_report:
     type: uri_file
-    mode: upload
   champion_model:
     type: uri_folder
-    mode: upload
 code: ../
 command: python src/steps/aggregate_baseline.py --config configs/${{inputs.config_name}} --pycaret_manifest ${{inputs.pycaret_manifest}} --pycaret_model ${{inputs.pycaret_model}} --flaml_manifest ${{inputs.flaml_manifest}} --flaml_model ${{inputs.flaml_model}} --report_out ${{outputs.aggregate_report}} --champion_out ${{outputs.champion_model}}
-environment: azureml:mlops-v3-unified:4
+environment: azureml:mlops-v3-unified:23
+history:
+  enableMLflowTracking: true

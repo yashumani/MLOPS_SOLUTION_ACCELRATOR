@@ -1,22 +1,24 @@
 name: v3_phasec_optuna_hpo
-version: 6
-display_name: V3 Phase C - Optuna HPO
+version: 9
+display_name: s08 - V3 Phase C - Optuna HPO
 type: command
+is_deterministic: false
 inputs:
   config_name:
     type: string
   dataset_in:
     type: uri_file
+  phaseb_manifest:
+    type: uri_file
+    optional: true
+    description: "Phase B champion manifest JSON — tells Phase C which algorithm won"
 outputs:
   hpo_metrics_json:
     type: uri_file
-    mode: upload
   hpo_study:
     type: uri_folder
-    mode: upload
   optimized_model:
     type: uri_folder
-    mode: upload
 code: ../
 command: >-
   python src/steps/phasec_optuna_hpo.py
@@ -25,4 +27,7 @@ command: >-
   --metrics_out ${{outputs.hpo_metrics_json}}
   --study_out ${{outputs.hpo_study}}
   --model_out ${{outputs.optimized_model}}
-environment: azureml:mlops-v3-unified:4
+  $[[--phaseb_manifest ${{inputs.phaseb_manifest}}]]
+environment: azureml:mlops-v3-unified:23
+history:
+  enableMLflowTracking: true
