@@ -37,6 +37,8 @@ def render_sidebar() -> None:
 
         _render_connection_badge()
 
+        _render_focused_job()
+
         # API settings (collapsed by default)
         with st.expander("API Settings", expanded=False):
             new_url = st.text_input(
@@ -112,3 +114,28 @@ def _test_connection() -> None:
     except Exception as exc:
         st.session_state["connection_status"] = "error"
         st.session_state["connection_error"] = str(exc)[:80]
+
+
+def _render_focused_job() -> None:
+    """Show the currently focused job (if any) with quick Open / Clear actions."""
+    focused = st.session_state.get("focused_job") or {}
+    job_name = focused.get("job_name")
+    if not job_name:
+        return
+
+    display = focused.get("display_name") or job_name
+    status = focused.get("status") or "—"
+    short = display if len(display) <= 28 else display[:25] + "…"
+
+    st.markdown('<div class="svm-section-label">Focused Job</div>', unsafe_allow_html=True)
+    st.caption(f"**{short}**  ·  `{status}`")
+    col1, col2 = st.columns(2)
+    with col1:
+        try:
+            st.page_link("pages/2_Focus.py", label="Open", icon=":material/center_focus_strong:")
+        except Exception:
+            st.page_link("pages/2_Focus.py", label="Open")
+    with col2:
+        if st.button("Clear", key="sidebar_clear_focus", use_container_width=True):
+            st.session_state.pop("focused_job", None)
+            st.rerun()
