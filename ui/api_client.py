@@ -136,8 +136,23 @@ class APIClient:
         )
 
 
-def get_client() -> APIClient:
-    """Return a cached APIClient from Streamlit session state."""
-    api_key = st.session_state.get("api_key", "")
-    base_url = st.session_state.get("api_base_url", "http://localhost:8000")
+def _build_client(base_url: str, api_key: str) -> APIClient:
+    """Construct a fresh APIClient. Split out so `get_client` can cache it."""
     return APIClient(base_url=base_url, api_key=api_key)
+
+
+# Cache the client (+ its underlying requests.Session for HTTP keep-alive)
+# across Streamlit reruns. Keyed on (base_url, api_key) so API Settings
+# reconnects still produce a new session.
+_cached_builder = st.cache_resource(show_spinner=False)(_build_client)
+
+
+def get_client() -> APIClient:
+    """Return a cached APIClient keyed on (base_url, api_key).
+
+    Uses ``st.cache_resource`` so the underlying ``requests.Session`` is
+    reused across reruns / page switches / user interactions.
+    """
+    api_key = st.session_state.get("api_key") or ""
+    base_url = st.session_state.get("api_base_url") or "http://localhost:8000"
+    return _cached_builder(base_url, api_key)

@@ -20,9 +20,22 @@ st.set_page_config(
 
 from ui.components.sidebar import render_sidebar  # noqa: E402
 from ui.components.theme import inject_theme, page_header, section_label  # noqa: E402
+from ui.data_cache import (  # noqa: E402
+    cached_list_configs,
+    cached_list_jobs,
+    prewarm,
+)
 
 inject_theme()
 render_sidebar()
+
+# Warm list_experiments + list_configs exactly once per session so the
+# home page and downstream pages render instantly.
+prewarm(st.session_state)
+
+# Initialise the shared "focused job" slot used by Phase 2 (Focus page) so
+# other pages can read it without guarding every access.
+st.session_state.setdefault("focused_job", None)
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
 page_header(
@@ -67,18 +80,15 @@ for i, (path, icon, title, desc) in enumerate(_TILES):
 if st.session_state.get("connection_status") == "connected":
     section_label("Live Statistics")
 
-    from ui.api_client import get_client
-
     try:
-        client = get_client()
-        jobs_data = client.list_jobs(max_results=100) or {}
+        jobs_data = cached_list_jobs(max_results=100) or {}
         jobs = jobs_data.get("jobs", []) or []
 
         running   = sum(1 for j in jobs if str(j.get("status", "")).lower() in ("running", "preparing", "starting", "queued"))
         completed = sum(1 for j in jobs if str(j.get("status", "")).lower() in ("completed", "finished"))
         failed    = sum(1 for j in jobs if str(j.get("status", "")).lower() == "failed")
 
-        configs_data = client.list_configs() or {}
+        configs_data = cached_list_configs() or {}
         n_configs = configs_data.get("total") or len(configs_data.get("configs", []) or [])
 
         c1, c2, c3, c4 = st.columns(4)
