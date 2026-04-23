@@ -9,14 +9,13 @@ from ui.config import API_BASE_URL, API_KEY
 
 
 # Pages declared via the multipage `pages/` directory.
+# Slimmed cockpit nav: Dashboard → Focus (per-job command center) → Submit → Configs → Drift → Logs.
 NAV_ITEMS: list[tuple[str, str, str]] = [
-    ("app.py",                       ":material/home:",          "Home"),
-    ("pages/1_Submit_Pipeline.py",   ":material/rocket_launch:", "Submit Pipeline"),
-    ("pages/2_Job_Monitor.py",       ":material/monitor_heart:", "Job Monitor"),
+    ("app.py",                       ":material/home:",          "Dashboard"),
+    ("pages/2_Focus.py",             ":material/center_focus_strong:", "Focus"),
+    ("pages/1_Submit_Pipeline.py",   ":material/rocket_launch:", "Submit"),
     ("pages/3_Configs.py",           ":material/settings:",      "Configs"),
-    ("pages/4_Leaderboard.py",       ":material/emoji_events:",  "Leaderboard"),
-    ("pages/5_Drift_Monitor.py",     ":material/trending_down:", "Drift Monitor"),
-    ("pages/6_Outputs.py",           ":material/inventory_2:",   "Outputs"),
+    ("pages/5_Drift_Monitor.py",     ":material/trending_down:", "Drift"),
     ("pages/7_Live_Logs.py",         ":material/terminal:",      "Live Logs"),
 ]
 
