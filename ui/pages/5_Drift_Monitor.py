@@ -20,6 +20,7 @@ from ui.api_client import get_client
 from ui.components.job_picker import pick_single_job
 from ui.components.sidebar import render_sidebar
 from ui.components.theme import inject_theme, page_header
+from ui.data_cache import cached_job_drift
 
 st.set_page_config(page_title="Drift Monitor", page_icon="📉", layout="wide")
 inject_theme()
@@ -60,22 +61,18 @@ trigger = st.button(
     key="drift_extract",
 )
 
-cache_key = f"drift_data_{job_name}"
-if trigger:
-    st.session_state.pop(cache_key, None)
-
-if cache_key not in st.session_state and not trigger:
+if not trigger and not st.session_state.get(f"drift_loaded_{job_name}"):
     st.stop()
+
+st.session_state[f"drift_loaded_{job_name}"] = True
 
 with st.spinner("Downloading drift_report from Azure ML…"):
     try:
-        st.session_state[cache_key] = client.get_job_drift(job_name)
+        data = cached_job_drift(job_name)
     except Exception as exc:  # noqa: BLE001
         st.error(f"Failed to load drift data: {exc}")
-        st.session_state.pop(cache_key, None)
+        st.session_state.pop(f"drift_loaded_{job_name}", None)
         st.stop()
-
-data = st.session_state[cache_key]
 features = data.get("features") or []
 studio_url = data.get("studio_url") or sel.get("studio_url")
 
