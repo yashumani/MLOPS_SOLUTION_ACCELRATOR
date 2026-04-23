@@ -1,17 +1,24 @@
 """3️⃣ Configs — Browse and inspect pipeline configurations."""
 
+import sys
+from pathlib import Path
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 import streamlit as st
 
 from ui.api_client import get_client
 from ui.components.config_summary_card import render_config_summary_card
 from ui.components.config_viewer import render_config_viewer
 from ui.components.sidebar import render_sidebar
+from ui.components.theme import inject_theme, page_header
 
 st.set_page_config(page_title="Configurations", page_icon="⚙️", layout="wide")
+inject_theme()
 render_sidebar()
 
-st.title("⚙️ Pipeline Configurations")
-st.markdown("Browse available V3 pipeline configurations and inspect their contents.")
+page_header("Pipeline Configs", "Browse and inspect pipeline configuration files", "⚙️")
 
 client = get_client()
 

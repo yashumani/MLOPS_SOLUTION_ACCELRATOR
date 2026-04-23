@@ -1,3 +1,4 @@
 streamlit>=1.35,<2
 requests>=2.31,<3
 python-dotenv>=1.0,<2
+streamlit-echarts>=0.4,<1

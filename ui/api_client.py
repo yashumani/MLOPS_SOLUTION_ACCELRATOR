@@ -11,7 +11,7 @@ import streamlit as st
 class APIClient:
     """Synchronous client for the MLOps V3 Pipeline Management API."""
 
-    def __init__(self, base_url: str, api_key: str, timeout: int = 60):
+    def __init__(self, base_url: str, api_key: str, timeout: int = 300):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._session = requests.Session()
@@ -83,6 +83,13 @@ class APIClient:
             params["status"] = status
         return self._get("/api/v1/pipelines/jobs", **params)
 
+    def list_experiments(self, max_results_per_experiment: int = 100) -> dict:
+        """Return jobs grouped by experiment for hierarchical UI pickers."""
+        return self._get(
+            "/api/v1/pipelines/experiments",
+            max_results_per_experiment=max_results_per_experiment,
+        )
+
     def get_job(self, job_name: str) -> dict:
         return self._get(f"/api/v1/pipelines/jobs/{job_name}")
 
@@ -91,6 +98,16 @@ class APIClient:
 
     def list_outputs(self, job_name: str) -> dict:
         return self._get(f"/api/v1/pipelines/jobs/{job_name}/outputs")
+
+    def get_output_content(self, job_name: str, output_name: str) -> dict:
+        """Fetch parsed file content of a named output (for UI rendering)."""
+        return self._get(
+            f"/api/v1/pipelines/jobs/{job_name}/outputs/{output_name}/content"
+        )
+
+    def get_pipeline_summary(self, job_name: str) -> dict:
+        """Fetch combined baseline/phaseB/phaseC/final reports for a job."""
+        return self._get(f"/api/v1/pipelines/jobs/{job_name}/summary")
 
     def download_output(self, job_name: str, output_name: str) -> bytes:
         resp = self._session.get(

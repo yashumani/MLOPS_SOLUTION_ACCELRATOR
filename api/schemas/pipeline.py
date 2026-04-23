@@ -68,6 +68,23 @@ class JobListResponse(BaseModel):
     total: int
 
 
+# ── Experiment tree (UI hierarchy: experiment → jobs) ─────────
+
+class ExperimentNode(BaseModel):
+    """One experiment with its child jobs, ordered most-recent first."""
+    experiment_name: str
+    job_count: int
+    last_activity: datetime | None = None
+    jobs: list[JobSummary] = Field(default_factory=list)
+
+
+class ExperimentTreeResponse(BaseModel):
+    """Experiment-grouped job listing for hierarchical pickers."""
+    experiments: list[ExperimentNode] = Field(default_factory=list)
+    total_experiments: int = 0
+    total_jobs: int = 0
+
+
 # ── Outputs ───────────────────────────────────────────────────
 
 class OutputInfo(BaseModel):
@@ -78,6 +95,41 @@ class OutputInfo(BaseModel):
 class OutputListResponse(BaseModel):
     job_name: str
     outputs: list[OutputInfo]
+
+
+class OutputFileInfo(BaseModel):
+    name: str
+    relative_path: str
+    size_bytes: int
+    kind: str  # json | csv | text | image | binary | html | yaml | markdown
+
+
+class OutputContentResponse(BaseModel):
+    """Parsed content of a named output, designed for UI rendering."""
+    job_name: str
+    output_name: str
+    files: list[OutputFileInfo] = Field(default_factory=list)
+    json_content: Any | None = None      # parsed JSON (dict or list)
+    text_preview: str | None = None      # for non-JSON text files (truncated)
+    csv_preview: list[dict] | None = None  # first N rows of any CSV
+    primary_file: str | None = None
+    truncated: bool = False
+
+
+# ── Pipeline summary (aggregated reports) ─────────────────────
+
+class PipelineSummaryResponse(BaseModel):
+    """Combined view of the four aggregate JSON reports for a job."""
+    job_name: str
+    task_type: str | None = None
+    status: str | None = None
+    champion_phase: str | None = None
+    champion_score: float | None = None
+    baseline_aggregate: Any | None = None
+    phaseb_aggregate: Any | None = None
+    phasec_aggregate: Any | None = None
+    final_report: Any | None = None
+    available_outputs: list[str] = Field(default_factory=list)
 
 
 # ── Metrics ───────────────────────────────────────────────────

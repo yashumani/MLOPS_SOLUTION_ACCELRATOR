@@ -1,7 +1,7 @@
 {
-  "name": "kind_nut_9jf5qr5tdq",
-  "display_name": "clustering_churn_uplift_v3_20260410_070740_756fb6b3",
-  "experiment": "clustering_churn_uplift_v3",
-  "submitted_at": "2026-04-10T07:14:21.676784",
-  "config": "config_clustering_churn_uplift_azureml.yml"
+  "name": "tender_steelpan_6859fp0h8c",
+  "display_name": "regression_college_v3_20260423_042412_7fec270e",
+  "experiment": "regression_college_v3",
+  "submitted_at": "2026-04-23T04:33:14.013991",
+  "config": "config_regression_college_azureml.yml"
 }

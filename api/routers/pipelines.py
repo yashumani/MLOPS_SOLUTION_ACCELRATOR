@@ -1,9 +1,10 @@
 """Pipeline submission, monitoring, cancel, and output endpoints."""
 
+import asyncio
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 
 from api.core.security import verify_api_key
@@ -11,10 +12,13 @@ from api.schemas.pipeline import (
     BaselineCaptureRequest,
     BaselineCaptureResponse,
     DriftResponse,
+    ExperimentTreeResponse,
     JobListResponse,
     JobStatus,
     MetricsResponse,
+    OutputContentResponse,
     OutputListResponse,
+    PipelineSummaryResponse,
     ResubmitRequest,
     SubmitRequest,
     SubmitResponse,
@@ -55,6 +59,64 @@ async def list_jobs(
         status_filter=status,
         max_results=max_results,
     )
+
+
+# ── Experiment tree (hierarchical picker) ─────────────────────
+
+@router.get("/experiments", response_model=ExperimentTreeResponse)
+async def list_experiments(
+    response: Response,
+    max_results_per_experiment: int = Query(100, ge=1, le=500),
+    force_refresh: bool = Query(False, description="Bypass warm cache and re-fetch from Azure ML"),
+):
+    """Return all jobs grouped by experiment for hierarchical pickers.
+
+    Served from a startup-warmed in-memory cache when possible. The cache is
+    refreshed periodically by a background task (see api.main.lifespan).
+    Sets X-Cache, X-Cache-Age, and X-Cache-FetchedAt response headers.
+    """
+    cached, meta = pipeline_service.get_cached_experiments()
+
+    cache_usable = (
+        not force_refresh
+        and cached is not None
+        and meta["max_per_experiment"] == max_results_per_experiment
+    )
+
+    if cache_usable:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Cache-Age"] = str(meta["age_seconds"] or 0)
+        if meta["fetched_at"] is not None:
+            response.headers["X-Cache-FetchedAt"] = meta["fetched_at"].isoformat() + "Z"
+        return cached
+
+    # Live fetch (cold cache, mismatched size, or force_refresh=true)
+    data = pipeline_service.list_experiments(
+        max_results_per_experiment=max_results_per_experiment,
+    )
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Cache-Age"] = "0"
+    return data
+
+
+@router.post("/experiments/refresh", status_code=202)
+async def refresh_experiments(
+    max_results_per_experiment: int = Query(20, ge=1, le=500),
+):
+    """Trigger a background refresh of the experiments cache and return immediately."""
+    _, meta = pipeline_service.get_cached_experiments()
+    loop = asyncio.get_running_loop()
+    # Fire-and-forget; the warm loop will continue on its own TTL afterward.
+    loop.run_in_executor(
+        None, pipeline_service.refresh_experiments_cache, max_results_per_experiment
+    )
+    return {
+        "status": "refreshing",
+        "previous_fetched_at": (
+            meta["fetched_at"].isoformat() + "Z" if meta["fetched_at"] else None
+        ),
+        "previous_age_seconds": meta["age_seconds"],
+    }
 
 
 # ── Status ────────────────────────────────────────────────────
@@ -127,6 +189,38 @@ async def get_job_metrics(job_name: str):
         return pipeline_service.get_job_metrics(job_name)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"Metrics not available: {exc}")
+
+
+# ── Output content preview ───────────────────────────────────
+
+@router.get(
+    "/jobs/{job_name}/outputs/{output_name}/content",
+    response_model=OutputContentResponse,
+)
+async def get_output_content(job_name: str, output_name: str):
+    """Return parsed file content (JSON/CSV/text) of a named output for UI rendering."""
+    try:
+        return pipeline_service.get_output_content(job_name, output_name)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Output content not available: {exc}")
+
+
+# ── Pipeline summary (combined aggregate reports) ────────────
+
+@router.get("/jobs/{job_name}/summary", response_model=PipelineSummaryResponse)
+async def get_pipeline_summary(job_name: str):
+    """Return combined baseline / phaseB / phaseC / final reports for a job."""
+    try:
+        return pipeline_service.get_pipeline_summary(job_name)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Summary not available for '{job_name}'. The job may no longer "
+                f"exist in this Azure ML workspace, or aggregate reports were not "
+                f"produced. Underlying error: {exc}"
+            ),
+        )
 
 
 # ── Drift (Phase 0b) ─────────────────────────────────────────

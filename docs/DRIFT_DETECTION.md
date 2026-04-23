@@ -639,3 +639,64 @@ Four test files in `tests/test_drift_detection/`:
 6. **Evidently API compatibility:** The code uses `evidently.legacy.*` fallback imports, indicating compatibility with Evidently 0.5.x while using the 0.4.x API surface. This should be updated when the environment stabilizes on a single Evidently version.
 
 7. **Clustering-specific drift:** For clustering tasks (`task_type == "clustering"`), drift detection works on features only (no target, no concept drift, no label drift). Feature PSI and stability scoring still apply. Class balance component defaults to neutral (75) for clustering.
+
+---
+
+## 15. API Integration (post-V3 production)
+
+The drift report produced by `s13` is now consumed by the FastAPI layer at:
+
+```
+GET /api/v1/pipelines/jobs/{job_name}/drift
+Header: X-API-Key: <key>
+```
+
+Implementation: [api/services/pipeline_service.py](../api/services/pipeline_service.py) → `get_job_drift(job_name)` (lines ~727–905).
+
+### Producer → Consumer field mapping
+
+| s13 producer key | API `DriftResponse` field | Notes |
+|------------------|---------------------------|-------|
+| `feature_psi_scores: {feature: float}` | `features: list[DriftResultItem]` | sorted desc by PSI; severity assigned by threshold |
+| `self_check.status` (`PASS`/`WARN`) | `overall_drift_detected` | when no comparison baseline available |
+| `self_check.drifted_features` | `drifted_columns` | fallback when Evidently absent |
+| `comparison_drift.evidently.dataset_drift` | `overall_drift_detected` | takes precedence when `comparison_drift.available == true` |
+| `comparison_drift.evidently.drifted_columns` | `drifted_columns` | preferred source |
+| `stability_assessment.stability_score` | `stability_score` | passed through |
+| (resolved) | `drift_type` | `comparison` → `self_check` → `psi` |
+
+### Severity thresholds (PSI)
+
+| Range | Severity | `drift_detected` |
+|-------|----------|------------------|
+| `≥ 0.25` | `severe` | `true` |
+| `≥ 0.10` | `moderate` | `true` |
+| else | `none` | `false` |
+
+### Verified example response (`happy_owl_sfmkgs2jrd`, regression_insurance_v3)
+
+```jsonc
+{
+  "job_name": "happy_owl_sfmkgs2jrd",
+  "overall_drift_detected": false,
+  "stability_score": 65.0,
+  "drift_type": "self_check",
+  "drifted_columns": [],
+  "features": [
+    {"feature": "age", "psi": 0.027702, "drift_detected": false, "severity": "none"},
+    {"feature": "bmi", "psi": 0.025250, "drift_detected": false, "severity": "none"},
+    "... 9 more ..."
+  ],
+  "evidently_report_path": null,
+  "studio_url": "https://ml.azure.com/runs/happy_owl_sfmkgs2jrd?wsid=..."
+}
+```
+
+### Bugs caught & fixed during integration
+
+| # | Symptom | Root cause | Fix |
+|---|---------|------------|-----|
+| 1 | API returned wrong/empty fields | Parser written against pre-V3 keys (`psi_scores` instead of `feature_psi_scores`) | Rewrote parser with 3-level fallback chain + nested-dict per-feature value handling |
+| 2 | Even after fix #1, all jobs returned `features: []` | `ml_client.jobs.download(output_name="drift_report")` writes a file literally named `drift_report` (no `.json` suffix). Parser's `tmp.rglob("*.json")` matched zero files | Now globs `*.json` first, then any extension-less file with parseable JSON content. Documented as a cautionary precedent for any new endpoint downloading named outputs. |
+
+See [POST_V3_PRODUCTION_REPORT.md](POST_V3_PRODUCTION_REPORT.md) for the full launch report and [FASTAPI_INTEGRATION.md](FASTAPI_INTEGRATION.md) for the full API surface.

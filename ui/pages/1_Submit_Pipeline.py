@@ -1,15 +1,22 @@
 """1️⃣ Submit Pipeline — Launch new Azure ML pipeline jobs."""
 
+import sys
+from pathlib import Path
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 import streamlit as st
 
 from ui.api_client import get_client
 from ui.components.sidebar import render_sidebar
+from ui.components.theme import inject_theme, page_header
 
 st.set_page_config(page_title="Submit Pipeline", page_icon="🚀", layout="wide")
+inject_theme()
 render_sidebar()
 
-st.title("🚀 Submit Pipeline")
-st.markdown("Launch a new Azure ML V3 pipeline job.")
+page_header("Submit Pipeline", "Launch a new Azure ML V3 pipeline job", "🚀")
 
 client = get_client()
 
@@ -64,6 +71,7 @@ if selected_config:
 # ── Submit ────────────────────────────────────────────────────
 st.divider()
 
+st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
 if st.button("🚀 Submit Pipeline", type="primary", use_container_width=True):
     tags = {}
     if tag_key and tag_val:

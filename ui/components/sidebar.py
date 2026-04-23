@@ -1,79 +1,115 @@
-"""Sidebar component: navigation, API key input, connection status."""
+"""Sidebar — Savyminds branding + real Streamlit page navigation."""
+
+from __future__ import annotations
 
 import streamlit as st
 
+from ui.components.theme import LOGO_HTML
 from ui.config import API_BASE_URL, API_KEY
 
 
-def render_sidebar():
-    """Render the shared sidebar with API connection settings."""
+# Pages declared via the multipage `pages/` directory.
+NAV_ITEMS: list[tuple[str, str, str]] = [
+    ("app.py",                       ":material/home:",          "Home"),
+    ("pages/1_Submit_Pipeline.py",   ":material/rocket_launch:", "Submit Pipeline"),
+    ("pages/2_Job_Monitor.py",       ":material/monitor_heart:", "Job Monitor"),
+    ("pages/3_Configs.py",           ":material/settings:",      "Configs"),
+    ("pages/4_Leaderboard.py",       ":material/emoji_events:",  "Leaderboard"),
+    ("pages/5_Drift_Monitor.py",     ":material/trending_down:", "Drift Monitor"),
+    ("pages/6_Outputs.py",           ":material/inventory_2:",   "Outputs"),
+    ("pages/7_Live_Logs.py",         ":material/terminal:",      "Live Logs"),
+]
+
+
+def render_sidebar() -> None:
+    """Render the Savyminds sidebar (logo, connection status, nav)."""
     with st.sidebar:
-        st.image(
-            "https://img.icons8.com/fluency/96/artificial-intelligence.png",
-            width=48,
-        )
-        st.title("MLOps V3")
-        st.caption("Pipeline Management Dashboard")
+        st.markdown(LOGO_HTML, unsafe_allow_html=True)
 
-        st.divider()
+        # Initialise session state once
+        if "api_base_url" not in st.session_state:
+            st.session_state["api_base_url"] = API_BASE_URL
+        if "api_key" not in st.session_state:
+            st.session_state["api_key"] = API_KEY
 
-        # API connection settings
-        st.subheader("🔌 API Connection")
-        base_url = st.text_input(
-            "API URL",
-            value=st.session_state.get("api_base_url", API_BASE_URL),
-            key="sidebar_api_url",
-        )
-        api_key = st.text_input(
-            "API Key",
-            value=st.session_state.get("api_key", API_KEY),
-            type="password",
-            key="sidebar_api_key",
-        )
-
-        st.session_state["api_base_url"] = base_url
-        st.session_state["api_key"] = api_key
-
-        # Connection test
-        if st.button("Test Connection", use_container_width=True):
+        # Auto-test on first render
+        if "connection_status" not in st.session_state:
             _test_connection()
 
-        # Status indicator
-        status = st.session_state.get("connection_status")
-        if status == "connected":
-            st.success("✅ Connected")
-        elif status == "error":
-            st.error(f"❌ {st.session_state.get('connection_error', 'Failed')}")
-        elif status is None and api_key:
-            _test_connection()
+        _render_connection_badge()
 
-        st.divider()
+        # API settings (collapsed by default)
+        with st.expander("API Settings", expanded=False):
+            new_url = st.text_input(
+                "API URL",
+                value=st.session_state.get("api_base_url", API_BASE_URL),
+                key="sidebar_api_url_input",
+            )
+            if new_url != st.session_state.get("api_base_url"):
+                st.session_state["api_base_url"] = new_url
+            if st.button("Reconnect", use_container_width=True, key="sidebar_reconnect_btn"):
+                _test_connection()
+                st.rerun()
 
-        # Navigation links
-        st.subheader("📖 Links")
+        # Navigation
+        st.markdown('<div class="svm-section-label">Navigation</div>', unsafe_allow_html=True)
+        for page_path, icon, label in NAV_ITEMS:
+            try:
+                st.page_link(page_path, label=label, icon=icon)
+            except Exception:
+                # Fallback if material icons unsupported on this Streamlit version
+                st.page_link(page_path, label=label)
+
+        # Footer
+        st.markdown('<div class="svm-section-label">Resources</div>', unsafe_allow_html=True)
         st.markdown(
-            "- [Azure ML Studio](https://ml.azure.com)\n"
-            "- [API Docs](/docs)\n"
-            "- [GitHub Repo](https://github.com/SAVYMINDS/YS_MVP)"
+            '<a href="https://ml.azure.com" target="_blank" '
+            'style="display:block;color:#475569;font-size:0.82rem;'
+            'text-decoration:none;padding:6px 0;">↗ Azure ML Studio</a>'
+            '<a href="/docs" target="_blank" '
+            'style="display:block;color:#475569;font-size:0.82rem;'
+            'text-decoration:none;padding:6px 0;">↗ API Reference</a>',
+            unsafe_allow_html=True,
+        )
+        st.caption("v0.2.0 · Streamlit + FastAPI")
+
+
+def _render_connection_badge() -> None:
+    status = st.session_state.get("connection_status")
+    if status == "connected":
+        st.markdown(
+            '<div class="svm-conn svm-conn-ok">'
+            '<span class="svm-conn-dot"></span>API Connected</div>',
+            unsafe_allow_html=True,
+        )
+    elif status == "error":
+        err = st.session_state.get("connection_error", "Connection failed")
+        st.markdown(
+            f'<div class="svm-conn svm-conn-err">'
+            f'<span class="svm-conn-dot"></span>{err[:50]}</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div class="svm-conn svm-conn-pending">'
+            '<span class="svm-conn-dot"></span>Connecting…</div>',
+            unsafe_allow_html=True,
         )
 
-        st.divider()
-        st.caption("v0.1.0 • Streamlit + FastAPI")
 
-
-def _test_connection():
-    """Test API connection and update session state."""
+def _test_connection() -> None:
+    """Hit /api/v1/health and update session state."""
     from ui.api_client import get_client
 
     try:
         client = get_client()
         result = client.health()
-        if result and result.get("status") == "healthy":
+        if result and result.get("status") in ("ok", "healthy"):
             st.session_state["connection_status"] = "connected"
             st.session_state["connection_error"] = ""
         else:
             st.session_state["connection_status"] = "error"
-            st.session_state["connection_error"] = "Unhealthy response"
+            st.session_state["connection_error"] = "API responded but status not ok"
     except Exception as exc:
         st.session_state["connection_status"] = "error"
-        st.session_state["connection_error"] = str(exc)[:100]
+        st.session_state["connection_error"] = str(exc)[:80]

@@ -1,67 +1,134 @@
-"""MLOps V3 Dashboard — Streamlit entry point."""
+"""Savyminds MLOps V3 — Streamlit home page."""
+
+from __future__ import annotations
+
+# ── Bootstrap: ensure project root is on sys.path so `from ui.X` works ────────
+import sys
+from pathlib import Path
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 import streamlit as st
 
 st.set_page_config(
-    page_title="MLOps V3 Dashboard",
-    page_icon="🚀",
+    page_title="Savyminds MLOps V3",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-from ui.components.sidebar import render_sidebar
+from ui.components.sidebar import render_sidebar  # noqa: E402
+from ui.components.theme import inject_theme, page_header, section_label  # noqa: E402
 
+inject_theme()
 render_sidebar()
 
-# ── Home page ─────────────────────────────────────────────────
-
-st.title("🚀 MLOps V3 Pipeline Dashboard")
-st.markdown(
-    """
-    Welcome to the **MLOps V3 Pipeline Management Dashboard**.
-    Use the sidebar to navigate between pages.
-
-    ---
-
-    ### Quick Overview
-
-    | Page | Description |
-    |------|-------------|
-    | **Submit Pipeline** | Launch new Azure ML pipeline jobs |
-    | **Job Monitor** | Track running & completed jobs |
-    | **Configs** | Browse pipeline configuration files |
-    | **Leaderboard** | Compare model performance metrics |
-    | **Drift Monitor** | Monitor data & model drift |
-    | **Outputs** | Download job artifacts |
-    | **Live Logs** | Stream real-time step logs |
-
-    ---
-    """
+# ── Hero ──────────────────────────────────────────────────────────────────────
+page_header(
+    title="MLOps Intelligence Hub",
+    subtitle="End-to-end ML pipeline orchestration powered by Azure ML",
+    icon="🧠",
 )
 
-# Quick stats if connected
+# ── Quick actions: real clickable navigation tiles ────────────────────────────
+section_label("Quick Actions")
+
+_TILES = [
+    ("pages/1_Submit_Pipeline.py", "🚀", "Submit Pipeline",
+     "Launch Azure ML pipeline jobs from YAML configs"),
+    ("pages/2_Job_Monitor.py",     "📊", "Job Monitor",
+     "Real-time job tracking with step-level visibility"),
+    ("pages/4_Leaderboard.py",     "🏆", "Leaderboard",
+     "Compare model performance across all experiments"),
+    ("pages/5_Drift_Monitor.py",   "📉", "Drift Monitor",
+     "PSI-based data and model drift analysis"),
+    ("pages/6_Outputs.py",         "📦", "Outputs",
+     "Download artifacts, models and result files"),
+    ("pages/7_Live_Logs.py",       "📡", "Live Logs",
+     "Stream real-time step logs from running jobs"),
+]
+
+cols = st.columns(3, gap="medium")
+for i, (path, icon, title, desc) in enumerate(_TILES):
+    with cols[i % 3]:
+        with st.container(border=False):
+            st.markdown(
+                f'<div class="svm-card">'
+                f'<div class="svm-card-icon">{icon}</div>'
+                f'<div class="svm-card-title">{title}</div>'
+                f'<p class="svm-card-desc">{desc}</p>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            st.page_link(path, label=f"Open {title} →")
+
+# ── Live stats ────────────────────────────────────────────────────────────────
 if st.session_state.get("connection_status") == "connected":
+    section_label("Live Statistics")
+
     from ui.api_client import get_client
 
     try:
         client = get_client()
-        col1, col2, col3 = st.columns(3)
+        jobs_data = client.list_jobs(max_results=100) or {}
+        jobs = jobs_data.get("jobs", []) or []
 
-        # Recent jobs
-        jobs_data = client.list_jobs(max_results=100)
-        jobs = jobs_data.get("jobs", [])
-        running = sum(1 for j in jobs if (j.get("status", "").lower() in ("running", "preparing", "starting")))
-        completed = sum(1 for j in jobs if j.get("status", "").lower() in ("completed", "finished"))
-        failed = sum(1 for j in jobs if j.get("status", "").lower() == "failed")
+        running   = sum(1 for j in jobs if str(j.get("status", "")).lower() in ("running", "preparing", "starting", "queued"))
+        completed = sum(1 for j in jobs if str(j.get("status", "")).lower() in ("completed", "finished"))
+        failed    = sum(1 for j in jobs if str(j.get("status", "")).lower() == "failed")
 
-        col1.metric("🔵 Running", running)
-        col2.metric("✅ Completed", completed)
-        col3.metric("🔴 Failed", failed)
+        configs_data = client.list_configs() or {}
+        n_configs = configs_data.get("total") or len(configs_data.get("configs", []) or [])
 
-        # Configs
-        configs_data = client.list_configs()
-        st.metric("📋 Available Configs", configs_data.get("total", 0))
-    except Exception:
-        st.info("Connect to the API to see dashboard stats.")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Running",   running)
+        c2.metric("Completed", completed)
+        c3.metric("Failed",    failed)
+        c4.metric("Configs",   n_configs)
+
+        # Donut chart
+        if running + completed + failed > 0:
+            try:
+                from streamlit_echarts import st_echarts
+
+                section_label("Pipeline Activity")
+                st_echarts(
+                    options={
+                        "backgroundColor": "transparent",
+                        "tooltip": {"trigger": "item", "formatter": "{b}: {c} ({d}%)"},
+                        "legend": {
+                            "bottom": "2%", "left": "center",
+                            "textStyle": {"color": "#475569", "fontSize": 12},
+                            "itemGap": 20,
+                        },
+                        "series": [{
+                            "name": "Jobs",
+                            "type": "pie",
+                            "radius": ["50%", "72%"],
+                            "center": ["50%", "45%"],
+                            "data": [
+                                {"value": running,   "name": "Running",
+                                 "itemStyle": {"color": "#0EA5E9"}},
+                                {"value": completed, "name": "Completed",
+                                 "itemStyle": {"color": "#10B981"}},
+                                {"value": failed,    "name": "Failed",
+                                 "itemStyle": {"color": "#EF4444"}},
+                            ],
+                            "label": {"color": "#0F172A", "fontSize": 13, "fontWeight": 600},
+                            "itemStyle": {
+                                "borderRadius": 6,
+                                "borderColor": "#FFFFFF",
+                                "borderWidth": 3,
+                            },
+                        }],
+                    },
+                    height="320px",
+                    key="home_donut",
+                )
+            except ImportError:
+                pass
+    except Exception as exc:
+        st.warning(f"Could not load live stats: {exc}")
 else:
-    st.info("👈 Enter your API key in the sidebar to get started.")
+    st.info("API connecting — check sidebar for status.")

@@ -1,0 +1,30 @@
+# This file is kept for reference — Streamlit apps are NOT suited to Azure ML Online Endpoints
+# (Online Endpoints are for ML inference scoring, not WebSocket-based UIs).
+#
+# The correct way to host Streamlit on Azure ML Studio is via the
+# Compute Instance Application Proxy — see launch_streamlit_azureml.sh
+#
+# If you still want a managed online endpoint deployment for the FastAPI
+# *backend only*, use:
+#   az ml online-endpoint create  --file azureml-endpoint.yml  ...
+#   az ml online-deployment create --file azureml-backend-deployment.yml ...
+
+# ==== ENDPOINT (backend only) ====
+# azureml-endpoint.yml:
+# $schema: https://azuremlschemas.azureedge.net/latest/managedOnlineEndpoint.schema.json
+# name: mlops-api-endpoint
+# auth_mode: key
+
+# ==== DEPLOYMENT (backend only) ====
+# azureml-backend-deployment.yml:
+# $schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+# name: mlops-api
+# endpoint_name: mlops-api-endpoint
+# code_configuration:
+#   code: ../api
+#   scoring_script: main.py
+# environment:
+#   conda_file: ../api/requirements.txt
+#   image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+# instance_type: Standard_DS2_v2
+# instance_count: 1
