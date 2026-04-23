@@ -36,6 +36,12 @@ class APIClient:
     def _post(self, path: str, json: dict | None = None) -> Any:
         return self._request("POST", path, json=json)
 
+    def _put(self, path: str, json: dict | None = None) -> Any:
+        return self._request("PUT", path, json=json)
+
+    def _delete(self, path: str) -> Any:
+        return self._request("DELETE", path)
+
     # ── health ─────────────────────────────────────────────
 
     def health(self) -> dict:
@@ -134,6 +140,41 @@ class APIClient:
             "/api/v1/pipelines/resubmit",
             json={"job_name": job_name, "force_rerun": force_rerun},
         )
+
+    # ── async submit (Phase 4) ────────────────────────────
+
+    def submit_pipeline_async(
+        self,
+        config_name: str,
+        compute: str | None = None,
+        force_rerun: bool = False,
+        baseline_job: str | None = None,
+        tags: dict | None = None,
+    ) -> dict:
+        body = {
+            "config_name": config_name,
+            "force_rerun": force_rerun,
+            "tags": tags or {},
+        }
+        if compute:
+            body["compute"] = compute
+        if baseline_job:
+            body["baseline_job"] = baseline_job
+        return self._post("/api/v1/pipelines/submit/async", json=body)
+
+    def get_submit_status(self, request_id: str) -> dict:
+        return self._get(f"/api/v1/pipelines/submit/status/{request_id}")
+
+    # ── configs CRUD (Phase 4) ────────────────────────────
+
+    def create_config(self, config_name: str, content: dict) -> dict:
+        return self._post(f"/api/v1/configs/{config_name}", json={"content": content})
+
+    def update_config(self, config_name: str, content: dict) -> dict:
+        return self._put(f"/api/v1/configs/{config_name}", json={"content": content})
+
+    def delete_config(self, config_name: str) -> dict:
+        return self._delete(f"/api/v1/configs/{config_name}")
 
 
 def _build_client(base_url: str, api_key: str) -> APIClient:

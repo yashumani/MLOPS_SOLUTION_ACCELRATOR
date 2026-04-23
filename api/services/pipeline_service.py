@@ -210,6 +210,78 @@ def submit_pipeline(req: SubmitRequest) -> SubmitResponse:
 
 
 # ---------------------------------------------------------------------------
+# Async submit (Phase 4) — fire-and-poll request table
+# ---------------------------------------------------------------------------
+
+# Azure ML job creation can take 5–60s wall time on cold compute. The async
+# submit endpoint hands the work off to a background thread so the HTTP request
+# returns in <100ms. Clients poll /submit/status/{request_id} until job_name
+# appears, then switch to the standard /pipelines/jobs/{job_name} endpoints.
+
+_submit_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="submit-async")
+_submit_requests: dict[str, dict] = {}
+_submit_lock = threading.Lock()
+
+
+def _new_request_id() -> str:
+    return f"req-{uuid.uuid4().hex[:12]}"
+
+
+def _submit_worker(request_id: str, req: SubmitRequest) -> None:
+    """Background worker that performs the blocking Azure ML submission."""
+    try:
+        result = submit_pipeline(req)
+        with _submit_lock:
+            _submit_requests[request_id].update(
+                {
+                    "status": "submitted",
+                    "job_name": result.job_name,
+                    "experiment_name": result.experiment_name,
+                    "display_name": result.display_name,
+                    "studio_url": result.studio_url,
+                    "completed_at": datetime.utcnow().isoformat() + "Z",
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — record any failure for the poller
+        with _submit_lock:
+            _submit_requests[request_id].update(
+                {
+                    "status": "failed",
+                    "error": str(exc),
+                    "completed_at": datetime.utcnow().isoformat() + "Z",
+                }
+            )
+
+
+def submit_pipeline_async(req: SubmitRequest) -> dict:
+    """Enqueue a pipeline submission and return immediately with a request_id."""
+    request_id = _new_request_id()
+    record = {
+        "request_id": request_id,
+        "status": "pending",
+        "config_name": req.config_name,
+        "submitted_at": datetime.utcnow().isoformat() + "Z",
+        "job_name": None,
+        "experiment_name": None,
+        "display_name": None,
+        "studio_url": None,
+        "error": None,
+        "completed_at": None,
+    }
+    with _submit_lock:
+        _submit_requests[request_id] = record
+    _submit_executor.submit(_submit_worker, request_id, req)
+    return record
+
+
+def get_submit_request(request_id: str) -> dict | None:
+    """Return a snapshot of a submit request's state, or None if unknown."""
+    with _submit_lock:
+        record = _submit_requests.get(request_id)
+        return dict(record) if record else None
+
+
+# ---------------------------------------------------------------------------
 # List / Get / Cancel
 # ---------------------------------------------------------------------------
 

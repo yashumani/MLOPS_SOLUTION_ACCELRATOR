@@ -45,6 +45,32 @@ async def submit(req: SubmitRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── Submit (async) ────────────────────────────────────────────
+
+@router.post("/submit/async", status_code=202)
+async def submit_async(req: SubmitRequest):
+    """Enqueue a pipeline submission and return immediately with a request_id.
+
+    Clients poll GET /submit/status/{request_id} until status='submitted',
+    then switch to /jobs/{job_name} for live monitoring.
+    """
+    try:
+        return pipeline_service.submit_pipeline_async(req)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/submit/status/{request_id}")
+async def submit_status(request_id: str):
+    """Return the current state of an async submit request."""
+    record = pipeline_service.get_submit_request(request_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Unknown request_id: {request_id}")
+    return record
+
+
 # ── List ──────────────────────────────────────────────────────
 
 @router.get("/jobs", response_model=JobListResponse)
