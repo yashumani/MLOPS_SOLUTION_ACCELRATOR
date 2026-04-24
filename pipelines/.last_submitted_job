@@ -1,7 +1,7 @@
 {
-  "name": "tender_steelpan_6859fp0h8c",
-  "display_name": "regression_college_v3_20260423_042412_7fec270e",
-  "experiment": "regression_college_v3",
-  "submitted_at": "2026-04-23T04:33:14.013991",
-  "config": "config_regression_college_azureml.yml"
+  "name": "loving_rail_7qx7mqw8ml",
+  "display_name": "classification_titanic_v3_20260424_031542_a4389f63",
+  "experiment": "classification_titanic_v3",
+  "submitted_at": "2026-04-24T03:33:04.278363",
+  "config": "config_classification_titanic_azureml.yml"
 }
