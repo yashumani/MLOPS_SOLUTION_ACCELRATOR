@@ -6,3 +6,5 @@ deliverables/
 scripts/submission_logs/
 *.egg-info/
 .submit.lock
+.env
+logs/
