@@ -1,4 +1,6 @@
-streamlit>=1.35,<2
+# Pinned: streamlit>=1.50 broke streamlit-echarts 0.6 (uses removed components.v2 API).
+# Stay on 1.49.x with echarts 0.4.0 until echarts ships a v2-compatible release.
+streamlit>=1.39,<1.50
+streamlit-echarts==0.4.0
 requests>=2.31,<3
 python-dotenv>=1.0,<2
-streamlit-echarts>=0.4,<1

@@ -40,6 +40,13 @@ def compute_psi_numeric(reference: np.ndarray, test: np.ndarray, n_bins: int = 1
     Returns:
         PSI score (float >= 0). Lower = less drift.
     """
+    # Defensive: cast bool/object arrays to float64 so np.isnan and arithmetic work.
+    # Modern stage4 one-hot encoders return bool dtype, which breaks numpy
+    # subtract on quantile interpolation downstream.
+    if reference.dtype == bool:
+        reference = reference.astype(np.float64)
+    if test.dtype == bool:
+        test = test.astype(np.float64)
     ref = reference[~np.isnan(reference)]
     tst = test[~np.isnan(test)]
 
@@ -129,6 +136,10 @@ def compute_feature_psi(
         tst_vals = test_df[col].values
 
         if pd.api.types.is_numeric_dtype(ref_df[col]):
+            # Cast bool to float to avoid numpy subtract errors in quantile interp.
+            if ref_df[col].dtype == bool:
+                ref_vals = ref_vals.astype(np.float64)
+                tst_vals = tst_vals.astype(np.float64)
             psi_scores[col] = compute_psi_numeric(ref_vals, tst_vals, n_bins=n_bins)
         else:
             psi_scores[col] = compute_psi_categorical(ref_vals, tst_vals)
@@ -161,6 +172,10 @@ def compute_baseline_statistics(
 
         if pd.api.types.is_numeric_dtype(df[col]):
             vals = df[col].dropna()
+            # Cast bool to int8 — bool series breaks pandas .quantile() in
+            # newer numpy (`subtract` not supported on bool).
+            if vals.dtype == bool:
+                vals = vals.astype(np.int8)
             if len(vals) == 0:
                 stats[col] = {"type": "numeric", "count": 0}
                 continue
