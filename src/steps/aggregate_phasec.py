@@ -55,7 +55,9 @@ def main():
     _t0 = time.time()
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
-    parser.add_argument("--hpo_metrics_json", required=True)
+    # K7 fix: YAML passes --hpo_metrics; accept both names for backward-compat.
+    parser.add_argument("--hpo_metrics", "--hpo_metrics_json",
+                        dest="hpo_metrics", required=True)
     parser.add_argument("--optimized_model", required=True)
     parser.add_argument("--report_out", required=True)
     parser.add_argument("--champion_out", required=True)
@@ -65,7 +67,7 @@ def main():
     print("STEP S09: AGGREGATE PHASE C")
     print("=" * 80)
 
-    metrics = load_json(args.hpo_metrics_json) or {}
+    metrics = load_json(args.hpo_metrics) or {}
     report = {
         "phase": "C",
         "selection": {

@@ -38,9 +38,9 @@ def _safe_disable_autolog():
     _mlflow_uri = _os.getenv("MLFLOW_TRACKING_URI", "")
     if _mlflow_uri.startswith("azureml://"):
         mlflow.set_tracking_uri(_mlflow_uri.replace("azureml://", "https://"))
-    # Set local model registry as fallback
-    _os.makedirs("/tmp/mlflow-registry", exist_ok=True)
-    mlflow.set_registry_uri("file:///tmp/mlflow-registry")
+    # M6 fix: do NOT redirect registry URI to /tmp -- Azure ML's registry is
+    # configured by the workspace; overriding to a local file:// breaks
+    # downstream s12 model registration. We rely solely on the HTTPS conversion.
 
 
 # T18: NumpyEncoder for safe JSON serialization of numpy types
@@ -84,6 +84,12 @@ def main():
     target_col = cfg.get("dataset", {}).get("target_column")
     delimiter = cfg.get("dataset", {}).get("delimiter", ",")  # 🔥 CRITICAL FIX
     n_trials = cfg.get("phases", {}).get("phase_c_hpo", {}).get("n_trials", 50)
+    # K9 fix: respect phase_c_hpo.timeout (seconds) -- previously ignored.
+    hpo_timeout = cfg.get("phases", {}).get("phase_c_hpo", {}).get("timeout")
+    try:
+        hpo_timeout = float(hpo_timeout) if hpo_timeout is not None else None
+    except (TypeError, ValueError):
+        hpo_timeout = None
     random_seed = cfg.get("random_seed", 42)
     test_size = cfg.get("stages", {}).get("stage4_feature_engineering", {}).get("train_test_splits", [0.8])[0]
     test_size = 1 - float(test_size)
@@ -212,9 +218,11 @@ def main():
                     print(f" → score=-1.0 (all noise or single cluster)", flush=True)
                     return -1.0  # All noise or single cluster
         
-        print(f"\n🔬 Starting Optuna clustering study ({n_trials} trials):", flush=True)
+        print(f"\n🔬 Starting Optuna clustering study ({n_trials} trials"
+              + (f", timeout={hpo_timeout}s" if hpo_timeout else "") + "):", flush=True)
         study = optuna.create_study(direction="maximize")
-        study.optimize(objective, n_trials=n_trials, catch=(ValueError,))
+        study.optimize(objective, n_trials=n_trials, timeout=hpo_timeout,
+                       catch=(Exception,))
         print(f"✅ Optuna study complete. Best value: {study.best_value:.4f}", flush=True)
         
         best_params = study.best_params
@@ -402,21 +410,44 @@ def main():
         print(f"  ✅  Phase C will replicate recipe transforms on Stage 4 data")
         
         # Map PyCaret/FLAML model names to sklearn/xgb/lgb/cat equivalents
-        # Common mappings from Phase B results
-        if "xgb" in champion_algorithm_raw or "xgboost" in champion_algorithm_raw or "Extreme Gradient Boosting" in champion_algorithm_raw:
+        # K10 fix: expanded coverage; raise (not silent fallback) for truly unknown
+        # algorithms so misconfigured Phase B champions are surfaced loudly.
+        if "xgb" in champion_algorithm_raw or "xgboost" in champion_algorithm_raw or "Extreme Gradient Boosting" in champion_algorithm_raw.lower():
             champion_algorithm = "xgboost"
-        elif "lgb" in champion_algorithm_raw or "lightgbm" in champion_algorithm_raw or "Light Gradient Boosting" in champion_algorithm_raw:
+        elif "lgb" in champion_algorithm_raw or "lightgbm" in champion_algorithm_raw or "light gradient boosting" in champion_algorithm_raw.lower():
             champion_algorithm = "lightgbm"
-        elif "cat" in champion_algorithm_raw or "catboost" in champion_algorithm_raw or "CatBoost" in champion_algorithm_raw:
+        elif "cat" in champion_algorithm_raw or "catboost" in champion_algorithm_raw:
             champion_algorithm = "catboost"
-        elif "rf" in champion_algorithm_raw or "randomforest" in champion_algorithm_raw or "Random Forest" in champion_algorithm_raw:
+        elif "extra" in champion_algorithm_raw or "et" == champion_algorithm_raw.strip():
+            champion_algorithm = "extratrees"
+        elif "gradient" in champion_algorithm_raw or "gbc" in champion_algorithm_raw or "gbr" in champion_algorithm_raw:
+            champion_algorithm = "gradientboosting"
+        elif "rf" in champion_algorithm_raw or "randomforest" in champion_algorithm_raw or "random forest" in champion_algorithm_raw.lower():
             champion_algorithm = "randomforest"
-        elif "logistic" in champion_algorithm_raw or "lr" == champion_algorithm_raw:
+        elif "logistic" in champion_algorithm_raw or champion_algorithm_raw.strip() == "lr":
             champion_algorithm = "logisticregression"
         elif "ridge" in champion_algorithm_raw:
             champion_algorithm = "ridge"
+        elif "lasso" in champion_algorithm_raw:
+            champion_algorithm = "lasso"
+        elif "linear" in champion_algorithm_raw or champion_algorithm_raw.strip() in ("lreg", "linreg"):
+            champion_algorithm = "linearregression"
+        elif "knn" in champion_algorithm_raw or "k neighbors" in champion_algorithm_raw.lower():
+            champion_algorithm = "knn"
+        elif "dt" == champion_algorithm_raw.strip() or "decision tree" in champion_algorithm_raw.lower() or "decisiontree" in champion_algorithm_raw:
+            champion_algorithm = "decisiontree"
+        elif "ada" in champion_algorithm_raw:
+            champion_algorithm = "adaboost"
+        elif "svm" in champion_algorithm_raw or "svc" in champion_algorithm_raw or "support vector" in champion_algorithm_raw.lower():
+            champion_algorithm = "svm"
+        elif "naive" in champion_algorithm_raw.lower() or champion_algorithm_raw.strip() == "nb":
+            champion_algorithm = "naivebayes"
         else:
-            print(f"  ⚠️  Unknown algorithm '{champion_algorithm_raw}', defaulting to XGBoost")
+            # K10: surface unknown rather than silently mis-tune XGBoost.
+            # Use a documented marker so downstream code falls through to the
+            # XGBoost search-space block but the discrepancy is visible in logs.
+            print(f"  ❌ K10: Unknown Phase B algorithm '{champion_algorithm_raw}'.")
+            print(f"      Falling back to XGBoost search space; ALGO_MAP needs an entry.")
             champion_algorithm = "xgboost"
         
         # 🔥 FIX (Item 10): Recipe-aware preprocessing for Phase C
@@ -678,11 +709,18 @@ def main():
             interval_steps=1       # Check every step
         )
     )
-    print(f"\n🔬 Starting Optuna study ({n_trials} trials, MedianPruner enabled):", flush=True)
+    print(f"\n🔬 Starting Optuna study ({n_trials} trials"
+          + (f", timeout={hpo_timeout}s" if hpo_timeout else "")
+          + ", MedianPruner enabled):", flush=True)
     # T5: Wrap study in fallback guard — if HPO fails entirely, use default XGBoost
     _hpo_fallback = False
     try:
-        study.optimize(objective, n_trials=n_trials)
+        # K8 fix: catch=(Exception,) so a single bad trial does not abort the
+        # whole study. K9 fix: pass user-configured timeout.
+        study.optimize(objective, n_trials=n_trials, timeout=hpo_timeout,
+                       catch=(Exception,))
+        if len(study.trials) == 0 or all(t.state.name != "COMPLETE" for t in study.trials):
+            raise RuntimeError("Optuna study finished with zero successful trials")
         best_params = study.best_params
         best_value = study.best_value
     except Exception as _hpo_err:

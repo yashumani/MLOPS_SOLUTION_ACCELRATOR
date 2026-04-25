@@ -77,8 +77,11 @@ class ModelRegistry:
     for production model lifecycle.
     """
     
-    def __init__(self, config_name: str):
+    def __init__(self, config_name: str, cfg: Dict[str, Any] = None):
         self.config_name = config_name
+        # K11 fix: prefer cfg['dataset']['name'] (and cfg['registry']['model_name'])
+        # over fragile filename parsing. cfg may be None for legacy callers.
+        self.cfg = cfg or {}
         
         # 🔥 FIX: Convert azureml:// to https:// BEFORE creating MlflowClient
         # The MlflowClient() constructor captures the tracking URI at creation time.
@@ -93,16 +96,32 @@ class ModelRegistry:
         
         self.client = MlflowClient()
         
-        # Extract dataset name from config for model naming
+        # Extract dataset name from cfg first, fall back to filename parsing
         self.dataset_name = self._extract_dataset_name(config_name)
+        # K11: also expose explicit registry model name override if cfg provides one.
+        self.model_name_override = (self.cfg.get("registry", {}) or {}).get("model_name")
     
     def _extract_dataset_name(self, config_name: str) -> str:
-        """Extract dataset name from config filename."""
+        """Resolve dataset name with the following precedence:
+        1) cfg['dataset']['name']           (explicit, preferred)
+        2) cfg['dataset']['display_name']   (alternate explicit field)
+        3) parsed from config filename       (legacy fallback)
+        4) 'unknown'                         (last resort)
+        """
+        ds_cfg = (self.cfg.get("dataset") or {}) if hasattr(self, "cfg") else {}
+        for key in ("name", "display_name", "dataset_name"):
+            v = ds_cfg.get(key)
+            if v and isinstance(v, str) and v.strip():
+                logger.info(f"📒 K11: dataset name from cfg['dataset']['{key}'] = {v}")
+                return v.strip()
+        # Filename fallback (legacy behaviour)
         # config_classification_telecom_churn_azureml.yml -> telecom_churn
         parts = config_name.replace(".yml", "").split("_")
         if len(parts) >= 3:
-            # Skip 'config', task_type, take rest
-            return "_".join(parts[2:]).replace("_azureml", "").replace("_local", "")
+            inferred = "_".join(parts[2:]).replace("_azureml", "").replace("_local", "")
+            logger.info(f"📒 K11: dataset name parsed from filename = {inferred}")
+            return inferred
+        logger.warning(f"⚠️ K11: could not resolve dataset name from cfg or filename '{config_name}'")
         return "unknown"
     
     def register_champion_model(
@@ -136,6 +155,10 @@ class ModelRegistry:
         
         # Model name: {dataset}_{task}_mlops
         model_name = f"{self.dataset_name}_{task_type}_mlops"
+        # K11: allow explicit override from cfg['registry']['model_name'].
+        if getattr(self, "model_name_override", None):
+            model_name = self.model_name_override
+            logger.info(f"📛 K11: using cfg-provided registry model name = {model_name}")
         
         logger.info(f"📦 Registering model: {model_name}")
         logger.info(f"Algorithm: {algorithm}, Metrics: {manifest.get('metrics', {})}")
@@ -425,7 +448,25 @@ def main():
     
     # Register model (wrapped for crash safety)
     try:
-        registry = ModelRegistry(args.config_name)
+        # K11: load YAML config so ModelRegistry can use cfg['dataset']['name']
+        cfg_dict = None
+        try:
+            cfg_path_candidates = [
+                Path("configs") / args.config_name,
+                Path(args.config_name),
+            ]
+            for _cp in cfg_path_candidates:
+                if _cp.exists():
+                    with open(_cp, "r") as _cf:
+                        cfg_dict = yaml.safe_load(_cf)
+                    logger.info(f"📋 K11: loaded config from {_cp}")
+                    break
+            if cfg_dict is None:
+                logger.warning(f"⚠️ K11: config file not found in {cfg_path_candidates}; falling back to filename parsing")
+        except Exception as _cfg_err:
+            logger.warning(f"⚠️ K11: failed to load config '{args.config_name}': {_cfg_err}")
+            cfg_dict = None
+        registry = ModelRegistry(args.config_name, cfg=cfg_dict)
         registry_info = registry.register_champion_model(
             manifest=manifest,
             model_path=model_path
