@@ -14,6 +14,15 @@ from azure.ai.ml.entities import PipelineJob, Environment
 from azure.identity import DefaultAzureCredential
 import yaml
 
+# K2: schema validation gate — refuse to submit if the config does not pass
+# the JSON-schema + cross-field checks (e.g. missing target_column).
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from src.orchestration.config_schema import validate_config as _validate_config  # type: ignore
+except Exception as _e:  # pragma: no cover - validator must be present in repo
+    _validate_config = None
+    print(f"⚠️  K2: config validator unavailable ({_e}); proceeding without schema check")
+
 # ---------------------------------------------------------------------------
 # Duplicate-submission prevention helpers
 # ---------------------------------------------------------------------------
@@ -271,6 +280,18 @@ def main():
             datastore_name = cfg.get('dataset', {}).get('datastore_name', 'mlops_blob')
     except Exception:
         pass
+
+    # K2: validate the loaded config BEFORE doing any Azure work. Fail fast on
+    # schema violations (missing target_column, bad task_type, etc.).
+    if _validate_config is not None:
+        try:
+            with open(config_path, 'r') as _f:
+                _cfg_for_validate = yaml.safe_load(_f) or {}
+            _validate_config(_cfg_for_validate)
+            print(f"✅ K2: config schema validation passed for {config_path}")
+        except Exception as _ve:
+            print(f"❌ K2: config schema validation FAILED: {_ve}")
+            raise SystemExit(2) from _ve
     
     # Dataset folder URI (Azure ML will mount it)
     dataset_folder_uri = (

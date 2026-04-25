@@ -245,6 +245,11 @@ def full_pipeline_v2(
         pycaret_model=s5a.outputs.best_model,
         flaml_manifest=s5b.outputs.manifest_json,
         flaml_model=s5b.outputs.best_model,
+        # K1: wire s5t (timeseries baseline) outputs so forecasting tasks can
+        # promote a timeseries champion. The TS step skips internally for
+        # non-time-series tasks; the aggregate step handles status="skipped".
+        ts_manifest=s5t.outputs.manifest_json,
+        ts_model=s5t.outputs.best_model,
     )
     
     # Phase B - NEW: Single-step batch variant runner

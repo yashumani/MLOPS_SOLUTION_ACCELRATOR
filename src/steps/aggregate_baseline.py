@@ -71,10 +71,10 @@ def load_json(path: str):
         return None
 
 
-def select_champion(pycaret_manifest, flaml_manifest, task: str = "classification"):
-    """Select best model from pycaret and flaml baselines.
+def select_champion(pycaret_manifest, flaml_manifest, task: str = "classification", ts_manifest=None):
+    """Select best model from pycaret, flaml, and (optionally) timeseries baselines.
     
-    Returns: {"source": "pycaret"|"flaml"|None, "score": float|None, "reason": str}
+    Returns: {"source": "pycaret"|"flaml"|"timeseries"|None, "score": float|None, "reason": str}
     """
     best = {"source": None, "score": None, "reason": ""}
     primary_metric = get_primary_metric(task)
@@ -159,18 +159,45 @@ def select_champion(pycaret_manifest, flaml_manifest, task: str = "classificatio
     
     ps, ps_reason = extract_score(pycaret_manifest, "PyCaret")
     fs, fs_reason = extract_score(flaml_manifest, "FLAML")
+    # K1: timeseries baseline (optional). Status "skipped" is normal for non-TS tasks.
+    ts_score, ts_reason = (None, "timeseries manifest not provided")
+    if ts_manifest is not None:
+        if ts_manifest.get("status") == "skipped":
+            ts_reason = f"Timeseries skipped: {ts_manifest.get('reason', 'not applicable')}"
+        else:
+            for _key in ("best_metric", "score", "primary_metric_value"):
+                _v = ts_manifest.get(_key)
+                if _v is not None:
+                    try:
+                        ts_score = float(_v)
+                        ts_reason = f"Timeseries {_key}={_v}"
+                        break
+                    except (ValueError, TypeError):
+                        continue
+            if ts_score is None:
+                ts_reason = "Timeseries manifest present but no numeric score"
     
-    # Select best (higher is better for accuracy, r2, silhouette_score)
-    if fs is not None and (ps is None or fs >= ps):
-        best["source"] = "flaml"
-        best["score"] = fs
-        best["reason"] = fs_reason
-    elif ps is not None:
-        best["source"] = "pycaret"
-        best["score"] = ps
-        best["reason"] = ps_reason
+    # Select best (higher is better for accuracy, r2, silhouette_score; for forecasting,
+    # timeseries baseline is preferred when present and scored).
+    candidates = []
+    if ps is not None:
+        candidates.append(("pycaret", ps, ps_reason))
+    if fs is not None:
+        candidates.append(("flaml", fs, fs_reason))
+    if ts_score is not None:
+        # For forecasting tasks (e.g. lower error is better), task-specific scoring
+        # would invert the comparison. For now treat ts_score as already-normalized
+        # (timeseries step is responsible for emitting a higher-is-better metric).
+        candidates.append(("timeseries", ts_score, ts_reason))
+    
+    if candidates:
+        candidates.sort(key=lambda c: c[1], reverse=True)
+        best["source"], best["score"], best["reason"] = candidates[0]
     else:
-        best["reason"] = f"No valid scores found. PyCaret: {ps_reason}. FLAML: {fs_reason}"
+        best["reason"] = (
+            f"No valid scores found. PyCaret: {ps_reason}. FLAML: {fs_reason}. "
+            f"Timeseries: {ts_reason}"
+        )
     
     return best
 
@@ -183,6 +210,9 @@ def main():
     parser.add_argument("--pycaret_model", required=True)
     parser.add_argument("--flaml_manifest", required=True)
     parser.add_argument("--flaml_model", required=True)
+    # K1: optional timeseries baseline (skipped internally for non-TS tasks)
+    parser.add_argument("--ts_manifest", required=False, default=None)
+    parser.add_argument("--ts_model", required=False, default=None)
     parser.add_argument("--report_out", required=True)
     parser.add_argument("--champion_out", required=True)
     args = parser.parse_args()
@@ -199,8 +229,10 @@ def main():
 
     pman = load_json(args.pycaret_manifest)
     fman = load_json(args.flaml_manifest)
+    # K1: load timeseries manifest if provided (optional)
+    tman = load_json(args.ts_manifest) if args.ts_manifest else None
 
-    champion = select_champion(pman, fman, task=task_type)
+    champion = select_champion(pman, fman, task=task_type, ts_manifest=tman)
     print(f"🏆 Aggregate Baseline: Selected {champion['source']} | Score: {champion['score']} | Reason: {champion.get('reason', 'N/A')}")
     
     # Choose model accordingly (both are folders containing model files)
@@ -236,6 +268,10 @@ def main():
     elif champion["source"] == "pycaret" and is_valid_model_folder(pycaret_path):
         model_src = pycaret_path
         print(f"  ✅ Using PyCaret model from {model_src}")
+    elif champion["source"] == "timeseries" and args.ts_model and is_valid_model_folder(Path(args.ts_model)):
+        # K1: timeseries champion
+        model_src = Path(args.ts_model)
+        print(f"  ✅ Using Timeseries model from {model_src}")
     else:
         # fallback: prefer pycaret model
         if is_valid_model_folder(pycaret_path):

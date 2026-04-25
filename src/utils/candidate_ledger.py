@@ -33,6 +33,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+# K12: cross-process lock for CSV append/write so parallel Phase B/C runners
+# cannot interleave writes and corrupt the ledger.
+try:
+    from filelock import FileLock
+    _HAS_FILELOCK = True
+except ImportError:  # pragma: no cover - filelock is in env, defensive only
+    _HAS_FILELOCK = False
+
+    class _NoopLock:
+        def __init__(self, *_a, **_k): pass
+        def __enter__(self): return self
+        def __exit__(self, *_a): return False
+
+    def FileLock(path, timeout: float = -1):  # type: ignore[no-redef]
+        return _NoopLock()
+
+
+def _ledger_lock(csv_path: Path, timeout: float = 60.0):
+    """Return a FileLock for the given CSV path (lock file lives next to it)."""
+    lock_path = str(csv_path) + ".lock"
+    try:
+        return FileLock(lock_path, timeout=timeout)
+    except TypeError:
+        # Older filelock without timeout kwarg
+        return FileLock(lock_path)
+
 # ---------------------------------------------------------------------------
 # Schema constants
 # ---------------------------------------------------------------------------
@@ -244,13 +270,15 @@ def append_rows_to_stage_table(
     csv_path = Path(csv_path)
     try:
         csv_path.parent.mkdir(parents=True, exist_ok=True)
-        file_exists = csv_path.exists() and csv_path.stat().st_size > 0
-        with open(csv_path, "a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=ALL_COLUMNS, extrasaction="ignore")
-            if not file_exists:
-                writer.writeheader()
-            for row in rows:
-                writer.writerow(row)
+        # K12: serialize concurrent appends across processes
+        with _ledger_lock(csv_path):
+            file_exists = csv_path.exists() and csv_path.stat().st_size > 0
+            with open(csv_path, "a", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=ALL_COLUMNS, extrasaction="ignore")
+                if not file_exists:
+                    writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
         print(f"📋 Ledger: appended {len(rows)} rows → {csv_path}")
     except Exception as exc:
         print(f"⚠️  append_rows_to_stage_table CSV failed: {exc}")
@@ -271,11 +299,13 @@ def write_stage_table(
     csv_path = Path(csv_path)
     try:
         csv_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=ALL_COLUMNS, extrasaction="ignore")
-            writer.writeheader()
-            for row in rows:
-                writer.writerow(row)
+        # K12: serialize concurrent overwrites across processes
+        with _ledger_lock(csv_path):
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=ALL_COLUMNS, extrasaction="ignore")
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
         print(f"📋 Ledger: wrote {len(rows)} rows → {csv_path}")
     except Exception as exc:
         print(f"⚠️  write_stage_table CSV failed: {exc}")
