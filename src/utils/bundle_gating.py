@@ -346,8 +346,19 @@ def resolve_variant_paths(
 
         # Glob pattern
         if bundle.variant_glob and count < bundle.max_variants:
-            for gp in sorted((root / "").parent.glob(str(root / bundle.variant_glob))):
-                rel = str(gp.relative_to(root))
+            glob_pattern = Path(bundle.variant_glob)
+            if glob_pattern.is_absolute():
+                candidates = sorted(glob_pattern.parent.glob(glob_pattern.name))
+            else:
+                candidates = sorted(root.glob(str(bundle.variant_glob)))
+
+            for glob_path in candidates:
+                if not glob_path.is_file():
+                    continue
+                try:
+                    rel = str(glob_path.relative_to(root))
+                except ValueError:
+                    continue
                 if rel not in seen:
                     seen.add(rel)
                     resolved.append(rel)
