@@ -239,12 +239,12 @@ def deadline_guard(deadline: float, label: str) -> bool:
 
 def get_primary_metric(task_type: str) -> str:
     """Return primary metric name for task type.
-    
-    For classification we optimise AUC (threshold-agnostic, handles
-    class imbalance). Matches the baselines in s5a/s5b.
+
+    For classification we optimise balanced accuracy so Phase B uses the
+    same imbalanced-data production metric as Phase A aggregation.
     """
     if task_type == "classification":
-        return "AUC"
+        return "Balanced Accuracy"
     elif task_type == "regression":
         return "R2"
     elif task_type == "clustering":
@@ -263,7 +263,7 @@ def get_metric_columns_for_task(task_type: str) -> list:
     elif task_type == "clustering":
         return ["silhouette", "calinski_harabasz", "davies_bouldin"]
     else:  # classification (default)
-        return ["accuracy", "auc", "f1", "precision", "recall", "kappa", "mcc"]
+        return ["balanced_accuracy", "accuracy", "auc", "f1", "precision", "recall", "kappa", "mcc"]
 
 
 def is_lower_better(metric_name: str) -> bool:
@@ -1262,7 +1262,8 @@ def train_pycaret_variant(
     
     try:
         if task_type == "classification":
-            from pycaret.classification import setup, compare_models, pull
+            from pycaret.classification import setup, compare_models, pull, add_metric
+            from sklearn.metrics import balanced_accuracy_score
             
             # Get canonical model list (enforces MODEL_UNIVERSE, prevents PyCaret adding removed models)
             _include_models = get_model_list(task_type, "pycaret")
@@ -1293,6 +1294,18 @@ def train_pycaret_variant(
                 log_experiment=False,
                 html=False
             )
+
+            try:
+                add_metric(
+                    "balanced_accuracy",
+                    "Balanced Accuracy",
+                    balanced_accuracy_score,
+                    target="pred",
+                    greater_is_better=True,
+                )
+                print("      ✅ PyCaret custom metric registered: Balanced Accuracy")
+            except Exception as _metric_err:
+                print(f"      ⚠️ PyCaret balanced accuracy metric registration failed: {_metric_err}")
             
             # Train models with time budget (soft timeout)
             remaining_time = max(0.0, time_budget - (time.time() - start_time))
@@ -1309,14 +1322,28 @@ def train_pycaret_variant(
                     "error": f"Insufficient time: {remaining_time:.1f}s"
                 }, True
             
-            sort_metric = get_primary_metric(task_type)   # "AUC" for classification
-            best_model = compare_models(
-                include=_include_models,  # Enforce MODEL_UNIVERSE (all 14 models)
-                sort=sort_metric,         # Sort by AUC, not Accuracy (avoids majority-class trap)
-                n_select=1,
-                budget_time=budget_minutes,
-                verbose=False
-            )
+            sort_metric = get_primary_metric(task_type)
+            try:
+                best_model = compare_models(
+                    include=_include_models,  # Enforce MODEL_UNIVERSE (all 14 models)
+                    sort=sort_metric,
+                    n_select=1,
+                    budget_time=budget_minutes,
+                    verbose=False
+                )
+            except Exception as _compare_metric_err:
+                if sort_metric == "Balanced Accuracy":
+                    print(f"      ⚠️ PyCaret sort by Balanced Accuracy failed: {_compare_metric_err}; falling back to AUC search")
+                    sort_metric = "AUC"
+                    best_model = compare_models(
+                        include=_include_models,
+                        sort=sort_metric,
+                        n_select=1,
+                        budget_time=budget_minutes,
+                        verbose=False
+                    )
+                else:
+                    raise
             
             # Check if we exceeded budget
             actual_runtime = time.time() - start_time
@@ -1339,6 +1366,7 @@ def train_pycaret_variant(
             
             # ── Extract ALL CV metrics from PyCaret leaderboard ──
             _PYCARET_METRIC_MAP = {
+                "Balanced Accuracy": "balanced_accuracy",
                 "Accuracy": "accuracy", "AUC": "auc",
                 "Recall": "recall", "Prec.": "precision",
                 "F1": "f1", "Kappa": "kappa", "MCC": "mcc",
@@ -1403,6 +1431,19 @@ def train_pycaret_variant(
                 except Exception as _smote_err:
                     print(f"      ⚠️ SMOTE retraining failed: {_smote_err}, keeping model as-is")
                     metrics["smote_retrained"] = 0
+
+            if "balanced_accuracy" not in metrics:
+                try:
+                    X_eval = df.drop(columns=[target_column])
+                    y_eval = df[target_column]
+                    y_pred_eval = best_model.predict(X_eval)
+                    metrics["balanced_accuracy"] = round(float(balanced_accuracy_score(y_eval, y_pred_eval)), 4)
+                    print(f"      ✅ PyCaret balanced_accuracy computed from selected model predictions: {metrics['balanced_accuracy']:.4f}")
+                except Exception as _bal_err:
+                    print(f"      ⚠️ PyCaret balanced_accuracy computation failed: {_bal_err}")
+
+            if "balanced_accuracy" in metrics:
+                metrics["primary_metric"] = metrics["balanced_accuracy"]
             
             return best_model, metrics, timed_out
             
@@ -1702,12 +1743,14 @@ def train_flaml_variant(
                     from sklearn.metrics import (
                         accuracy_score, f1_score, precision_score, recall_score,
                         cohen_kappa_score, matthews_corrcoef, roc_auc_score,
+                        balanced_accuracy_score,
                     )
                     from sklearn.model_selection import cross_val_predict
                     from sklearn.base import clone as sklearn_clone
 
                     cv_model = sklearn_clone(automl.model)
                     y_pred = cross_val_predict(cv_model, X, y, cv=cv_folds, method='predict')
+                    metrics["balanced_accuracy"] = round(float(balanced_accuracy_score(y, y_pred)), 4)
                     metrics["accuracy"] = round(float(accuracy_score(y, y_pred)), 4)
                     metrics["f1"] = round(float(f1_score(y, y_pred, average="weighted", zero_division=0)), 4)
                     metrics["precision"] = round(float(precision_score(y, y_pred, average="weighted", zero_division=0)), 4)
@@ -1734,6 +1777,18 @@ def train_flaml_variant(
             else:
                 print(f"      ⏱️ Skipping cross_val_predict ({remaining_after_fit:.0f}s left < 120s); "
                       f"using FLAML internal validation score ({metrics['primary_metric']:.4f})")
+
+            if "balanced_accuracy" not in metrics:
+                try:
+                    from sklearn.metrics import balanced_accuracy_score
+                    y_pred_eval = automl.predict(X)
+                    metrics["balanced_accuracy"] = round(float(balanced_accuracy_score(y, y_pred_eval)), 4)
+                    print(f"      ✅ FLAML balanced_accuracy computed from selected model predictions: {metrics['balanced_accuracy']:.4f}")
+                except Exception as _bal_err:
+                    print(f"      ⚠️ FLAML balanced_accuracy computation failed: {_bal_err}")
+
+            if "balanced_accuracy" in metrics:
+                metrics["primary_metric"] = metrics["balanced_accuracy"]
         else:
             metrics["r2"] = metrics["primary_metric"]
             # ── Compute regression metrics (time-aware) ──
@@ -2563,7 +2618,7 @@ def main():
                 "variant_path": "none",
                 "engine": "none",
                 "algorithm": "none",
-                "primary_metric_name": primary_metric_name.lower(),
+                "primary_metric_name": primary_metric_name.lower().replace(" ", "_"),
                 "primary_metric_value": 0.0,
                 "metrics": {},
                 "preprocessing_config": {},
@@ -2715,7 +2770,7 @@ def main():
         
             # ======== HARDENING FEATURE 3: STABLE CHAMPION MANIFEST CONTRACT ========
         # Store original (non-negated) metric value in manifest
-        primary_metric_name_lower = get_primary_metric(task_type).lower()
+        primary_metric_name_lower = get_primary_metric(task_type).lower().replace(" ", "_")
         original_metric_value = safe_float(
             champion_result.metrics.get("primary_metric") or 
             champion_result.metrics.get(primary_metric_name_lower)
