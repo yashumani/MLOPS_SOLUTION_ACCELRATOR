@@ -49,6 +49,13 @@ from utils.candidate_ledger import (
 from utils.model_universe import get_model_list
 
 
+def _parse_bool(value) -> bool:
+    """Parse booleans from Azure ML component string values."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 # ============================================================================
 # INDUSTRIAL CONTRACTS - DO NOT MODIFY WITHOUT COORDINATION
 # ============================================================================
@@ -1999,7 +2006,7 @@ def main():
                         help="Proxy metric threshold for pruning (classification)")
     parser.add_argument("--diversity_min_hamming", type=int, default=2,
                         help="Min Hamming distance for diverse sampling")
-    parser.add_argument("--cache_enabled", action=argparse.BooleanOptionalAction, default=True,
+    parser.add_argument("--cache_enabled", nargs="?", const=True, default=True, type=_parse_bool,
                         help="Enable preprocessing cache")
     
     args = parser.parse_args()

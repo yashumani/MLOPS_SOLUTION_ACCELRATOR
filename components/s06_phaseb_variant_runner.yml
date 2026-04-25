@@ -78,7 +78,7 @@ command: >-
   --round1_max_variants ${{inputs.round1_max_variants}}
   --round2_max_variants ${{inputs.round2_max_variants}}
   --proxy_prune_threshold ${{inputs.proxy_prune_threshold}}
-  $[[--cache_enabled]]
+  --cache_enabled ${{inputs.cache_enabled}}
   && echo "Creating output files (handles zero results case)"
   && (test -f ${{outputs.champion_model}}/leaderboard.csv && cp ${{outputs.champion_model}}/leaderboard.csv ${{outputs.leaderboard_csv}} || echo "variant_id,engine,metric" > ${{outputs.leaderboard_csv}})
   && (test -f ${{outputs.champion_model}}/all_results.json && cp ${{outputs.champion_model}}/all_results.json ${{outputs.all_results_json}} || echo "[]" > ${{outputs.all_results_json}})

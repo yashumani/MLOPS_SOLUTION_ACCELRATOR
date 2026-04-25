@@ -53,18 +53,31 @@ def _acquire_lock() -> bool:
         except Exception:
             _LOCK_FILE.unlink(missing_ok=True)
 
-    # Write new lock
-    _LOCK_FILE.write_text(json.dumps({
+    lock_payload = json.dumps({
         "pid": os.getpid(),
         "ts": datetime.now().timestamp(),
         "started": datetime.now().isoformat(),
-    }))
+    })
+    try:
+        fd = os.open(_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "w") as lock_file:
+        lock_file.write(lock_payload)
+        lock_file.flush()
+        os.fsync(lock_file.fileno())
     return True
 
 
 def _release_lock():
     """Remove the lock file (safe to call multiple times)."""
     _LOCK_FILE.unlink(missing_ok=True)
+
+
+def _handle_submit_signal(signum, _frame):
+    """Release the submit lock before process interruption exits."""
+    _release_lock()
+    raise SystemExit(128 + signum)
 
 
 def _check_active_jobs(ml_client: MLClient, experiment_name: str) -> list:
@@ -233,6 +246,8 @@ def main():
     parser.add_argument("--disable_cache", action="store_true", help="Disable preprocessing cache")
     parser.add_argument("--bundles_dir", required=False, default=None,
                         help="Path to variant_bundles/<task> directory for AIM-Tournament bundle gating")
+    parser.add_argument("--drift_baseline_in", required=False, default=None,
+                        help="Optional previous s13 drift_baseline uri_folder for baseline comparison")
     parser.add_argument("--imputation_preset", required=False, default=None,
                         choices=["auto", "statistical", "ml_based", "removal",
                                  "pandas_native", "composite", "sampling", "advanced"],
@@ -607,12 +622,14 @@ def main():
             print(f"  Preprocessing cache: {'ENABLED' if cache_enabled else 'DISABLED'}")
             print("="*80 + "\n")
         
+        drift_baseline_input = Input(path=args.drift_baseline_in, type="uri_folder") if args.drift_baseline_in else None
         job = full_pipeline_v2(
             config_name=config_name,
             dataset_folder=Input(path=dataset_folder_uri, type="uri_folder"),
             variants_list=variants_list_str,
             engine_list=engine_list,
             time_budget_per_variant=time_budget_per_variant,
+            drift_baseline_in=drift_baseline_input,
             # V3-Proposed Planner parameters
             planner_enabled=planner_enabled,
             round1_max_variants=round1_max,
@@ -631,12 +648,14 @@ def main():
         _pb_cfg = cfg.get("phases", {}).get("phase_b", {}) if 'cfg' in dir() else {}
         _time_budget = _pb_cfg.get("time_budget_per_variant", 300)
         print(f"🚀 Using production pipeline with {len(all_selected_recipes)} variants × engines={engine_list_str}, time_budget={_time_budget}s\n")
+        drift_baseline_input = Input(path=args.drift_baseline_in, type="uri_folder") if args.drift_baseline_in else None
         job = full_pipeline(
             config_name=config_name,
             dataset_folder=Input(path=dataset_folder_uri, type="uri_folder"),
             variants_list=variants_list_str,
             engine_list=engine_list_str,
             time_budget_per_variant=_time_budget,
+            drift_baseline_in=drift_baseline_input,
         )
     
     # 🚀 Set display names for Phase B step (variant runner)
@@ -701,7 +720,8 @@ def main():
                 sys.exit(1)
             # Ensure lock is released on exit / signals
             atexit.register(_release_lock)
-            signal.signal(signal.SIGTERM, lambda *_: (_release_lock(), sys.exit(1)))
+            signal.signal(signal.SIGTERM, _handle_submit_signal)
+            signal.signal(signal.SIGINT, _handle_submit_signal)
 
         ml_client = MLClient(
             DefaultAzureCredential(),
