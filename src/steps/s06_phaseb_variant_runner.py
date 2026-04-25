@@ -1279,6 +1279,8 @@ def train_pycaret_variant(
                 session_id=42,  # Deterministic seed
                 fold=3,  # 3-fold CV (was defaulting to 10 — 3.3x speedup)
                 preprocess=False,  # CRITICAL: avoid double-preprocessing
+                normalize=False,         # K5: defense-in-depth
+                transformation=False,    # K5: defense-in-depth
                 fix_imbalance=_fix_imbalance,  # Apply SMOTE within CV folds when recipe requests it
                 verbose=False,
                 log_experiment=False,
@@ -1411,6 +1413,8 @@ def train_pycaret_variant(
                 session_id=42,  # Deterministic seed
                 fold=3,  # 3-fold CV (was defaulting to 10 — 3.3x speedup)
                 preprocess=False,  # CRITICAL: avoid double-preprocessing
+                normalize=False,         # K5: defense-in-depth
+                transformation=False,    # K5: defense-in-depth
                 verbose=False,
                 log_experiment=False,
                 html=False

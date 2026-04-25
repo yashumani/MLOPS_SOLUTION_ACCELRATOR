@@ -140,6 +140,13 @@ def main():
                 fix_imbalance=use_fix_imbalance,
                 fold_strategy="stratifiedkfold",
                 fold=_n_folds,
+                # K5: prevent double-preprocessing. Stage 3 (recipe-driven) has
+                # already imputed, encoded, scaled, and feature-engineered. Letting
+                # PyCaret re-run its own preprocessing inflates baselines and makes
+                # Phase B variants look worse than they actually are.
+                preprocess=False,
+                normalize=False,
+                transformation=False,
             )
 
             best = compare_models(sort=sort_metric, n_select=1,
@@ -204,8 +211,11 @@ def main():
             print(f"   Dataset : {df.shape[0]:,} rows × {df.shape[1]} cols")
             print(f"   Models  : {len(_include) if _include else 'ALL'} from MODEL_UNIVERSE")
             print(f"   CV folds: {_n_folds} (adaptive)")
+            # K5: preprocess=False prevents PyCaret from re-encoding/re-scaling
+            # data that stage 3 has already preprocessed via the recipe.
             setup(data=df, target=target_col, session_id=42, verbose=False,
-                  log_experiment=False, fold=_n_folds)
+                  log_experiment=False, fold=_n_folds,
+                  preprocess=False, normalize=False, transformation=False)
             # T19: Guard against empty leaderboard from compare_models
             try:
                 best = compare_models(sort="R2", n_select=1,
@@ -236,7 +246,10 @@ def main():
             df[_numeric_cols] = df[_numeric_cols].astype(np.float64)
             print(f"   Cast {len(_numeric_cols)} numeric cols to float64")
             
-            setup(data=df, session_id=42, verbose=False, log_experiment=False)
+            # K5: preprocess=False prevents PyCaret from re-scaling clustering
+            # features. Stage 3 has already standardized them per the recipe.
+            setup(data=df, session_id=42, verbose=False, log_experiment=False,
+                  preprocess=False, normalize=False, transformation=False)
             best = create_model("kmeans")
             leaderboard = pull()
 

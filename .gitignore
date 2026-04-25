@@ -8,3 +8,4 @@ scripts/submission_logs/
 .submit.lock
 .env
 logs/
+logs.log
