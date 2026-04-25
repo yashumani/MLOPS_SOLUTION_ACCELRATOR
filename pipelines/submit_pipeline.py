@@ -86,7 +86,9 @@ def _check_active_jobs(ml_client: MLClient, experiment_name: str) -> list:
                        "Provisioning", "CancelRequested"}
     active = []
     try:
-        for j in ml_client.jobs.list(experiment_name=experiment_name):
+        for j in ml_client.jobs.list():
+            if getattr(j, "experiment_name", None) != experiment_name:
+                continue
             if j.status in active_statuses:
                 active.append({
                     "name": j.name,
