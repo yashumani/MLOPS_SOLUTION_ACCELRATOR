@@ -5,11 +5,11 @@ Provides MLflow-based logging for Azure ML SDK v2 component jobs.
 Azure ML automatically captures MLflow metrics in component runs.
 
 KEY DESIGN PRINCIPLES:
-  1. NEVER convert azureml:// to https:// (breaks in some environments)
-  2. ALWAYS write artifacts to outputs/ first (source of truth for Azure ML Studio)
-  3. NEVER let logging failures crash the pipeline step
-  4. Start nested runs if an active run already exists
-  5. MLflow artifacts are best-effort only (azureml:// scheme unsupported)
+1. Convert azureml:// tracking URIs to https:// before MLflow operations
+2. ALWAYS write artifacts to outputs/ first (source of truth for Azure ML Studio)
+3. NEVER let logging failures crash the pipeline step
+4. Start nested runs if an active run already exists
+5. MLflow artifacts are best-effort only (azureml:// scheme unsupported)
 
 Usage:
     from utils.azureml_metrics_logger import create_metrics_logger
@@ -39,6 +39,16 @@ _OUTPUTS_DIR = Path("outputs")
 
 _SUPPORTED_ARTIFACT_SCHEMES = {"", "file", "http", "https", "databricks",
                                 "databricks-uc", "s3", "gs", "wasbs", "dbfs"}
+
+
+def normalize_mlflow_tracking_uri() -> None:
+    """Normalize Azure ML tracking URIs for MLflow client compatibility."""
+    uri = os.getenv("MLFLOW_TRACKING_URI", "")
+    if uri.startswith("azureml://"):
+        https_uri = uri.replace("azureml://", "https://", 1)
+        os.environ["MLFLOW_TRACKING_URI"] = https_uri
+        mlflow.set_tracking_uri(https_uri)
+        print("🔗 MLflow tracking URI converted to HTTPS")
 
 
 def _artifact_logging_supported() -> bool:
@@ -133,11 +143,10 @@ class AzureMLMetricsLogger:
         try:
             # Disable autologging that might interfere
             try:
+                normalize_mlflow_tracking_uri()
                 mlflow.autolog(disable=True)
             except Exception:
                 pass
-
-            # Do NOT touch the tracking URI – leave it as Azure ML set it.
 
             active = mlflow.active_run()
             if active is not None:
