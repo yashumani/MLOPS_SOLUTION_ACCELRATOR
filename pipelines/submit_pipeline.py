@@ -438,7 +438,7 @@ def main():
                     "min_relevance_score": 30.0,
                     "diversity_boost": True,
                     "runtime_budget_sec": 180,
-                    "time_budget_per_variant": 300,
+                    "time_budget_per_variant": 600,
                     "engines": ["pycaret", "flaml"]
                 }
             
@@ -591,7 +591,7 @@ def main():
         print("🚀 Using Phase 1 intelligent variant runner pipeline (advanced planner)\n")
         
         engine_list = ",".join(phase_b_config.get("engines", ["pycaret", "flaml"]))
-        time_budget_per_variant = phase_b_config.get("time_budget_per_variant", 300)
+        time_budget_per_variant = phase_b_config.get("time_budget_per_variant", 600)
         
         # V3-Proposed Planner settings (from CLI or config)
         planner_config = phase_b_config.get("planner", {})
@@ -633,9 +633,9 @@ def main():
         if task_type == "clustering":
             engine_list_str = "pycaret"  # FLAML doesn't support clustering
         
-        # Read time_budget_per_variant from config (fallback 300s)
+        # Read time_budget_per_variant from config (fallback 600s)
         _pb_cfg = cfg.get("phases", {}).get("phase_b", {}) if 'cfg' in dir() else {}
-        _time_budget = _pb_cfg.get("time_budget_per_variant", 300)
+        _time_budget = _pb_cfg.get("time_budget_per_variant", 600)
         print(f"🚀 Using production pipeline with {len(all_selected_recipes)} variants × engines={engine_list_str}, time_budget={_time_budget}s\n")
         drift_baseline_input = Input(path=args.drift_baseline_in, type="uri_folder") if args.drift_baseline_in else None
         job = full_pipeline(
