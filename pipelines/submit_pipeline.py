@@ -73,10 +73,7 @@ def _check_active_jobs(ml_client: MLClient, experiment_name: str) -> list:
                        "Provisioning", "CancelRequested"}
     active = []
     try:
-        for j in ml_client.jobs.list(
-            experiment_name=experiment_name,
-            max_results=10,
-        ):
+        for j in ml_client.jobs.list(experiment_name=experiment_name):
             if j.status in active_statuses:
                 active.append({
                     "name": j.name,

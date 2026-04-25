@@ -114,7 +114,7 @@ def main():
             accuracy_score, r2_score, roc_auc_score,
             f1_score, precision_score, recall_score,
             average_precision_score, confusion_matrix,
-            cohen_kappa_score, matthews_corrcoef,
+            cohen_kappa_score, matthews_corrcoef, balanced_accuracy_score,
         )
 
         automl = AutoML()
@@ -143,11 +143,13 @@ def main():
         preds = automl.predict(X_holdout)
         if task == "classification":
             acc = float(accuracy_score(y_holdout, preds))
+            bal_acc = float(balanced_accuracy_score(y_holdout, preds))
             f1 = float(f1_score(y_holdout, preds, average="weighted", zero_division=0))
             prec = float(precision_score(y_holdout, preds, average="weighted", zero_division=0))
             rec = float(recall_score(y_holdout, preds, average="weighted", zero_division=0))
             cm = confusion_matrix(y_holdout, preds).tolist()
             metrics["accuracy"] = round(acc, 4)
+            metrics["balanced_accuracy"] = round(bal_acc, 4)
             metrics["f1"] = round(f1, 4)
             metrics["precision"] = round(prec, 4)
             metrics["recall"] = round(rec, 4)
@@ -170,9 +172,9 @@ def main():
             except Exception:
                 pass
 
-            score = metrics.get("auc", acc)
-            metric_name = "auc" if "auc" in metrics else "accuracy"
-            print(f"   AUC={metrics.get('auc','N/A')} | F1={f1:.4f} | Acc={acc:.4f}")
+            score = bal_acc
+            metric_name = "balanced_accuracy"
+            print(f"   AUC={metrics.get('auc','N/A')} | F1={f1:.4f} | Acc={acc:.4f} | BalancedAcc={bal_acc:.4f}")
         else:
             from sklearn.metrics import mean_squared_error, mean_absolute_error
             score = float(r2_score(y_holdout, preds))
@@ -195,8 +197,9 @@ def main():
         manifest["best_metric"] = round(score, 4) if score is not None else None
         manifest["metric_name"] = metric_name
         # Store primary metric separately for normalized cross-engine comparison
-        if task == "classification" and acc is not None:
+        if task == "classification" and metrics.get("balanced_accuracy") is not None:
             manifest["accuracy"] = round(acc, 4)
+            manifest["balanced_accuracy"] = metrics["balanced_accuracy"]
 
         # Save model
         model_dir = Path(args.model_out).resolve()

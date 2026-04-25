@@ -94,7 +94,7 @@ def main():
             from pycaret.classification import setup, compare_models, pull, save_model, predict_model
             from sklearn.metrics import (
                 classification_report, confusion_matrix,
-                roc_auc_score, average_precision_score,
+                roc_auc_score, average_precision_score, balanced_accuracy_score,
             )
 
             print(f"\nPyCaret Classification Baseline - IMBALANCE-AWARE")
@@ -170,6 +170,12 @@ def main():
                 score_col = "prediction_score" if "prediction_score" in preds_df.columns else "Score"
                 y_true = df[target_col]
                 y_proba = preds_df[score_col] if score_col in preds_df.columns else None
+                label_col = "prediction_label" if "prediction_label" in preds_df.columns else "Label"
+
+                if label_col in preds_df.columns:
+                    metrics["balanced_accuracy"] = round(
+                        float(balanced_accuracy_score(y_true, preds_df[label_col])), 4
+                    )
 
                 if y_proba is not None:
                     pos_label = target_counts.idxmin()
@@ -317,8 +323,13 @@ def main():
             manifest["metric_name"] = "silhouette_score"
             manifest["silhouette_score"] = metrics.get("silhouette_score")
         else:
-            manifest["best_metric"] = best_metric_val
-            manifest["metric_name"] = primary_metric
+            if task_type == "classification" and metrics.get("balanced_accuracy") is not None:
+                manifest["best_metric"] = metrics["balanced_accuracy"]
+                manifest["metric_name"] = "balanced_accuracy"
+                manifest["balanced_accuracy"] = metrics["balanced_accuracy"]
+            else:
+                manifest["best_metric"] = best_metric_val
+                manifest["metric_name"] = primary_metric
 
         summary = {
             "stage": "5a_baseline_pycaret", "engine": "pycaret",
@@ -391,7 +402,7 @@ def main():
         logger.log_metric("dataset_cols", int(df.shape[1]))
 
         if task_type == "classification":
-            for k in ("auc", "pr_auc", "recall", "precision", "f1_at_optimal_threshold",
+            for k in ("balanced_accuracy", "auc", "pr_auc", "recall", "precision", "f1_at_optimal_threshold",
                        "optimal_threshold", "imbalance_ratio"):
                 if k in metrics and metrics[k] is not None:
                     logger.log_metric(k, float(metrics[k]))

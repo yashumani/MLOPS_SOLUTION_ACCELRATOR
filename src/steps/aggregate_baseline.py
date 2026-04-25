@@ -50,17 +50,17 @@ def get_primary_metric(task_type: str) -> str:
         task_type: "classification", "regression", or "clustering"
     
     Returns:
-        Metric name: "AUC", "R2", "silhouette_score"
+        Metric name: "balanced_accuracy", "R2", "silhouette_score"
     """
     if task_type == "classification":
-        return "AUC"
+        return "balanced_accuracy"
     elif task_type == "regression":
         return "R2"
     elif task_type == "clustering":
         return "silhouette_score"
     else:
         # Default to classification for unknown tasks
-        return "AUC"
+        return "balanced_accuracy"
 
 
 def load_json(path: str):
@@ -133,6 +133,14 @@ def select_champion(pycaret_manifest, flaml_manifest, task: str = "classificatio
                         return score, f"PyCaret leaderboard[{primary_metric}]={score}"
                     except (ValueError, TypeError, KeyError, IndexError):
                         pass
+
+            # Try direct manifest field (used for balanced_accuracy and normalized metrics)
+            score = m.get(primary_metric)
+            if score is not None:
+                try:
+                    return float(score), f"PyCaret {primary_metric}={score}"
+                except (ValueError, TypeError):
+                    pass
             
             # Try best_metric field (some versions use this)
             score = m.get("best_metric")
