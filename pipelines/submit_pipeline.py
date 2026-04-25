@@ -326,60 +326,47 @@ def main():
             cfg = yaml.safe_load(f)
         task_type = cfg.get("task_type", "classification")
         
-        # Check for phase_b_recipes config
+        # Check for phase_b_recipes config. If omitted, use committed variant_search
+        # recipes through the selector rather than embedding recipe file names here.
         phase_b_config = cfg.get("phases", {}).get("phase_b_recipes", {})
+        if not phase_b_config:
+            phase_b_config = {
+                "tier": "progressive",
+                "library": "variant_search",
+                "max_recipes": 2,
+                "runtime_budget_sec": 300,
+            }
+            print("⚠️ No phase_b_recipes config found; using variant_search selector defaults")
         
-        if phase_b_config:
-            # Use dynamic tier-based selection
-            tier = phase_b_config.get("tier", "balanced_performance")
-            library = phase_b_config.get("library", "v1_generated")
-            max_recipes = phase_b_config.get("max_recipes", 8)
-            runtime_budget = phase_b_config.get("runtime_budget_sec", None)
-            
-            print(f"🎯 Task type: {task_type}")
-            print(f"📚 Using {library} recipe library, tier: {tier}, max_recipes: {max_recipes}")
-            
-            recipes_base_dir = Path(__file__).resolve().parents[1] / "configs" / "recipes"
-            all_selected_recipes = select_recipes_for_tier(
-                task_type=task_type,
-                tier=tier,
-                count=max_recipes,
-                library=library,
-                max_runtime_sec=runtime_budget,
-                recipes_base_dir=recipes_base_dir
-            )
-            
-            print(f"✅ Selected {len(all_selected_recipes)} Phase B recipes:")
-            for i, r in enumerate(all_selected_recipes, 1):
-                print(f"   [{i}] {r}")
-            print()
-        else:
-            # Fall back to hardcoded task-specific recipes (legacy behavior)
-            if task_type == "classification":
-                all_selected_recipes = [
-                    "classification/recipe_smote_target_standard.yml",
-                    "classification/recipe_knn_onehot_minmax.yml",
-                ]
-            elif task_type == "regression":
-                all_selected_recipes = [
-                    "regression/recipe_outlier_iqr_standard.yml",
-                    "regression/recipe_winsorize_robust.yml",
-                ]
-            elif task_type == "clustering":
-                all_selected_recipes = [
-                    "clustering/recipe_knn_onehot_minmax.yml",
-                ]
-            
-            print(f"Task type: {task_type}")
-            print(f"⚠️ No phase_b_recipes config found, using hardcoded recipes:")
-            for i, r in enumerate(all_selected_recipes, 1):
-                print(f"   [{i}] {r}")
-            print()
+        # Use dynamic tier-based selection
+        tier = phase_b_config.get("tier", "balanced_performance")
+        library = phase_b_config.get("library", "variant_search")
+        max_recipes = phase_b_config.get("max_recipes", 8)
+        runtime_budget = phase_b_config.get("runtime_budget_sec", None)
+        
+        print(f"🎯 Task type: {task_type}")
+        print(f"📚 Using {library} recipe library, tier: {tier}, max_recipes: {max_recipes}")
+        
+        recipes_base_dir = Path(__file__).resolve().parents[1] / "configs" / "recipes"
+        all_selected_recipes = select_recipes_for_tier(
+            task_type=task_type,
+            tier=tier,
+            count=max_recipes,
+            library=library,
+            max_runtime_sec=runtime_budget,
+            recipes_base_dir=recipes_base_dir
+        )
+        if not all_selected_recipes:
+            raise ValueError(f"No Phase B recipes selected for task_type={task_type}")
+        
+        print(f"✅ Selected {len(all_selected_recipes)} Phase B recipes:")
+        for i, r in enumerate(all_selected_recipes, 1):
+            print(f"   [{i}] {r}")
+        print()
     
     except Exception as e:
-        print(f"⚠️ Could not determine task_type/recipes from config: {e}")
-        all_selected_recipes = ["recipe_knn_onehot_minmax.yml"]
-        print(f"Using default recipes: {all_selected_recipes}\n")
+        print(f"❌ Could not determine task_type/recipes from config: {e}")
+        raise SystemExit(2) from e
     
     # Build comma-separated variants list for the variant runner
     variants_list_str = ",".join(all_selected_recipes)
