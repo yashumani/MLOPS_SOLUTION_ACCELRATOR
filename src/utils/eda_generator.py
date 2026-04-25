@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import yaml
+import html
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
@@ -17,6 +18,22 @@ def load_config(path: str) -> dict:
     """Load YAML config."""
     with open(path, "r") as f:
         return yaml.safe_load(f)
+
+
+def _escape_html_text(value):
+    """Escape string values before they are rendered into generated HTML."""
+    if isinstance(value, str):
+        return html.escape(value, quote=True)
+    return value
+
+
+def _escape_dataframe_for_html(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy with escaped column labels and categorical/string values."""
+    escaped = df.copy()
+    escaped.columns = [_escape_html_text(str(column)) for column in escaped.columns]
+    for column in escaped.select_dtypes(include=["object", "category", "string"]).columns:
+        escaped[column] = escaped[column].astype("object").map(_escape_html_text)
+    return escaped
 
 
 def generate_correlation_heatmap(df: pd.DataFrame, output_path: Path, stage_name: str):
@@ -132,11 +149,13 @@ def generate_sweetviz_report(df: pd.DataFrame, output_path: Path, stage_name: st
         else:
             df_sample = df
         
-        # Generate report
-        if target_col and target_col in df_sample.columns:
-            report = sv.analyze(df_sample, target_feat=target_col)
+        # Generate report with escaped labels/category values to avoid raw HTML injection
+        report_df = _escape_dataframe_for_html(df_sample)
+        escaped_target_col = _escape_html_text(target_col) if target_col else None
+        if escaped_target_col and escaped_target_col in report_df.columns:
+            report = sv.analyze(report_df, target_feat=escaped_target_col)
         else:
-            report = sv.analyze(df_sample)
+            report = sv.analyze(report_df)
         
         # Save HTML
         output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -8,8 +8,31 @@ Uses JSONL format (one JSON object per line) for easy parsing.
 """
 
 import json as json_lib
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
+
+
+def _atomic_append_jsonl(path: Path, obj: dict) -> None:
+    """Append one JSONL record via same-directory temp file + atomic replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json_lib.dumps(obj) + "\n"
+    existing = path.read_text() if path.exists() else ""
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w") as tmp_file:
+            tmp_file.write(existing)
+            tmp_file.write(line)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 class AzureMLJSONLLogger:
@@ -42,8 +65,7 @@ class AzureMLJSONLLogger:
             if step is not None:
                 metric_obj["step"] = step
             
-            with open(self.metrics_file, "a") as f:
-                f.write(json_lib.dumps(metric_obj) + "\n")
+            _atomic_append_jsonl(self.metrics_file, metric_obj)
         except Exception as e:
             print(f"⚠️  Failed to log metric '{name}': {e}")
     
@@ -58,8 +80,7 @@ class AzureMLJSONLLogger:
         try:
             param_obj = {"name": name, "value": str(value)}
             
-            with open(self.params_file, "a") as f:
-                f.write(json_lib.dumps(param_obj) + "\n")
+            _atomic_append_jsonl(self.params_file, param_obj)
         except Exception as e:
             print(f"⚠️  Failed to log param '{name}': {e}")
     
@@ -112,8 +133,7 @@ def log_metric_to_azureml(name: str, value: Any) -> None:
     metrics_dir.mkdir(parents=True, exist_ok=True)
     
     try:
-        with open(metrics_dir / "metrics.jsonl", "a") as f:
-            f.write(json_lib.dumps({"name": name, "value": value}) + "\n")
+        _atomic_append_jsonl(metrics_dir / "metrics.jsonl", {"name": name, "value": value})
     except Exception as e:
         print(f"⚠️  Failed to log metric '{name}': {e}")
 
@@ -127,7 +147,6 @@ def log_param_to_azureml(name: str, value: Any) -> None:
     params_dir.mkdir(parents=True, exist_ok=True)
     
     try:
-        with open(params_dir / "params.jsonl", "a") as f:
-            f.write(json_lib.dumps({"name": name, "value": str(value)}) + "\n")
+        _atomic_append_jsonl(params_dir / "params.jsonl", {"name": name, "value": str(value)})
     except Exception as e:
         print(f"⚠️  Failed to log param '{name}': {e}")
