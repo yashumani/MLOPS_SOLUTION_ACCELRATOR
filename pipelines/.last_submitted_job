@@ -1,7 +1,0 @@
-{
-  "name": "loving_rail_7qx7mqw8ml",
-  "display_name": "classification_titanic_v3_20260424_031542_a4389f63",
-  "experiment": "classification_titanic_v3",
-  "submitted_at": "2026-04-24T03:33:04.278363",
-  "config": "config_classification_titanic_azureml.yml"
-}

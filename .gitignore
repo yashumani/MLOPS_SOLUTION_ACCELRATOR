@@ -9,3 +9,4 @@ scripts/submission_logs/
 .env
 logs/
 logs.log
+pipelines/.last_submitted_job
