@@ -1,62 +1,108 @@
 import argparse
 import atexit
 import json
+import logging
 import os
 import signal
+import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
-import importlib
 import sys
 
 from azure.ai.ml import MLClient, Input
 from azure.ai.ml.entities import PipelineJob, Environment
-from azure.identity import DefaultAzureCredential
+from azure.identity import (
+    ChainedTokenCredential,
+    ManagedIdentityCredential,
+    AzureCliCredential,
+)
 import yaml
 
-# K2: schema validation gate — refuse to submit if the config does not pass
-# the JSON-schema + cross-field checks (e.g. missing target_column).
+# Module logger — used for non-fatal warnings instead of bare except: pass
+logger = logging.getLogger("submit_pipeline")
+if not logger.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("[%(levelname)s] %(name)s: %(message)s"))
+    logger.addHandler(_h)
+logger.setLevel(logging.INFO)
+
+# K2: schema validation gate — HARD FAIL if the validator cannot be imported.
+# The K2 schema check is a security gate (catches missing target_column,
+# unknown task_type, etc.) and MUST run before any Azure work.
 try:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from src.orchestration.config_schema import validate_config as _validate_config  # type: ignore
 except Exception as _e:  # pragma: no cover - validator must be present in repo
-    _validate_config = None
-    print(f"⚠️  K2: config validator unavailable ({_e}); proceeding without schema check")
+    print(f"❌ K2: config validator unavailable ({_e}). Refusing to submit without schema gate.", file=sys.stderr)
+    sys.exit(1)
 
 # ---------------------------------------------------------------------------
 # Duplicate-submission prevention helpers
 # ---------------------------------------------------------------------------
 _LOCK_DIR = Path(__file__).resolve().parent          # pipelines/
 _LOCK_FILE = _LOCK_DIR / ".submit.lock"
-_LAST_JOB_FILE = _LOCK_DIR / ".last_submitted_job"
-_LOCK_MAX_AGE_SEC = 1800                             # 30 min stale threshold
+
+# .last_submitted_job moved out of the repo to prevent accidental git commits.
+_USER_STATE_DIR = Path.home() / ".mlops"
+_LAST_JOB_FILE = _USER_STATE_DIR / "last_submitted_job.json"
+
+_LOCK_MAX_AGE_SEC = 4 * 60 * 60                      # 4 hours hard ceiling — protects
+                                                     # against PID-recycling false hits.
+
+# Audit trail for --force submissions (security-relevant; keep alongside lock file)
+_FORCE_AUDIT_FILE = _LOCK_DIR / ".force_submit_audit.jsonl"
 
 
 def _acquire_lock() -> bool:
-    """Try to create a lock file.  Return True if acquired."""
+    """Try to create a lock file.  Return True if acquired.
+
+    Hardening notes:
+    * ``os.kill(pid, 0)`` returning ``PermissionError`` (EPERM) means the PID
+      exists but is owned by a different user — the lock is GENUINE, never stale.
+    * Only ``ProcessLookupError`` (ESRCH) means the process is truly gone.
+    * A hard ``_LOCK_MAX_AGE_SEC`` ceiling protects against PID recycling on
+      long-lived shared machines.
+    """
     if _LOCK_FILE.exists():
         try:
             lock_data = json.loads(_LOCK_FILE.read_text())
             lock_pid = lock_data.get("pid")
             lock_ts  = lock_data.get("ts", 0)
-            age = datetime.now().timestamp() - lock_ts
+            lock_expires = lock_data.get("expires", 0)
+            now_ts = datetime.now().timestamp()
+            age = now_ts - lock_ts
 
-            # If the locking process is still alive AND lock is fresh → blocked
-            if lock_pid and age < _LOCK_MAX_AGE_SEC:
+            # TTL: if the lock is past its declared expiry, treat as stale
+            past_ttl = lock_expires and now_ts > lock_expires
+            past_age = age >= _LOCK_MAX_AGE_SEC
+
+            if lock_pid and not past_ttl and not past_age:
                 try:
                     os.kill(lock_pid, 0)          # 0-signal existence check
-                    return False                  # process alive → genuine lock
-                except OSError:
-                    pass                          # process gone → stale lock
-            # Lock is stale – remove it
+                    return False                  # process alive (same uid) → genuine lock
+                except PermissionError:
+                    # Process exists but is owned by another user — lock is REAL.
+                    return False
+                except ProcessLookupError:
+                    pass                          # process truly gone → stale lock
+                except OSError as _exc:
+                    # Any other OS error: be conservative — treat as alive.
+                    logger.warning("os.kill probe failed (%s); treating lock as live", _exc)
+                    return False
+            # Lock is stale (expired by TTL/age, or process gone) – remove it
             _LOCK_FILE.unlink(missing_ok=True)
-        except Exception:
+        except (json.JSONDecodeError, OSError) as _exc:
+            logger.warning("Could not parse existing lock file (%s); reclaiming", _exc)
             _LOCK_FILE.unlink(missing_ok=True)
 
+    now = datetime.now()
     lock_payload = json.dumps({
         "pid": os.getpid(),
-        "ts": datetime.now().timestamp(),
-        "started": datetime.now().isoformat(),
+        "ts": now.timestamp(),
+        "started": now.isoformat(),
+        "expires": now.timestamp() + _LOCK_MAX_AGE_SEC,
+        "user": os.getenv("USER", "unknown"),
     })
     try:
         fd = os.open(_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
@@ -96,11 +142,77 @@ def _check_active_jobs(ml_client: MLClient, experiment_name: str) -> list:
                     "display_name": getattr(j, "display_name", ""),
                 })
     except Exception as exc:
-        print(f"⚠️  Could not query active jobs: {exc}")
+        logger.warning("Could not query active jobs: %s", exc)
     return active
 
-# Add src to path for recipe selector and variant selection
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# ---------------------------------------------------------------------------
+# Repository root + dataset traversal guard
+# ---------------------------------------------------------------------------
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DATA_ROOT = (REPO_ROOT / "data").resolve()
+
+# Bounded reads — Phase-1 profiling never needs more than statistics, and the
+# submit host is shared / NFS-mounted so we MUST cap memory and IO.
+MAX_LOCAL_CSV_BYTES = 500 * 1024 * 1024              # 500 MB hard cap
+PROFILE_NROWS = 50_000                               # rows used for profiling only
+
+# Variant safety caps — Azure ML pipeline parameter has a ~2 KB string limit
+MAX_VARIANTS_PER_RUN = 50
+MAX_VARIANT_LIST_CHARS = 1800
+
+
+def _safe_join_data_path(blob_path: str) -> Path:
+    """Resolve ``blob_path`` under ``DATA_ROOT`` and refuse traversal.
+
+    Refuses absolute paths, paths containing ``..`` segments, and any resolved
+    location that escapes ``DATA_ROOT``. Raises ``ValueError`` on any violation.
+    """
+    if not blob_path or not isinstance(blob_path, str):
+        raise ValueError("blob_path must be a non-empty string")
+    candidate = Path(blob_path)
+    if candidate.is_absolute():
+        raise ValueError(f"blob_path must be relative, got absolute path: {blob_path!r}")
+    if any(part == ".." for part in candidate.parts):
+        raise ValueError(f"blob_path traversal blocked (contains '..'): {blob_path!r}")
+    resolved = (DATA_ROOT / candidate).resolve()
+    if not str(resolved).startswith(str(DATA_ROOT) + os.sep) and resolved != DATA_ROOT:
+        raise ValueError(f"blob_path traversal blocked (escapes DATA_ROOT): {blob_path!r}")
+    return resolved
+
+
+def _check_csv_size_within_cap(local_path: Path, max_bytes: int = MAX_LOCAL_CSV_BYTES) -> None:
+    """Refuse to read CSVs larger than ``max_bytes`` on the submit host."""
+    size = local_path.stat().st_size
+    if size > max_bytes:
+        raise ValueError(
+            f"Local dataset {local_path.name} is {size / 1024 / 1024:.1f} MB, "
+            f"exceeds {max_bytes / 1024 / 1024:.0f} MB cap. "
+            "Profiling/gating must run as a remote step instead."
+        )
+    logger.info("Local dataset %s = %.1f MB (within %.0f MB cap)",
+                local_path.name, size / 1024 / 1024, max_bytes / 1024 / 1024)
+
+
+def _record_force_audit(args, user: str) -> None:
+    """Append a tamper-evident audit record when --force is used."""
+    record = {
+        "timestamp": datetime.now().isoformat(),
+        "user": user,
+        "pid": os.getpid(),
+        "config": getattr(args, "config", None),
+        "experiment_name": getattr(args, "experiment_name", None),
+        "display_name": getattr(args, "display_name", None),
+        "compute": getattr(args, "compute", None),
+    }
+    try:
+        with open(_FORCE_AUDIT_FILE, "a") as af:
+            af.write(json.dumps(record) + "\n")
+    except OSError as _exc:
+        logger.warning("Could not write force-submit audit log %s: %s", _FORCE_AUDIT_FILE, _exc)
+
+
+# Recipe selector — sys.path was already prepared at module top for the K2 import.
 from src.utils.recipe_selector import select_recipes_for_tier
 
 # Import variant selection components (Phase 1)
@@ -125,32 +237,22 @@ try:
 except ImportError:
     BUNDLES_AVAILABLE = False
 
-# Force reload of pipeline_builder module to pick up latest component YAML changes
-# This ensures component version increments are respected
-if 'pipeline_builder' in sys.modules:
-    import pipeline_builder
-    importlib.reload(pipeline_builder)
-    from pipeline_builder import full_pipeline, full_pipeline_v2
-else:
-    from pipeline_builder import full_pipeline, full_pipeline_v2
+# Pipeline builder import — component YAMLs are loaded once at import time.
+# To pick up component-YAML edits, restart the process (do NOT importlib.reload
+# inside a long-lived submitter — it has historically masked stale-component bugs).
+from pipelines.pipeline_builder import full_pipeline, full_pipeline_v2
 
 
-def _azure_from_local_config(config_path: str):
-    """Load azureml connection defaults from a local YAML config if available."""
-    p = Path(config_path)
-    if not p.exists():
+def _azure_from_local_config(cfg):
+    """Extract azureml connection defaults from an already-loaded config dict."""
+    if not cfg or not isinstance(cfg, dict):
         return None, None, None
-    try:
-        with open(p, "r") as f:
-            cfg = yaml.safe_load(f)
-        azure_cfg = cfg.get("azureml") or cfg.get("azure_ml") or {}
-        return (
-            azure_cfg.get("subscription_id"),
-            azure_cfg.get("resource_group"),
-            azure_cfg.get("workspace_name"),
-        )
-    except Exception:
-        return None, None, None
+    azure_cfg = cfg.get("azureml") or cfg.get("azure_ml") or {}
+    return (
+        azure_cfg.get("subscription_id"),
+        azure_cfg.get("resource_group"),
+        azure_cfg.get("workspace_name"),
+    )
 
 
 def derive_experiment_name(config_path: str) -> str:
@@ -215,7 +317,7 @@ def filter_variants_by_imputation_preset(
                 filtered.append(p)
         except Exception as exc:
             # If a variant YAML is malformed, skip it with a warning
-            print(f"⚠️ Could not read variant {p} for imputation filter: {exc}")
+            logger.warning("Could not read variant %s for imputation filter: %s", p, exc)
     return filtered
 
 
@@ -255,23 +357,62 @@ def main():
                                  "pandas_native", "composite", "sampling", "advanced"],
                         help="Filter variants by imputation family (overrides config value)")
     parser.add_argument("--force", action="store_true",
-                        help="Skip duplicate-submission guards (lock file + active-job check)")
+                        help="Skip duplicate-submission guards (lock file + active-job check). "
+                             "AUDITED: appends to ~/.mlops/locks/.force_submit_audit.jsonl")
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable verbose tracebacks and debug-only diagnostics (URIs, etc.)")
+    parser.add_argument("--env_version", default=None,
+                        help="Azure ML environment tag (default: read from environments/azureml_unified_env.yml)")
+    parser.add_argument("--dry_run", action="store_true",
+                        help="Build the pipeline job and print its YAML — do NOT submit to Azure ML")
     args = parser.parse_args()
 
-    # If CLI context missing, try to read from local config YAML (when path is local)
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
+
+    # ----- Load and validate config ONCE up front (H1) ---------------------
     config_path = args.config
-    if (not args.subscription_id or not args.resource_group or not args.workspace_name) and Path(args.config).exists():
-        sub, rg, ws = _azure_from_local_config(args.config)
+    if not Path(config_path).exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    try:
+        with open(config_path, "r") as _f:
+            cfg = yaml.safe_load(_f) or {}
+    except yaml.YAMLError as _ye:
+        logger.error("Config %s is not valid YAML: %s", config_path, _ye)
+        raise SystemExit(2) from _ye
+    if not isinstance(cfg, dict):
+        logger.error("Config %s did not parse to a mapping (got %s)", config_path, type(cfg).__name__)
+        raise SystemExit(2)
+
+    # K2 schema gate — fail fast BEFORE any Azure work
+    if _validate_config is not None:
+        try:
+            _validate_config(cfg)
+            logger.info("K2: config schema validation passed for %s", config_path)
+            print(f"✅ K2: config schema validation passed for {config_path}")
+        except Exception as _ve:
+            print(f"❌ K2: config schema validation FAILED: {_ve}")
+            raise SystemExit(2) from _ve
+
+    # If CLI context missing, fall back to azureml block in cfg
+    if not args.subscription_id or not args.resource_group or not args.workspace_name:
+        sub, rg, ws = _azure_from_local_config(cfg)
         args.subscription_id = args.subscription_id or sub
         args.resource_group = args.resource_group or rg
         args.workspace_name = args.workspace_name or ws
-    
+
     # FIXED: Use config filename only (from uploaded code directory)
     # Avoid workspaceblobstore upload by passing filename as string parameter
-    if not Path(config_path).exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
     config_name = Path(config_path).name
     print(f"✅ Using config filename: {config_name} (from uploaded code/configs directory)")
+
+    # Resolve env_version (CLI > config > default)
+    env_version = (
+        args.env_version
+        or (cfg.get("azureml") or cfg.get("azure_ml") or {}).get("environment")
+        or "mlops-v3-unified:20"
+    )
 
     # Derive experiment name (reusable, generic)
     if not args.experiment_name:
@@ -287,27 +428,10 @@ def main():
     print(f"📊 Experiment name (reusable):  {args.experiment_name}")
     print(f"🎯 Display name (unique):       {args.display_name}")
     print("="*80 + "\n")
-    datastore_name = "mlops_blob"
-    try:
-        with open(config_path, 'r') as f:
-            cfg = yaml.safe_load(f)
-            datastore_name = cfg.get('dataset', {}).get('datastore_name', 'mlops_blob')
-    except Exception:
-        pass
+    datastore_name = (cfg.get("dataset") or {}).get("datastore_name", "mlops_blob")
 
-    # K2: validate the loaded config BEFORE doing any Azure work. Fail fast on
-    # schema violations (missing target_column, bad task_type, etc.).
-    if _validate_config is not None:
-        try:
-            with open(config_path, 'r') as _f:
-                _cfg_for_validate = yaml.safe_load(_f) or {}
-            _validate_config(_cfg_for_validate)
-            print(f"✅ K2: config schema validation passed for {config_path}")
-        except Exception as _ve:
-            print(f"❌ K2: config schema validation FAILED: {_ve}")
-            raise SystemExit(2) from _ve
-    
-    # Dataset folder URI (Azure ML will mount it)
+    # Dataset folder URI (Azure ML will mount it). The full URI exposes the
+    # subscription ID; only print it when --debug is set.
     dataset_folder_uri = (
         f"azureml://subscriptions/{args.subscription_id}"
         f"/resourcegroups/{args.resource_group}"
@@ -315,17 +439,16 @@ def main():
         f"/datastores/{datastore_name}/paths/"
     )
     print(f"Using datastore: {datastore_name}")
-    print(f"Dataset folder URI: {dataset_folder_uri}")
+    if args.debug:
+        print(f"Dataset folder URI: {dataset_folder_uri}")
+    else:
+        logger.debug("Dataset folder URI: %s", dataset_folder_uri)
 
     # Determine task-specific recipes based on task_type from config
     # Dynamic recipe selection — ALL selected recipes will be passed to the variant runner
     all_selected_recipes = []
-    task_type = "classification"
+    task_type = cfg.get("task_type", "classification")
     try:
-        with open(config_path, 'r') as f:
-            cfg = yaml.safe_load(f)
-        task_type = cfg.get("task_type", "classification")
-        
         # Check for phase_b_recipes config. If omitted, use committed variant_search
         # recipes through the selector rather than embedding recipe file names here.
         phase_b_config = cfg.get("phases", {}).get("phase_b_recipes", {})
@@ -370,6 +493,16 @@ def main():
     
     # Build comma-separated variants list for the variant runner
     variants_list_str = ",".join(all_selected_recipes)
+    if len(all_selected_recipes) > MAX_VARIANTS_PER_RUN:
+        raise SystemExit(
+            f"Refusing to submit: {len(all_selected_recipes)} variants exceed cap of "
+            f"{MAX_VARIANTS_PER_RUN}. Reduce phase_b_recipes.max_recipes in config."
+        )
+    if len(variants_list_str) >= MAX_VARIANT_LIST_CHARS:
+        raise SystemExit(
+            f"Refusing to submit: variants_list string is {len(variants_list_str)} chars, "
+            f"exceeds Azure ML pipeline-parameter cap of {MAX_VARIANT_LIST_CHARS}."
+        )
 
     # ============================================================================
     # AIM-TOURNAMENT: BUNDLE GATING (data-driven variant selection)
@@ -382,15 +515,18 @@ def main():
         print("="*80)
         try:
             import pandas as _bg_pd
-            with open(config_path, 'r') as f:
-                _bg_cfg = yaml.safe_load(f)
-            _bg_task = _bg_cfg.get("task_type", "classification")
-            _bg_target = _bg_cfg.get("dataset", {}).get("target_column")
-            _bg_blob = _bg_cfg.get("dataset", {}).get("blob_path", "")
-            _bg_local = Path(__file__).resolve().parents[1] / "data" / _bg_blob
+            _bg_task = cfg.get("task_type", "classification")
+            _bg_target = cfg.get("dataset", {}).get("target_column")
+            _bg_blob = cfg.get("dataset", {}).get("blob_path", "")
+            try:
+                _bg_local = _safe_join_data_path(_bg_blob)
+            except ValueError as _path_err:
+                logger.error("Bundle gating refused dataset path %r: %s", _bg_blob, _path_err)
+                raise
 
             if _bg_local.exists():
-                _bg_df = _bg_pd.read_csv(_bg_local)
+                _check_csv_size_within_cap(_bg_local)
+                _bg_df = _bg_pd.read_csv(_bg_local, nrows=PROFILE_NROWS)
                 signals = compute_data_signals(_bg_df, _bg_target, _bg_task)
                 print(f"\n📡 Data signals computed ({len(signals)} signals)")
                 for _sk, _sv in sorted(signals.items()):
@@ -399,17 +535,17 @@ def main():
                 catalog = load_bundle_catalog(args.bundles_dir)
                 enabled, decisions = select_enabled_bundles(signals, catalog)
 
-                repo_root = str(Path(__file__).resolve().parents[1])
-                bundle_gated_variants = resolve_variant_paths(enabled, repo_root)
-                write_gating_artifacts(signals, decisions, "outputs/signals")
+                bundle_gated_variants = resolve_variant_paths(enabled, str(REPO_ROOT))
+                write_gating_artifacts(signals, decisions, str(REPO_ROOT / "outputs" / "signals"))
 
                 print(f"\n✅ Bundle gating: {len(enabled)}/{len(catalog)} bundles enabled → {len(bundle_gated_variants)} variants")
             else:
                 print(f"⚠️ Local dataset not found at {_bg_local} — skipping bundle gating")
         except Exception as _bg_err:
-            print(f"⚠️ Bundle gating failed (non-fatal): {_bg_err}")
-            import traceback
-            traceback.print_exc()
+            logger.warning("Bundle gating failed (non-fatal): %s", _bg_err)
+            if args.debug:
+                import traceback
+                traceback.print_exc()
 
     # ============================================================================
     # PHASE 1: INTELLIGENT VARIANT SELECTION (NEW ARCHITECTURE)
@@ -423,10 +559,6 @@ def main():
         print("="*80)
         
         try:
-            # Load config for phase_b settings
-            with open(config_path, 'r') as f:
-                cfg = yaml.safe_load(f)
-            
             phase_b_config = cfg.get("phases", {}).get("phase_b", {})
             if not phase_b_config:
                 print("⚠️ No phase_b config found, using defaults")
@@ -449,7 +581,11 @@ def main():
             # Construct local dataset path for profiling
             # In Azure ML job, this would be mounted, but for submission we need local path
             dataset_blob_path = cfg.get("dataset", {}).get("blob_path", "")
-            local_dataset_path = Path(__file__).resolve().parents[1] / "data" / dataset_blob_path
+            try:
+                local_dataset_path = _safe_join_data_path(dataset_blob_path)
+            except ValueError as _path_err:
+                logger.error("Phase 1 refused dataset path %r: %s", dataset_blob_path, _path_err)
+                raise
             
             if not local_dataset_path.exists():
                 print(f"⚠️ Local dataset not found at {local_dataset_path}")
@@ -460,7 +596,8 @@ def main():
             profile = None
             if phase_b_config.get("enable_profiling", True) and local_dataset_path.exists():
                 import pandas as pd
-                df = pd.read_csv(local_dataset_path)
+                _check_csv_size_within_cap(local_dataset_path)
+                df = pd.read_csv(local_dataset_path, nrows=PROFILE_NROWS)
                 target_column = cfg.get("dataset", {}).get("target_column")
                 
                 profiler = DatasetProfiler(task_type=task_type)
@@ -577,13 +714,25 @@ def main():
             
             # Store as comma-separated string
             variants_list_str = ",".join(relative_paths)
+            if len(relative_paths) > MAX_VARIANTS_PER_RUN:
+                raise SystemExit(
+                    f"Refusing to submit: Phase 1 selected {len(relative_paths)} variants "
+                    f"(cap {MAX_VARIANTS_PER_RUN}). Tighten max_variants/min_relevance_score."
+                )
+            if len(variants_list_str) >= MAX_VARIANT_LIST_CHARS:
+                raise SystemExit(
+                    f"Refusing to submit: Phase 1 variants_list is {len(variants_list_str)} chars "
+                    f"(cap {MAX_VARIANT_LIST_CHARS})."
+                )
             
         except Exception as e:
+            logger.error("Phase 1 variant selection failed: %s", e)
             print(f"\n❌ Phase 1 variant selection failed: {e}")
             print("⚠️ Falling back to legacy pipeline\n")
             use_phase1_pipeline = False
-            import traceback
-            traceback.print_exc()
+            if args.debug:
+                import traceback
+                traceback.print_exc()
 
     # Build pipeline job (config filename passed as string, no upload needed)
     if use_phase1_pipeline and 'variants_list_str' in locals():
@@ -657,7 +806,7 @@ def main():
                 job.jobs['s06'].display_name = f"s06_phaseb_variant_runner__{variant_count}_variants"
                 print(f"✅ Set display name: s06_phaseb_variant_runner__{variant_count}_variants")
         except Exception as e:
-            print(f"⚠️ Could not set display name (non-critical): {e}")
+            logger.warning("Could not set display name (non-critical): %s", e)
     else:
         # Phase 1 pipeline: Set display name for variant runner step
         try:
@@ -666,54 +815,65 @@ def main():
                 job.jobs['s06'].display_name = f"s06_phaseb_variant_runner__intelligent"
                 print(f"✅ Set display name for intelligent variant runner")
         except Exception as e:
-            print(f"⚠️ Could not set display name (non-critical): {e}")
+            logger.warning("Could not set display name (non-critical): %s", e)
     
     job.experiment_name = args.experiment_name
     job.display_name = args.display_name
 
     # Add job-level tags for dataset/task/preset and pipeline version
-    try:
-        with open(config_path, 'r') as f:
-            cfg = yaml.safe_load(f)
-        dataset = (cfg.get('dataset') or {}).get('name') or 'unknown'
-        task = cfg.get('task_type') or 'unknown'
-        preset = cfg.get('preset') or 'unknown'
-        job.tags = {
-            'dataset': dataset,
-            'task': task,
-            'preset': preset,
-            'pipeline_version': 'v3',
-            'environment': 'mlops-v3-unified:20',
-        }
-    except Exception:
-        job.tags = {'pipeline_version': 'v3', 'environment': 'mlops-v3-unified:20'}
+    dataset_tag = (cfg.get('dataset') or {}).get('name') or 'unknown'
+    task_tag = cfg.get('task_type') or 'unknown'
+    preset_tag = cfg.get('preset') or 'unknown'
+    job.tags = {
+        'dataset': dataset_tag,
+        'task': task_tag,
+        'preset': preset_tag,
+        'pipeline_version': 'v3',
+        'environment': env_version,
+    }
+    if args.force:
+        job.tags['force_submit'] = 'true'
+        job.tags['force_submitted_by'] = os.getenv('USER', 'unknown')
 
     # If Azure ML context provided, submit; else print YAML
+    if args.dry_run:
+        print("\n🔍 --dry_run: emitting pipeline job (NOT submitting)\n")
+        print(job)
+        return
+
     if args.subscription_id and args.resource_group and args.workspace_name:
         # ---------- Duplicate-submission guard: lock file ----------
         if not args.force:
             if not _acquire_lock():
                 try:
                     lock_info = json.loads(_LOCK_FILE.read_text())
-                except Exception:
+                except Exception as _le:
+                    logger.warning("Could not read lock file %s: %s", _LOCK_FILE, _le)
                     lock_info = {}
                 print("\n" + "="*80)
                 print("🚫  DUPLICATE SUBMISSION BLOCKED")
                 print("="*80)
                 print(f"Another submit_pipeline.py is already running (PID {lock_info.get('pid')}, "
-                      f"started {lock_info.get('started', '?')}).")
+                      f"started {lock_info.get('started', '?')}, user {lock_info.get('user', '?')}).")
                 print(f"If that process is dead, delete the lock file:")
                 print(f"   rm {_LOCK_FILE}")
-                print(f"Or use --force to submit anyway.")
+                print(f"Or use --force to submit anyway (audited).")
                 print("="*80 + "\n")
                 sys.exit(1)
             # Ensure lock is released on exit / signals
             atexit.register(_release_lock)
             signal.signal(signal.SIGTERM, _handle_submit_signal)
             signal.signal(signal.SIGINT, _handle_submit_signal)
+        else:
+            _force_user = os.getenv('USER', 'unknown')
+            print("\n" + "="*80)
+            print(f"⚠️  SECURITY NOTICE: --force bypassed all submission guards")
+            print(f"   user={_force_user}  pid={os.getpid()}  time={datetime.now().isoformat()}")
+            print("="*80 + "\n")
+            _record_force_audit(args, _force_user)
 
         ml_client = MLClient(
-            DefaultAzureCredential(),
+            ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential()),
             subscription_id=args.subscription_id,
             resource_group_name=args.resource_group,
             workspace_name=args.workspace_name,
@@ -734,16 +894,21 @@ def main():
                 _release_lock()
                 sys.exit(1)
 
-        # Environment version from component YAMLs (mlops-v3-unified:20)
-        print("Note: Using environment mlops-v3-unified:20 from component YAMLs (includes azureml-core, sweetviz, etc.)\n")
+        # Environment version from component YAMLs
+        print(f"Note: Using environment {env_version} from component YAMLs (includes azureml-core, sweetviz, etc.)\n")
 
         print("🚀 Submitting pipeline to Azure ML (this may take several minutes on NFS)...")
         submitted = ml_client.jobs.create_or_update(job)
         print(f"✅ Submitted job: {submitted.name}")
-        print(f"🌐 Web View: https://ml.azure.com/runs/{submitted.name}?wsid=/subscriptions/{args.subscription_id}/resourcegroups/{args.resource_group}/workspaces/{args.workspace_name}")
+        # H2: do NOT leak subscription/rg/workspace IDs in the URL by default.
+        if args.debug:
+            print(f"🌐 Web View: https://ml.azure.com/runs/{submitted.name}?wsid=/subscriptions/{args.subscription_id}/resourcegroups/{args.resource_group}/workspaces/{args.workspace_name}")
+        else:
+            print(f"🌐 Web View: https://ml.azure.com/runs/{submitted.name}")
 
         # Write marker file for easy status checks later
         try:
+            _USER_STATE_DIR.mkdir(parents=True, exist_ok=True)
             _LAST_JOB_FILE.write_text(json.dumps({
                 "name": submitted.name,
                 "display_name": args.display_name,
@@ -752,8 +917,8 @@ def main():
                 "config": config_name,
             }, indent=2))
             print(f"📝 Job name saved to {_LAST_JOB_FILE}")
-        except Exception:
-            pass
+        except OSError as _me:
+            logger.warning("Could not write last-job marker %s: %s", _LAST_JOB_FILE, _me)
 
         # Release lock after successful submission
         _release_lock()

@@ -1,23 +1,24 @@
 import argparse
 import json
+import logging
 import os
 from pathlib import Path
 import sys
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set_style('whitegrid')
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add src to path for imports (single canonical insertion at front of sys.path)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.azureml_metrics_logger import create_metrics_logger
-
-# Ensure src/ on path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.data_validator import drop_high_cardinality
 from utils.eda_generator import generate_correlation_heatmap, generate_sweetviz_report, load_config
 
@@ -48,14 +49,16 @@ def perform_statistical_tests(df: pd.DataFrame, num_cols: list, target_col: str,
             try:
                 stat, p_value = shapiro(df[col].dropna())
                 test_name = "shapiro"
-            except:
+            except (ValueError, TypeError) as _e:
+                logger.warning("shapiro failed for %s: %s", col, _e)
                 p_value = 0.01
                 test_name = "shapiro_failed"
         else:
             try:
                 stat, p_value = kstest(df[col].dropna(), 'norm')
                 test_name = "ks"
-            except:
+            except (ValueError, TypeError) as _e:
+                logger.warning("kstest failed for %s: %s", col, _e)
                 p_value = 0.01
                 test_name = "ks_failed"
         
@@ -90,7 +93,8 @@ def perform_statistical_tests(df: pd.DataFrame, num_cols: list, target_col: str,
                     "p_value": float(p_val),
                     "significant": bool(p_val < 0.05)
                 }
-            except:
+            except (ValueError, TypeError) as _e:
+                logger.warning("pearsonr failed for %s vs %s: %s", col, target_col, _e)
                 continue
     
     print(f"   ✓ Normality tests: {sum(1 for r in results['normality_tests'].values() if r['is_normal'])}/{len(num_cols)} normal")

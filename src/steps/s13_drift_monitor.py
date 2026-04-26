@@ -103,8 +103,8 @@ def _safe_disable_autolog():
     """Disable autolog + convert azureml:// tracking URI to https://."""
     try:
         mlflow.autolog(disable=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("mlflow.autolog(disable=True) failed: %s", e)
     uri = os.getenv("MLFLOW_TRACKING_URI", "")
     if uri.startswith("azureml://"):
         mlflow.set_tracking_uri(uri.replace("azureml://", "https://"))
@@ -162,8 +162,8 @@ def _detect_delimiter(path: str) -> str:
             return "\t"
         if ";" in first_line and first_line.count(";") > first_line.count(","):
             return ";"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("delimiter detection failed for %s: %s", path, e)
     return ","
 
 

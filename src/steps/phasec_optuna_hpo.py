@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import time as _time_mod
 from pathlib import Path
 import sys
@@ -11,28 +12,32 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, r2_score, make_scorer
 import mlflow
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add src to path for imports (single canonical insertion at front of sys.path)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.azureml_metrics_logger import create_metrics_logger
 from utils.stage_signals import StageSignal, write_stage_signal
 from utils.candidate_ledger import (
     make_row, normalize_metrics, write_stage_table,
 )
 
-# Ensure src/ on path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+# Module-level logger for diagnostic/debug messages (does not shadow the
+# per-run MetricsLogger created inside main()/cluster paths).
+logger = logging.getLogger(__name__)
 
 
 def _safe_disable_autolog():
     """Disable MLflow autologging and fix tracking URI for Azure ML compatibility."""
+    # Suppression is expected: Azure ML's azureml:// tracking URI is not fully
+    # compatible with mlflow.sklearn.autolog / mlflow.autolog model registry
+    # calls. We log at debug to retain forensic visibility without noise.
     try:
         mlflow.sklearn.autolog(disable=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"MLflow sklearn autolog disable suppression (Azure ML tracking URI incompatibility): {e}")
     try:
         mlflow.autolog(disable=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"MLflow autolog disable suppression (Azure ML tracking URI incompatibility): {e}")
     # Fix: Convert azureml:// to https:// to avoid model registry errors
     import os as _os
     _mlflow_uri = _os.getenv("MLFLOW_TRACKING_URI", "")

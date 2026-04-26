@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import time as _time_mod
 from pathlib import Path
 import sys
@@ -8,9 +9,10 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+logger = logging.getLogger(__name__)
+
+# Add src to path for imports (single canonical insertion at front of sys.path)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.azureml_metrics_logger import (
     create_metrics_logger, ensure_outputs_dir, safe_write_json, safe_copy, safe_dict_get
 )
@@ -90,8 +92,8 @@ def main():
         try:
             _logger.log_param("task_type", task_type)
             _logger.log_param("flaml_status", "skipped")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("MLflow skip-path log_param failed: %s", e)
         _logger.end_run()
         return  # Exit early for clustering
 
@@ -169,8 +171,8 @@ def main():
                 metrics["auc"] = round(auc, 4)
                 if pr_auc is not None:
                     metrics["pr_auc"] = round(pr_auc, 4)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("FLAML predict_proba/AUC computation failed: %s", e)
 
             score = bal_acc
             metric_name = "balanced_accuracy"

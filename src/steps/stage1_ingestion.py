@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -13,6 +14,8 @@ import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for Azure ML
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+logger = logging.getLogger(__name__)
 sns.set_style('whitegrid')
 
 # Add src to path for imports
@@ -665,8 +668,8 @@ def detect_time_series(
             parsed = pd.to_datetime(sample, infer_datetime_format=True, errors="coerce")
             if parsed.notna().mean() >= 0.80:
                 parse_candidates.append(col)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("datetime parse-candidate check failed for %s: %s", col, e)
     if parse_candidates:
         signals.append(f"parseable_datetime_cols={parse_candidates}")
         score += 0.20
@@ -696,10 +699,10 @@ def detect_time_series(
                         result["frequency"] = freq
                         signals.append(f"inferred_freq={freq}")
                         score += 0.10
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as e:
+                    logger.debug("infer_freq failed: %s", e)
+        except Exception as e:
+            logger.debug("monotonicity check failed for %s: %s", best_time_col, e)
 
     # ── 6. Target autocorrelation (time-series targets are correlated) ─
     if target_col and target_col in df.columns:
@@ -711,8 +714,8 @@ def detect_time_series(
                 if autocorr is not None and abs(autocorr) > 0.5:
                     signals.append(f"target_autocorr_lag1={autocorr:.3f}")
                     score += 0.15
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("target autocorrelation check failed: %s", e)
 
     # ── 7. Index is datetime ──────────────────────────────────────────
     if isinstance(df.index, pd.DatetimeIndex):

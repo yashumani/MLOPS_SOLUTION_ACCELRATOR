@@ -17,12 +17,15 @@ Outputs:
 
 import argparse
 import json
+import logging
 import time as _time_mod
 import warnings
 from pathlib import Path
 import sys
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 import pandas as pd
 
 # Add src to path
@@ -188,8 +191,8 @@ def main():
         if freq:
             try:
                 df.index.freq = freq
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("could not set DatetimeIndex.freq=%s: %s", freq, e)
 
     if not target_col or target_col not in df.columns:
         print(f"⚠️  Target column '{target_col}' not found — skipping forecasting")

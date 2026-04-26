@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import time as _time_mod
 from pathlib import Path
 import sys
@@ -22,8 +23,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set_style('whitegrid')
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add src to path for imports (single canonical insertion at front of sys.path)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.azureml_metrics_logger import create_metrics_logger
 from utils.stage_signals import StageSignal, write_stage_signal
 from utils.candidate_ledger import (
@@ -33,8 +34,9 @@ from utils.candidate_ledger import (
 from utils.aim_tournament import run_aim_tournament
 from utils.model_universe import build_coverage_report, write_model_coverage
 
-# Ensure src/ on path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+# Module-level logger for diagnostic/debug messages (does not shadow the
+# per-run MetricsLogger created inside main()).
+logger = logging.getLogger(__name__)
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -56,14 +58,17 @@ class NumpyEncoder(json.JSONEncoder):
 
 def _safe_disable_autolog():
     """Disable MLflow autologging and fix tracking URI for Azure ML compatibility."""
+    # Suppression is expected: Azure ML's azureml:// tracking URI is not fully
+    # compatible with mlflow.sklearn.autolog / mlflow.autolog model registry
+    # calls. We log at debug to retain forensic visibility without noise.
     try:
         mlflow.sklearn.autolog(disable=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"MLflow sklearn autolog disable suppression (Azure ML tracking URI incompatibility): {e}")
     try:
         mlflow.autolog(disable=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"MLflow autolog disable suppression (Azure ML tracking URI incompatibility): {e}")
     # Fix: Convert azureml:// to https:// to avoid model registry errors
     import os as _os
     _mlflow_uri = _os.getenv("MLFLOW_TRACKING_URI", "")
@@ -492,8 +497,8 @@ def eval_model(model, X_test, y_test, task: str, label_encoder=None, threshold=N
                         metrics["roc_auc"] = float(roc_auc_score(y_test_encoded, prob[:, 1]))
                     else:
                         metrics["roc_auc"] = float(roc_auc_score(y_test_encoded, prob, multi_class="ovr", average="weighted"))
-            except Exception:
-                pass
+            except Exception as _auc_err:
+                logging.getLogger(__name__).debug("ROC-AUC computation failed: %s", _auc_err)
             return metrics
         elif task == "regression":
             preds = model.predict(X_test)
@@ -1220,8 +1225,8 @@ def main():
     # T9: Log champion validity for Azure ML Studio dashboard filtering
     try:
         logger.log_metric("champion_valid", 1.0 if champion_valid else 0.0)
-    except Exception:
-        pass
+    except Exception as _cv_err:
+        logging.getLogger(__name__).debug("champion_valid metric log failed: %s", _cv_err)
 
     # 11. SAVE FINAL REPORT WITH OUTPUT VALIDATION
     with open(report_path, "w") as f:
@@ -1418,8 +1423,8 @@ def main():
                             if "engine" in _all_bd.columns:
                                 for _eng, _cnt in _all_bd["engine"].value_counts().items():
                                     logger.log_metric(f"models_{_eng}", int(_cnt))
-                        except Exception:
-                            pass
+                        except Exception as _bd_log_err:
+                            logging.getLogger(__name__).debug("breakdown summary log_metric failed: %s", _bd_log_err)
                     else:
                         print("⚠️  Model breakdown CSVs found but all empty")
                 else:

@@ -9,9 +9,8 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 import mlflow
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+# Add src to path for imports (single canonical insertion at front of sys.path)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.azureml_metrics_logger import create_metrics_logger, ensure_outputs_dir, safe_write_json
 from utils.eda_generator import generate_correlation_heatmap, generate_sweetviz_report, load_config
 

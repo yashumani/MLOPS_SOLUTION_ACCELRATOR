@@ -1,30 +1,62 @@
+import logging
 from azure.ai.ml import dsl, Input, Output
 from azure.ai.ml.entities import PipelineJob
 from azure.ai.ml import load_component
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 # Resolve component paths relative to repo root
 ROOT = Path(__file__).resolve().parents[1]
 
+# [PB1/PB2] Component manifest tracks every successfully loaded component for
+# diagnostics. Populated by _load_component_safe at module import time.
+_COMPONENT_MANIFEST: dict[str, str] = {}
+
+
+def _load_component_safe(name: str, source: str):
+    """Load an Azure ML component YAML with a clear error message on failure.
+
+    Wraps load_component() so that import-time failures (missing YAML, schema
+    errors, etc.) surface a RuntimeError naming the component and source path
+    instead of an opaque azure-ai-ml traceback.
+    """
+    try:
+        comp = load_component(source=source)
+        _COMPONENT_MANIFEST[name] = source
+        logger.info(f"[component] loaded {name} from {source}")
+        return comp
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to load component '{name}' from {source}: {e}"
+        ) from e
+
+
 # Load components fresh from YAML files
 # Note: Version changes ensure Azure ML reloads from disk
-ingestion = load_component(source=str(ROOT / "components/stage1_ingestion.yml"))
-preparation = load_component(source=str(ROOT / "components/stage2_preparation.yml"))
-preprocessing = load_component(source=str(ROOT / "components/stage3_preprocessing.yml"))
-feature_eng = load_component(source=str(ROOT / "components/stage4_feature_engineering.yml"))
-pycaret_train = load_component(source=str(ROOT / "components/stage5_pycaret_train.yml"))
-flaml_train = load_component(source=str(ROOT / "components/stage5_flaml_train.yml"))
-agg_baseline = load_component(source=str(ROOT / "components/aggregate_baseline.yml"))
+ingestion = _load_component_safe("ingestion", str(ROOT / "components/stage1_ingestion.yml"))
+preparation = _load_component_safe("preparation", str(ROOT / "components/stage2_preparation.yml"))
+preprocessing = _load_component_safe("preprocessing", str(ROOT / "components/stage3_preprocessing.yml"))
+feature_eng = _load_component_safe("feature_eng", str(ROOT / "components/stage4_feature_engineering.yml"))
+pycaret_train = _load_component_safe("pycaret_train", str(ROOT / "components/stage5_pycaret_train.yml"))
+flaml_train = _load_component_safe("flaml_train", str(ROOT / "components/stage5_flaml_train.yml"))
+agg_baseline = _load_component_safe("agg_baseline", str(ROOT / "components/aggregate_baseline.yml"))
 # Dead per-recipe components removed (P3-1): phaseb_pycaret, phaseb_flaml, agg_phaseb
 # Replaced by s06_phaseb_variant_runner (single-step batch processor)
-variant_runner = load_component(source=str(ROOT / "components/s06_phaseb_variant_runner.yml"))
-phasec_hpo = load_component(source=str(ROOT / "components/phasec_optuna_hpo.yml"))
-agg_phasec = load_component(source=str(ROOT / "components/aggregate_phasec.yml"))
-final_eval = load_component(source=str(ROOT / "components/final_evaluation.yml"))
-model_reg = load_component(source=str(ROOT / "components/s12_model_registration.yml"))
-timeseries_train = load_component(source=str(ROOT / "components/stage5_timeseries_train.yml"))
+variant_runner = _load_component_safe("variant_runner", str(ROOT / "components/s06_phaseb_variant_runner.yml"))
+phasec_hpo = _load_component_safe("phasec_hpo", str(ROOT / "components/phasec_optuna_hpo.yml"))
+agg_phasec = _load_component_safe("agg_phasec", str(ROOT / "components/aggregate_phasec.yml"))
+final_eval = _load_component_safe("final_eval", str(ROOT / "components/final_evaluation.yml"))
+model_reg = _load_component_safe("model_reg", str(ROOT / "components/s12_model_registration.yml"))
+timeseries_train = _load_component_safe("timeseries_train", str(ROOT / "components/stage5_timeseries_train.yml"))
 # Drift detection (s13) — additive layer on top of v3-production
-drift_monitor = load_component(source=str(ROOT / "components/s13_drift_monitor.yml"))
+drift_monitor = _load_component_safe("drift_monitor", str(ROOT / "components/s13_drift_monitor.yml"))
+
+# [PB2] One-time summary log of all components loaded at import time.
+logger.info(
+    f"[component-manifest] loaded {len(_COMPONENT_MANIFEST)} components: "
+    f"{list(_COMPONENT_MANIFEST.keys())}"
+)
 
 @dsl.pipeline(compute=None)
 def full_pipeline(
@@ -140,6 +172,7 @@ def full_pipeline(
     )
     
     # s13 — Drift monitoring & cadence assessment (additive layer)
+    # s13_kwargs: optional wiring for s13 (model registration); empty dict if upstream did not produce expected outputs
     s13_kwargs = dict(
         config_name=config_name,
         dataset_in=s4.outputs.dataset_out,
@@ -185,6 +218,7 @@ def full_pipeline_v2(
     planner_enabled: bool = False,
     round1_max_variants: int = 40,
     round2_max_variants: int = 10,
+    # Validated upstream by K2 (config_schema.py); pipeline_builder receives sanitized values
     proxy_prune_threshold: float = 0.50,
     cache_enabled: bool = True,
     drift_baseline_in: Input(type="uri_folder", optional=True) = None,
@@ -311,6 +345,7 @@ def full_pipeline_v2(
     )
     
     # s13 — Drift monitoring & cadence assessment (additive layer)
+    # s13_kwargs: optional wiring for s13 (model registration); empty dict if upstream did not produce expected outputs
     s13_kwargs = dict(
         config_name=config_name,
         dataset_in=s4.outputs.dataset_out,

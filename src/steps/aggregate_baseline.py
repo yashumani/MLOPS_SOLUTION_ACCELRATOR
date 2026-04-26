@@ -1,16 +1,20 @@
 import argparse
 import json
+import logging
 import time
 from pathlib import Path
 import sys
 
-# Ensure src/ on path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+# Ensure src/ on path (single canonical insertion at front of sys.path)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from utils.stage_signals import StageSignal, write_stage_signal
 from utils.candidate_ledger import (
     make_row, normalize_metrics, write_stage_table,
 )
+
+# Module-level logger for diagnostic/debug messages.
+logger = logging.getLogger(__name__)
 
 
 def validate_and_log_outputs(output_path: Path, output_type: str = "model") -> dict:
@@ -67,7 +71,9 @@ def load_json(path: str):
     try:
         with open(path, "r") as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        # Preserve None contract for callers; log so failures are not silent.
+        logger.warning(f"JSON parse error in aggregate_baseline (path={path}): {e}")
         return None
 
 

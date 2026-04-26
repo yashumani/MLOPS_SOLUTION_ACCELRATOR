@@ -17,6 +17,7 @@ Date: 2026-01-26 (Hardened)
 
 import argparse
 import json
+import logging
 import sys
 import time
 import hashlib
@@ -32,8 +33,11 @@ import numpy as np
 import mlflow
 import os
 
-# Ensure src/ on path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+# Ensure src/ on path (single canonical insertion at front of sys.path)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# Module-level logger for diagnostic/debug messages.
+logger = logging.getLogger(__name__)
 
 from utils.variant_schema import load_variant, validate_variant_for_task, VariantConfig
 from utils.dataset_profiler import DatasetProfiler
@@ -181,7 +185,10 @@ def get_code_version() -> str:
             stderr=subprocess.DEVNULL
         ).decode('utf-8').strip()
         return sha[:8]
-    except:
+    except (OSError, subprocess.CalledProcessError) as e:
+        # OSError covers FileNotFoundError (git not installed); CalledProcessError
+        # covers non-git directories. Fallback to timestamp-based version.
+        logger.debug(f"git rev-parse unavailable, using timestamp version: {e}")
         return f"no_git_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
 
 
@@ -1714,8 +1721,8 @@ def train_flaml_variant(
                         "estimator": estimator,
                         "metric_value": round(abs(metric_val), 4),
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("FLAML individual-trial parse failed: %s", e)
             print(f"      📊 FLAML tracked {len(flaml_individual_models)} individual model trials")
         metrics["flaml_individual_models"] = flaml_individual_models
         
@@ -1767,8 +1774,8 @@ def train_flaml_variant(
                                 metrics["auc"] = round(float(roc_auc_score(y, y_proba[:, 1])), 4)
                             else:
                                 metrics["auc"] = round(float(roc_auc_score(y, y_proba, multi_class="ovr", average="weighted")), 4)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("cross_val_predict AUC computation failed: %s", e)
                     else:
                         print(f"      ⏱️ Skipping AUC cross_val_predict (only {remaining_for_proba:.0f}s left)")
                     print(f"      ✅ FLAML metrics via {cv_folds}-fold cross_val_predict (no leakage)")
@@ -2290,12 +2297,12 @@ def main():
     # Disable autologging (do NOT change tracking URI — breaks MLflow hierarchy)
     try:
         mlflow.sklearn.autolog(disable=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("mlflow.sklearn.autolog(disable=True) failed: %s", e)
     try:
         mlflow.autolog(disable=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("mlflow.autolog(disable=True) failed: %s", e)
     # 🔥 FIX: Convert azureml:// tracking URI to https:// to avoid registry errors
     # Azure ML sets MLFLOW_TRACKING_URI to azureml:// which MLflow registry doesn't support
     _mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "")
@@ -3198,8 +3205,8 @@ def main():
                                 holdout_metrics["holdout_auc"] = float(roc_auc_score(y_holdout, y_proba[:, 1]))
                             else:
                                 holdout_metrics["holdout_auc"] = float(roc_auc_score(y_holdout, y_proba, multi_class="ovr", average="weighted"))
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("holdout AUC computation failed: %s", e)
                 elif task_type == "regression":
                     from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
                     holdout_metrics["holdout_r2"] = float(r2_score(y_holdout, y_pred))

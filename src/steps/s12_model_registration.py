@@ -61,8 +61,8 @@ def _safe_disable_autolog():
     """T12: Disable autolog + convert azureml:// tracking URI to https://."""
     try:
         mlflow.autolog(disable=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("mlflow.autolog(disable=True) failed: %s", e)
     uri = os.getenv("MLFLOW_TRACKING_URI", "")
     if uri.startswith("azureml://"):
         mlflow.set_tracking_uri(uri.replace("azureml://", "https://"))
@@ -336,8 +336,8 @@ def _write_skip_output(output_path: Path, reason: str):
     try:
         mlflow.log_param("registration_skipped", "true")
         mlflow.log_param("skip_reason", reason)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("MLflow skip-reason log_param failed: %s", e)
 
 
 def main():
@@ -479,8 +479,8 @@ def main():
             ml_logger.log_metric("registration_success", 0.0)
             ml_logger.log_param("skip_reason", f"registration_error")
             ml_logger.end_run()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("MLflow registration-error skip-path logging failed: %s", e)
         return
     
     # Save registry info
@@ -504,8 +504,8 @@ def main():
     # End the metrics logger run
     try:
         ml_logger.end_run()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("ml_logger.end_run() failed: %s", e)
     
     logger.info(f"✅ Model registration complete")
     logger.info(f"Model: {registry_info['model_name']} v{registry_info['version']} (Stage: {registry_info['stage']})")
