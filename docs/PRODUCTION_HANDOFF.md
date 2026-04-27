@@ -144,12 +144,40 @@ Or watch via Studio — URL is printed on submit and saved to
 
 ### 4.4 Verify drift alerts in a run
 
-In the s13 step log, look for either of:
+**Gating:** `emit_drift_alert` is invoked **only** when one of these is true:
+- `self_check_status == "WARN"` (in-run PSI exceeds threshold), **or**
+- Evidently dataset drift detected (requires prior baseline), **or**
+- Concept drift detected (requires prior baseline).
+
+A clean run with PASS PSI and no prior baseline produces **no alert log line by
+design** — that is the expected behaviour, not a bug.
+
+When the alert path **does** fire, look in the s13 step log
+(`user_logs/std_log.txt`) for one of:
 
 ```
-[s13_drift_monitor] alerts dispatched: {'teams': True, 'email': True}
-[s13_drift_monitor] alerts dispatched: {'teams': False, 'email': False}   # env unset
-[s13_drift_monitor] alert dispatch failed (non-fatal): <reason>           # never blocks
+Drift alert dispatch: {'teams': True,  'email': True}
+Drift alert dispatch: {'teams': False, 'email': False}   # env vars unset
+  Drift alert dispatch failed (non-fatal): <reason>      # never blocks the step
+```
+
+Fetch the s13 log via MLflow artifacts (works even when blob SAS auth fails):
+
+```bash
+mkdir -p /tmp/s13_logs
+python - <<'PY'
+import os, mlflow
+from azure.ai.ml import MLClient
+from azure.identity import ChainedTokenCredential, ManagedIdentityCredential, AzureCliCredential
+cred = ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential())
+ml = MLClient(cred, os.environ['AZURE_SUBSCRIPTION_ID'],
+              os.environ['AZURE_RESOURCE_GROUP'], os.environ['AZURE_WORKSPACE_NAME'])
+mlflow.set_tracking_uri(ml.workspaces.get(os.environ['AZURE_WORKSPACE_NAME']).mlflow_tracking_uri)
+client = mlflow.tracking.MlflowClient()
+# Replace with the s13 child run id from: az ml job list --parent-job-name <pipeline> ...
+client.download_artifacts('<S13_RUN_ID>', 'user_logs', '/tmp/s13_logs')
+PY
+grep -E "Drift alert dispatch" /tmp/s13_logs/user_logs/std_log.txt
 ```
 
 ---
@@ -160,8 +188,9 @@ In the s13 step log, look for either of:
 |------|--------|
 | K2 schema validation (16 configs) | 16 / 16 pass |
 | Baseline regression (pre-P5) | 25 / 25 jobs Completed (`docs/POST_V3_PRODUCTION_REPORT.md`) |
-| P5 smoke submit (titanic) | Job `tidy_pipe_ksjrkyztsm` submitted Running, https://ml.azure.com/runs/tidy_pipe_ksjrkyztsm |
-| Alert dispatch (env unset) | `emit_drift_alert` returns `{teams: False, email: False}` without raising |
+| P5 smoke submit (titanic) | Job `tidy_pipe_ksjrkyztsm` **Completed**; all 14 child steps Completed (s1, s2, s3, s06, s4, s5a, s5b, s5t, s5z, s08, s09, s10, s12, s13). Studio: https://ml.azure.com/runs/tidy_pipe_ksjrkyztsm |
+| s13 alert path (smoke) | self-check PASS (PSI=0.058) + no prior baseline → `should_alert=False` → no dispatch (correct gating) |
+| Alert dispatch contract (env unset) | `emit_drift_alert` returns `{teams: False, email: False}` without raising; caller wrapped in try/except |
 | Pre-existing tests | unchanged; no new regressions introduced |
 
 ---
