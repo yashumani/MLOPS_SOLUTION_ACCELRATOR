@@ -11,17 +11,28 @@ from pathlib import Path
 
 import yaml
 from azure.ai.ml import MLClient, Input
-from azure.identity import DefaultAzureCredential
+from azure.identity import (
+    AzureCliCredential,
+    ChainedTokenCredential,
+    ManagedIdentityCredential,
+)
 
-# Add pipelines dir to path for pipeline_builder import
+# Add pipelines + scripts dir to path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "pipelines"))
-from pipeline_builder import full_pipeline
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pipeline_builder import full_pipeline  # noqa: E402
+from _azure_ctx import load_azure_context, MissingAzureContextError  # noqa: E402
 
-SUB = "93044a08-5661-4f1b-b424-5eafe066a9d1"
-RG = "mvpv1"
-WS = "mlops-accelerator"
-COMPUTE = "mlopsv2computecluster"
+try:
+    _ctx = load_azure_context()
+except MissingAzureContextError as _exc:
+    print(f"❌ {_exc}", file=sys.stderr)
+    sys.exit(2)
+SUB = _ctx.subscription_id
+RG = _ctx.resource_group
+WS = _ctx.workspace_name
+COMPUTE = _ctx.compute
 DATASTORE = "mlops_blob"
 
 # Configs to submit
@@ -60,7 +71,10 @@ def main():
 
     # Initialize MLClient ONCE
     print("Initializing Azure ML client...")
-    ml = MLClient(DefaultAzureCredential(), SUB, RG, WS)
+    ml = MLClient(
+        ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential()),
+        SUB, RG, WS,
+    )
     print("  MLClient ready\n")
 
     dataset_uri = (

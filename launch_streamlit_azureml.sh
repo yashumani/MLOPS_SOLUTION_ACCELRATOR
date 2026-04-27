@@ -22,8 +22,8 @@ PORT=8501
 # ── Detect compute name and region from Azure CLI ────────────
 echo "⏳ Detecting Azure ML workspace region…"
 REGION=$(az ml workspace show \
-  --resource-group mvpv1 \
-  --name mlops-accelerator \
+  --resource-group <AZURE_RESOURCE_GROUP> \
+  --name <AZURE_WORKSPACE_NAME> \
   --query "location" -o tsv 2>/dev/null || echo "unknown")
 
 COMPUTE_NAME=$(hostname -s)
@@ -69,7 +69,7 @@ nohup python -m streamlit run ui/app.py \
   --server.address "0.0.0.0" \
   --server.baseUrlPath "" \
   --server.enableCORS false \
-  --server.enableXsrfProtection false \
+  --server.enableXsrfProtection true \
   --browser.gatherUsageStats false \
   > /tmp/streamlit_azureml.log 2>&1 &
 

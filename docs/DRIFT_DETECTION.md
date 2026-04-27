@@ -415,13 +415,13 @@ To enable comparison drift (detecting distribution shift between training runs),
 python pipelines/submit_pipeline.py \
   --config configs/config_classification_telecom_churn_azureml.yml \
   --subscription_id <sub> --resource_group <rg> --workspace_name <ws> \
-  --compute mlopsv2computecluster --wait
+  --compute <AZURE_COMPUTE> --wait
 
 # Second run (with baseline from first run)
 python pipelines/submit_pipeline.py \
   --config configs/config_classification_telecom_churn_azureml.yml \
   --subscription_id <sub> --resource_group <rg> --workspace_name <ws> \
-  --compute mlopsv2computecluster --wait \
+  --compute <AZURE_COMPUTE> --wait \
   --baseline_job <first_run_job_name>
 ```
 

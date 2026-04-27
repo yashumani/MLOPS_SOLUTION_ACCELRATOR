@@ -51,9 +51,17 @@ from src.utils.drift_detector import (
 # Configuration — 15 jobs spread across 3 experiment types
 # ──────────────────────────────────────────────────────────────────
 
-AZURE_SUB = "93044a08-5661-4f1b-b424-5eafe066a9d1"
-AZURE_RG = "mvpv1"
-AZURE_WS = "mlops-accelerator"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _azure_ctx import load_azure_context, MissingAzureContextError  # noqa: E402
+
+try:
+    _ctx = load_azure_context()
+except MissingAzureContextError as _exc:
+    print(f"❌ {_exc}", file=sys.stderr)
+    sys.exit(2)
+AZURE_SUB = _ctx.subscription_id
+AZURE_RG = _ctx.resource_group
+AZURE_WS = _ctx.workspace_name
 
 # 5 classification jobs spread across Jan–Mar 2026
 CLASSIFICATION_JOBS = [
@@ -151,8 +159,15 @@ class JobDriftResult:
 def get_ml_client():
     """Lazy-load Azure ML client."""
     from azure.ai.ml import MLClient
-    from azure.identity import DefaultAzureCredential
-    return MLClient(DefaultAzureCredential(), AZURE_SUB, AZURE_RG, AZURE_WS)
+    from azure.identity import (
+        AzureCliCredential,
+        ChainedTokenCredential,
+        ManagedIdentityCredential,
+    )
+    return MLClient(
+        ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential()),
+        AZURE_SUB, AZURE_RG, AZURE_WS,
+    )
 
 
 def download_job_output(ml_client, job_name: str, output_name: str,

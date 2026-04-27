@@ -1,8 +1,8 @@
 # Deploying Streamlit UI to Azure ML Studio
 
 ## Prerequisites
-- Azure ML workspace (mlops-accelerator)
-- Resource group (mvpv1)
+- Azure ML workspace (<AZURE_WORKSPACE_NAME>)
+- Resource group (<AZURE_RESOURCE_GROUP>)
 - Azure CLI and Azure ML extension installed
 - Permissions to create endpoints
 
@@ -19,19 +19,19 @@
    ```
 3. **Register the environment (optional):**
    ```sh
-   az ml environment create --file requirements.txt --resource-group mvpv1 --workspace-name mlops-accelerator
+   az ml environment create --file requirements.txt --resource-group <AZURE_RESOURCE_GROUP> --workspace-name <AZURE_WORKSPACE_NAME>
    ```
 4. **Create the endpoint:**
    ```sh
-   az ml online-endpoint create --name streamlit-ui-endpoint --file azureml-streamlit-deployment.yml --resource-group mvpv1 --workspace-name mlops-accelerator
+   az ml online-endpoint create --name streamlit-ui-endpoint --file azureml-streamlit-deployment.yml --resource-group <AZURE_RESOURCE_GROUP> --workspace-name <AZURE_WORKSPACE_NAME>
    ```
 5. **Deploy the app:**
    ```sh
-   az ml online-deployment create --name streamlit-ui --endpoint-name streamlit-ui-endpoint --file azureml-streamlit-deployment.yml --resource-group mvpv1 --workspace-name mlops-accelerator --all-traffic
+   az ml online-deployment create --name streamlit-ui --endpoint-name streamlit-ui-endpoint --file azureml-streamlit-deployment.yml --resource-group <AZURE_RESOURCE_GROUP> --workspace-name <AZURE_WORKSPACE_NAME> --all-traffic
    ```
 6. **Get the endpoint URL:**
    ```sh
-   az ml online-endpoint show --name streamlit-ui-endpoint --resource-group mvpv1 --workspace-name mlops-accelerator --query "scoring_uri"
+   az ml online-endpoint show --name streamlit-ui-endpoint --resource-group <AZURE_RESOURCE_GROUP> --workspace-name <AZURE_WORKSPACE_NAME> --query "scoring_uri"
    ```
 
 ## Notes

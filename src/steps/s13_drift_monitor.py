@@ -635,6 +635,32 @@ def run_drift_monitor(args):
             logger.warning(f"  ⚠️ {w}")
     logger.info(f"  Runtime: {time.time() - start_time:.1f}s")
 
+    # ── Drift alerts (no-op when env vars unset) ─────────────────
+    # Triggers on self-check WARN, Evidently dataset_drift, or concept drift.
+    try:
+        ev_drift = bool(comparison_drift.get("evidently", {}).get("dataset_drift"))
+        cd_drift = bool(comparison_drift.get("concept_drift", {}).get("detected"))
+        should_alert = (self_check_status == "WARN") or ev_drift or cd_drift
+        if should_alert:
+            from utils.alerts import emit_drift_alert  # local import: optional dep path
+            extra: dict = {}
+            if ev_drift:
+                extra["Evidently dataset drift"] = "True"
+            if cd_drift:
+                cd = comparison_drift.get("concept_drift", {})
+                extra["Concept drift drop"] = f"{cd.get('drop', 'n/a')}"
+            emit_drift_alert(
+                config_name=args.config_name,
+                job_name=os.environ.get("AZUREML_RUN_ID") or os.environ.get("MLFLOW_RUN_ID"),
+                self_check_status=self_check_status,
+                overall_psi=overall_psi,
+                drifted_features=drifted_features,
+                cadence=cadence_name,
+                extra_facts=extra or None,
+            )
+    except Exception as exc:  # noqa: BLE001 — alerting must never fail the step
+        logger.warning(f"  Drift alert dispatch failed (non-fatal): {exc}")
+
     return 0
 
 

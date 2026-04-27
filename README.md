@@ -50,7 +50,7 @@ After running the pipeline:
 - Model artifacts and metrics are logged in MLflow. You can launch the MLflow UI using:
 
 ```bash
-mlflow ui --backend-store-uri <mlflow_tracking_uri> --host 0.0.0.0 --port 5000
+mlflow ui --backend-store-uri <mlflow_tracking_uri> --host 127.0.0.1 --port 5000
 ```
 
 - The best pipeline and configuration (the "recipe") are printed to the console and saved as an artifact in the `artifacts/` directory.

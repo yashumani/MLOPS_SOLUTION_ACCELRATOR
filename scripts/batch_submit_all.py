@@ -9,15 +9,23 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _azure_ctx import load_azure_context, MissingAzureContextError  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGS_DIR = ROOT / "configs"
 PIPELINES_DIR = ROOT / "pipelines"
 
-# Azure ML connection
-SUB = "93044a08-5661-4f1b-b424-5eafe066a9d1"
-RG = "mvpv1"
-WS = "mlops-accelerator"
-COMPUTE = "mlopsv2computecluster"
+# Azure ML connection — fail closed if env vars missing
+try:
+    _ctx = load_azure_context()
+except MissingAzureContextError as _exc:
+    print(f"❌ {_exc}", file=sys.stderr)
+    sys.exit(2)
+SUB = _ctx.subscription_id
+RG = _ctx.resource_group
+WS = _ctx.workspace_name
+COMPUTE = _ctx.compute
 
 # Baseline job for classification telecom churn (has drift_baseline output)
 BASELINE_JOB = "jovial_animal_l93wygps2h"

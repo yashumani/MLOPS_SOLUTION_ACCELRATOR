@@ -14,21 +14,23 @@ if [ -f .env ]; then
 fi
 
 API_PORT="${API_PORT:-8000}"
+API_HOST="${API_HOST:-127.0.0.1}"
 STREAMLIT_PORT="${STREAMLIT_PORT:-8501}"
+STREAMLIT_HOST="${STREAMLIT_HOST:-127.0.0.1}"
 
 echo "🚀 Starting MLOps V3 Dashboard"
-echo "   API:       http://0.0.0.0:${API_PORT}"
-echo "   Dashboard: http://0.0.0.0:${STREAMLIT_PORT}"
+echo "   API:       http://${API_HOST}:${API_PORT}"
+echo "   Dashboard: http://${STREAMLIT_HOST}:${STREAMLIT_PORT}"
 echo ""
 
 # Start FastAPI in background
-uvicorn api.main:app --host 0.0.0.0 --port "$API_PORT" &
+uvicorn api.main:app --host "$API_HOST" --port "$API_PORT" &
 API_PID=$!
 
 # Start Streamlit in background
 streamlit run ui/app.py \
     --server.port "$STREAMLIT_PORT" \
-    --server.address 0.0.0.0 \
+    --server.address "$STREAMLIT_HOST" \
     --server.headless true \
     --browser.gatherUsageStats false &
 UI_PID=$!

@@ -15,7 +15,11 @@ try:
     from azure.ai.ml import MLClient
     from azure.ai.ml.entities import Data
     from azure.ai.ml.constants import AssetTypes
-    from azure.identity import DefaultAzureCredential, AzureCliCredential, ChainedTokenCredential
+    from azure.identity import (
+        AzureCliCredential,
+        ChainedTokenCredential,
+        ManagedIdentityCredential,
+    )
     AZURE_ML_AVAILABLE = True
 except ImportError:
     print("Azure ML SDK V2 not available. Only local data ingestion will work.")
@@ -51,10 +55,10 @@ class DataIngestionManager:
         try:
             azure_config = self.config.get('azure_ml', {})
             
-            # Try multiple authentication methods
+            # Standard credential chain: Managed Identity (compute) then Azure CLI (dev).
             credential = ChainedTokenCredential(
+                ManagedIdentityCredential(),
                 AzureCliCredential(),
-                DefaultAzureCredential()
             )
             
             self.ml_client = MLClient(

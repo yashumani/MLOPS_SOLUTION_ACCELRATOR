@@ -416,6 +416,17 @@ def main():
         except Exception as e:
             logger.warning(f"⚠️ T16: MLflow skip-path logging failed: {e}")
         return
+
+    if manifest.get("quality_gate_passed") is False:
+        logger.warning("⚠️ s10 quality gate failed — skipping model registration")
+        _write_skip_output(output_path, "quality_gate_failed")
+        try:
+            ml_logger.log_metric("registration_success", 0.0)
+            ml_logger.log_param("skip_reason", "quality_gate_failed")
+            ml_logger.end_run()
+        except Exception as e:
+            logger.warning(f"⚠️ T16: MLflow skip-path logging failed: {e}")
+        return
     
     _sel_score = manifest.get("selection", {}).get("score")
     if _sel_score is None and not manifest.get("algorithm"):

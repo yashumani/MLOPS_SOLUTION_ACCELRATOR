@@ -2,14 +2,18 @@
 # Submit all 15 V3 pipeline jobs (5 classification + 5 regression + 5 clustering).
 # Drift detection (s13) is auto-wired in pipeline_builder.py.
 # Sequential submission (no --wait); --force skips duplicate-submission guards.
-set -u
+set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SUB="93044a08-5661-4f1b-b424-5eafe066a9d1"
-RG="mvpv1"
-WS="mlops-accelerator"
-COMPUTE="mlopsv2computecluster"
+: "${AZURE_SUBSCRIPTION_ID:?AZURE_SUBSCRIPTION_ID is required (see .env.example)}"
+: "${AZURE_RESOURCE_GROUP:?AZURE_RESOURCE_GROUP is required (see .env.example)}"
+: "${AZURE_WORKSPACE_NAME:?AZURE_WORKSPACE_NAME is required (see .env.example)}"
+: "${AZURE_COMPUTE:?AZURE_COMPUTE is required (see .env.example)}"
+SUB="$AZURE_SUBSCRIPTION_ID"
+RG="$AZURE_RESOURCE_GROUP"
+WS="$AZURE_WORKSPACE_NAME"
+COMPUTE="$AZURE_COMPUTE"
 
 LOG_DIR="logs/submit_all_15_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LOG_DIR"

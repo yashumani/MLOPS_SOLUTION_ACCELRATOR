@@ -35,10 +35,10 @@ stage4:
   imbalance_detection: false  # Not applicable for clustering
 
 azureml:
-  subscription_id: 93044a08-5661-4f1b-b424-5eafe066a9d1
-  resource_group: mvpv1
-  workspace_name: mlops-accelerator
-  compute_target: mlopsv2computecluster
+  subscription_id: <AZURE_SUBSCRIPTION_ID>
+  resource_group: <AZURE_RESOURCE_GROUP>
+  workspace_name: <AZURE_WORKSPACE_NAME>
+  compute_target: <AZURE_COMPUTE>
   environment_name_preprocessing: mlops-v3-preprocessing
   environment_name_training: mlops-v3-training
 

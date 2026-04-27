@@ -1,6 +1,6 @@
 # Clustering Pipeline Failure Forensics — Last 7 Days
 
-**Workspace:** `mlops-accelerator` (RG `mvpv1`, sub `93044a08-…`)
+**Workspace:** `<AZURE_WORKSPACE_NAME>` (RG `<AZURE_RESOURCE_GROUP>`, sub `93044a08-…`)
 **Window analyzed:** 2026-04-16 → 2026-04-23
 **Branch / commit observed in failures:** `FAST-API-v1` @ `8d00d68`
 **Author of report:** automated forensic investigation
@@ -56,8 +56,8 @@ Error Message: The requested stream was not found. Please make sure the request 
 
 ```
 INFO  06:17:46  create dir for /mnt/azureml/.../wd/INPUT_phaseb_champion
-WARN  06:17:47  Failed to mount URI azureml://subscriptions/93044a08-.../resourcegroups/mvpv1/
-                workspaces/mlops-accelerator/datastores/mlops_blob/paths/azureml/
+WARN  06:17:47  Failed to mount URI azureml://subscriptions/93044a08-.../resourcegroups/<AZURE_RESOURCE_GROUP>/
+                workspaces/<AZURE_WORKSPACE_NAME>/datastores/mlops_blob/paths/azureml/
                 ddc39112-d368-452b-88c2-c087c7063dd0/champion_model/
                 due to exception of type ExecutionError
 ERROR 06:17:47  ##[error] [CapabilitySession][start] Failed to start data session.
@@ -176,9 +176,9 @@ In `stage1_ingestion.py`, replace the bare `read_csv` with a fallback chain: `ut
    ```bash
    python pipelines/submit_pipeline.py \
      --config configs/config_clustering_credit_default_azureml.yml \
-     --subscription_id 93044a08-5661-4f1b-b424-5eafe066a9d1 \
-     --resource_group mvpv1 --workspace_name mlops-accelerator \
-     --compute mlopsv2computecluster --wait
+     --subscription_id <AZURE_SUBSCRIPTION_ID> \
+     --resource_group <AZURE_RESOURCE_GROUP> --workspace_name <AZURE_WORKSPACE_NAME> \
+     --compute <AZURE_COMPUTE> --wait
    ```
 3. Confirm `s11` reports **Completed** (not Failed). Inspect its stdout — clustering branch should run and emit silhouette/davies_bouldin metrics (or `None`s if no models, but `Completed`).
 4. Repeat for a non-UTF8 dataset to validate B2.

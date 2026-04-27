@@ -40,11 +40,13 @@ except Exception as _e:  # pragma: no cover - validator must be present in repo
 # ---------------------------------------------------------------------------
 # Duplicate-submission prevention helpers
 # ---------------------------------------------------------------------------
-_LOCK_DIR = Path(__file__).resolve().parent          # pipelines/
+# Operator state (lock file, audit log, last-job pointer) lives under
+# $MLOPS_STATE_DIR (default ~/.mlops). NEVER inside the repo: ``git clean -fdx``
+# would otherwise wipe audit history and the lock file would land in commits.
+_USER_STATE_DIR = Path(os.environ.get("MLOPS_STATE_DIR", Path.home() / ".mlops"))
+_LOCK_DIR = _USER_STATE_DIR / "locks"
+_LOCK_DIR.mkdir(parents=True, exist_ok=True)
 _LOCK_FILE = _LOCK_DIR / ".submit.lock"
-
-# .last_submitted_job moved out of the repo to prevent accidental git commits.
-_USER_STATE_DIR = Path.home() / ".mlops"
 _LAST_JOB_FILE = _USER_STATE_DIR / "last_submitted_job.json"
 
 _LOCK_MAX_AGE_SEC = 4 * 60 * 60                      # 4 hours hard ceiling — protects
@@ -327,7 +329,8 @@ def main():
     parser.add_argument("--subscription_id", required=False, help="Azure subscription ID")
     parser.add_argument("--resource_group", required=False, help="Azure resource group")
     parser.add_argument("--workspace_name", required=False, help="Azure ML workspace name")
-    parser.add_argument("--compute", required=False, default="mlopsv2computecluster", help="Compute target")
+    parser.add_argument("--compute", required=False, default=None,
+                        help="Compute target (default: $AZURE_COMPUTE env var; required if unset)")
     parser.add_argument(
         "--experiment_name",
         required=False,
@@ -401,6 +404,23 @@ def main():
         args.subscription_id = args.subscription_id or sub
         args.resource_group = args.resource_group or rg
         args.workspace_name = args.workspace_name or ws
+
+    # Then env-var fallback (CLI > config > env). NEVER hardcode.
+    args.subscription_id = args.subscription_id or os.environ.get("AZURE_SUBSCRIPTION_ID")
+    args.resource_group  = args.resource_group  or os.environ.get("AZURE_RESOURCE_GROUP")
+    args.workspace_name  = args.workspace_name  or os.environ.get("AZURE_WORKSPACE_NAME")
+    args.compute         = args.compute         or os.environ.get("AZURE_COMPUTE")
+
+    _missing_ctx = [n for n, v in (
+        ("subscription_id (--subscription_id / AZURE_SUBSCRIPTION_ID)", args.subscription_id),
+        ("resource_group (--resource_group / AZURE_RESOURCE_GROUP)",   args.resource_group),
+        ("workspace_name (--workspace_name / AZURE_WORKSPACE_NAME)",   args.workspace_name),
+        ("compute (--compute / AZURE_COMPUTE)",                         args.compute),
+    ) if not v]
+    if _missing_ctx:
+        print("❌ Missing Azure context: " + ", ".join(_missing_ctx), file=sys.stderr)
+        print("   See .env.example for the full list of required variables.", file=sys.stderr)
+        sys.exit(2)
 
     # FIXED: Use config filename only (from uploaded code directory)
     # Avoid workspaceblobstore upload by passing filename as string parameter

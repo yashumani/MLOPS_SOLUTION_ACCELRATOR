@@ -70,7 +70,7 @@ with st.expander("⚙️ Advanced Options", expanded=False):
     with col1:
         compute_override = st.text_input(
             "Compute Target (override)",
-            placeholder="mlopsv2computecluster",
+            placeholder="<AZURE_COMPUTE>",
             help="Leave empty to use default from config",
             key="submit_compute_override",
         )

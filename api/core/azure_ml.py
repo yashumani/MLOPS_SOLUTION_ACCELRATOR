@@ -1,7 +1,11 @@
 """Azure ML client singleton."""
 
 from azure.ai.ml import MLClient
-from azure.identity import DefaultAzureCredential
+from azure.identity import (
+    AzureCliCredential,
+    ChainedTokenCredential,
+    ManagedIdentityCredential,
+)
 
 from api.core.config import settings
 
@@ -13,7 +17,10 @@ def get_ml_client() -> MLClient:
     global _ml_client
     if _ml_client is None:
         _ml_client = MLClient(
-            credential=DefaultAzureCredential(),
+            credential=ChainedTokenCredential(
+                ManagedIdentityCredential(),
+                AzureCliCredential(),
+            ),
             subscription_id=settings.azure_subscription_id,
             resource_group_name=settings.azure_resource_group,
             workspace_name=settings.azure_workspace_name,

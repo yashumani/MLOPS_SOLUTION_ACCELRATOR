@@ -17,13 +17,13 @@ primary_metric: f1
 imbalance_handling: true
 
 # MLflow tracking URI - using Azure ML workspace
-mlflow_tracking_uri: "azureml://eastus2.api.azureml.ms/mlflow/v1.0/subscriptions/93044a08-5661-4f1b-b424-5eafe066a9d1/resourceGroups/mvpv1/providers/Microsoft.MachineLearningServices/workspaces/mlops-accelerator"
+mlflow_tracking_uri: "azureml://eastus2.api.azureml.ms/mlflow/v1.0/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/<AZURE_RESOURCE_GROUP>/providers/Microsoft.MachineLearningServices/workspaces/<AZURE_WORKSPACE_NAME>"
 
 # Azure ML workspace configuration
 azure_ml:
-  subscription_id: "93044a08-5661-4f1b-b424-5eafe066a9d1"
-  resource_group: "mvpv1"
-  workspace_name: "mlops-accelerator"
+  subscription_id: "<AZURE_SUBSCRIPTION_ID>"
+  resource_group: "<AZURE_RESOURCE_GROUP>"
+  workspace_name: "<AZURE_WORKSPACE_NAME>"
   workspace_id: "12b6bc01-e563-4a39-9006-b7bb2efe45b7"
   location: "eastus2"
   tenant_id: "3bc05bc3-19d1-4d30-89c5-134f4b278b11"
@@ -35,7 +35,7 @@ azure_ml:
   container_registry: "12b6bc01e5634a399006b7bb2efe45b7"
 
   # MLflow configuration
-  mlflow_tracking_uri: "azureml://eastus2.api.azureml.ms/mlflow/v1.0/subscriptions/93044a08-5661-4f1b-b424-5eafe066a9d1/resourceGroups/mvpv1/providers/Microsoft.MachineLearningServices/workspaces/mlops-accelerator"
+  mlflow_tracking_uri: "azureml://eastus2.api.azureml.ms/mlflow/v1.0/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/<AZURE_RESOURCE_GROUP>/providers/Microsoft.MachineLearningServices/workspaces/<AZURE_WORKSPACE_NAME>"
   discovery_url: "https://eastus2.api.azureml.ms/discovery"
 
   # Compute and datastore settings (to be configured based on your setup)

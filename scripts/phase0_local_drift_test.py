@@ -45,9 +45,18 @@ logging.basicConfig(
 logger = logging.getLogger("phase0")
 
 # ── Constants ───────────────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _azure_ctx import load_azure_context, MissingAzureContextError  # noqa: E402
+
+try:
+    _ctx = load_azure_context()
+except MissingAzureContextError as _exc:
+    logger.error("%s", _exc)
+    sys.exit(2)
+
 DATASET_URI = (
-    "azureml://subscriptions/93044a08-5661-4f1b-b424-5eafe066a9d1"
-    "/resourcegroups/mvpv1/workspaces/mlops-accelerator"
+    f"azureml://subscriptions/{_ctx.subscription_id}"
+    f"/resourcegroups/{_ctx.resource_group}/workspaces/{_ctx.workspace_name}"
     "/datastores/mlops_blob/paths/telecom_churn.csv"
 )
 TARGET_COLUMN = "churn"

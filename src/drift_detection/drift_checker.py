@@ -144,36 +144,42 @@ class DriftChecker:
 
         report_dict = report.as_dict()
         drifted_cols: List[str] = []
-        max_score: float = 0.0
+        dataset_drifted = False
+        drift_share: float = 0.0
+        column_count = 0
         details: Dict[str, Any] = {}
 
         for metric_result in report_dict.get("metrics", []):
             result_data = metric_result.get("result", {})
             # DatasetDriftMetric stores dataset_drift
             if "dataset_drift" in result_data:
-                dataset_drifted = result_data.get("dataset_drift", False)
-                drift_share = result_data.get("share_of_drifted_columns", 0.0)
+                dataset_drifted = bool(result_data.get("dataset_drift", False))
+                drift_share = float(result_data.get("share_of_drifted_columns", 0.0) or 0.0)
                 details["dataset_drift"] = dataset_drifted
                 details["drift_share"] = drift_share
             # DataDriftPreset stores per-column info in drift_by_columns
             if "drift_by_columns" in result_data:
                 for col_name, col_info in result_data["drift_by_columns"].items():
+                    column_count += 1
                     col_score = col_info.get("drift_score", 0.0)
-                    if col_info.get("drift_detected", False):
+                    col_drifted = bool(col_info.get("drift_detected", False))
+                    if col_drifted:
                         drifted_cols.append(col_name)
-                    max_score = max(max_score, col_score)
                     details[col_name] = {
                         "score": col_score,
-                        "drifted": col_info.get("drift_detected", False),
+                        "drifted": col_drifted,
                     }
 
         threshold = self.config.get_threshold("feature")
-        detected = max_score >= threshold or bool(drifted_cols)
+        score = drift_share
+        if score == 0.0 and column_count:
+            score = len(set(drifted_cols)) / column_count
+        detected = bool(dataset_drifted or drifted_cols or score >= threshold)
 
         return DriftResult(
             drift_detected=detected,
             drift_type="feature",
-            drift_score=round(max_score, 6),
+            drift_score=round(score, 6),
             drifted_columns=drifted_cols,
             timestamp=ts,
             details=details,
@@ -213,10 +219,10 @@ class DriftChecker:
         for metric_result in report_dict.get("metrics", []):
             result_data = metric_result.get("result", {})
             score = result_data.get("drift_score", 0.0)
-            detected = result_data.get("drift_detected", False)
+            detected = bool(result_data.get("drift_detected", False))
 
         threshold = self.config.get_threshold("prediction")
-        detected = detected or score >= threshold
+        detected = bool(detected or score >= threshold)
 
         return DriftResult(
             drift_detected=detected,
@@ -260,7 +266,7 @@ class DriftChecker:
         drop = ref_acc - cur_acc
 
         threshold = self.config.get_threshold("concept")
-        detected = drop >= threshold
+        detected = bool(drop >= threshold)
 
         return DriftResult(
             drift_detected=detected,
@@ -313,10 +319,10 @@ class DriftChecker:
         for metric_result in report_dict.get("metrics", []):
             result_data = metric_result.get("result", {})
             score = result_data.get("drift_score", 0.0)
-            detected = result_data.get("drift_detected", False)
+            detected = bool(result_data.get("drift_detected", False))
 
         threshold = self.config.get_threshold("label")
-        detected = detected or score >= threshold
+        detected = bool(detected or score >= threshold)
 
         return DriftResult(
             drift_detected=detected,

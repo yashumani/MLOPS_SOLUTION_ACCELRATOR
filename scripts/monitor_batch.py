@@ -16,6 +16,7 @@ Sentinel files written to same dir as --tsv:
   FAILURES.txt        — written if any jobs Failed/Canceled
 """
 import argparse
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -49,8 +50,15 @@ def read_tsv(path):
 
 def get_ml_client(sub, rg, ws):
     from azure.ai.ml import MLClient
-    from azure.identity import DefaultAzureCredential
-    return MLClient(DefaultAzureCredential(), sub, rg, ws)
+    from azure.identity import (
+        AzureCliCredential,
+        ChainedTokenCredential,
+        ManagedIdentityCredential,
+    )
+    return MLClient(
+        ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential()),
+        sub, rg, ws,
+    )
 
 
 def poll(ml, jobs, log_path, done_path, fail_path, expected):
@@ -122,12 +130,19 @@ def main():
                     help="Poll interval in minutes (default: 15)")
     ap.add_argument("--expected",  type=int,   default=15,
                     help="Total number of jobs expected (default: 15)")
-    ap.add_argument("--sub",       default="93044a08-5661-4f1b-b424-5eafe066a9d1")
-    ap.add_argument("--rg",        default="mvpv1")
-    ap.add_argument("--ws",        default="mlops-accelerator")
+    ap.add_argument("--sub", default=os.environ.get("AZURE_SUBSCRIPTION_ID"))
+    ap.add_argument("--rg",  default=os.environ.get("AZURE_RESOURCE_GROUP"))
+    ap.add_argument("--ws",  default=os.environ.get("AZURE_WORKSPACE_NAME"))
     ap.add_argument("--max_hours", type=float, default=6.0,
                     help="Hard timeout in hours (default: 6.0)")
     args = ap.parse_args()
+
+    _missing = [n for n, v in (("--sub/AZURE_SUBSCRIPTION_ID", args.sub),
+                               ("--rg/AZURE_RESOURCE_GROUP",  args.rg),
+                               ("--ws/AZURE_WORKSPACE_NAME",  args.ws)) if not v]
+    if _missing:
+        print(f"❌ Missing Azure context: {', '.join(_missing)}", file=sys.stderr)
+        sys.exit(2)
 
     base      = Path(args.tsv).parent
     log_path  = base / "monitor_status.log"

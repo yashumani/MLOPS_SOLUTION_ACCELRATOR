@@ -2,8 +2,8 @@
 
 **Report Date:** 2026-04-26
 **Branch:** `prod-hardening-20260425`
-**Workspace:** `mlops-accelerator` (RG `mvpv1`, Sub `93044a08-...`)
-**Compute:** `mlopsv2computecluster`
+**Workspace:** `<AZURE_WORKSPACE_NAME>` (RG `<AZURE_RESOURCE_GROUP>`, Sub `93044a08-...`)
+**Compute:** `<AZURE_COMPUTE>`
 **Batch ID:** `batch_15_prod_20260425`
 
 ---

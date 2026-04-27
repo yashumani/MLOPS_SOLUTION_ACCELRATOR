@@ -3,9 +3,17 @@ archive/
 outputs/
 deliverables/
 .git/
+.env
+.env.*
+.azure/
+.streamlit/secrets.toml
 __pycache__/
 *.pyc
 *.pyo
+*.key
+*.pem
+*.pfx
+*.log
 scripts/submission_logs/
 tests/
 examples/
@@ -14,4 +22,9 @@ catboost_info/
 mlruns/
 *.egg-info/
 .submit.lock
+pipelines/.submit.lock
+pipelines/.force_submit_audit.jsonl
+pipelines/.last_submitted_job
 tmp_logs/
+logs/
+logs.log

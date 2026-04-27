@@ -2,7 +2,7 @@
 
 > **Audience:** Engineering, Product, Stakeholders
 > **Branch:** `FAST-API-v1`
-> **Workspace:** `mlops-accelerator` (RG `mvpv1`, sub `93044a08-...`)
+> **Workspace:** `<AZURE_WORKSPACE_NAME>` (RG `<AZURE_RESOURCE_GROUP>`, sub `93044a08-...`)
 > **Reporting window:** Items completed since V3 production cutover.
 > **Last verified runtime:** `happy_owl_sfmkgs2jrd` (regression_insurance_v3).
 

@@ -2,7 +2,7 @@
 
 > **Service:** `uvicorn api.main:app` on `:8000`
 > **Branch:** `FAST-API-v1`
-> **Auth:** Header `X-API-Key: <key>` (key in `api/core/config.py` / env var `API_KEY`)
+> **Auth:** Header `X-API-Key: <redacted>` (configured with the `API_KEY` environment variable)
 > **OpenAPI:** `GET /openapi.json` · interactive docs at `/docs`
 
 ---
@@ -40,7 +40,7 @@ all from a stable HTTP contract instead of importing `azure.ai.ml` directly.
 All `/api/v1/pipelines/*` routes require the header:
 
 ```
-X-API-Key: svm-mlops-dev-key-x9k2p8r4t7
+X-API-Key: <redacted>
 ```
 
 `/api/v1/health` is unauthenticated for readiness probes. The legacy path `/health` returns 404 — always use `/api/v1/health`.
@@ -111,7 +111,7 @@ Parses the producer-side artifact `drift_report` written by [`src/steps/s13_drif
 
 ```
 GET /api/v1/pipelines/jobs/happy_owl_sfmkgs2jrd/drift
-X-API-Key: svm-mlops-dev-key-x9k2p8r4t7
+X-API-Key: <redacted>
 ```
 
 ### Response (`DriftResponse`)
@@ -167,7 +167,7 @@ X-API-Key: svm-mlops-dev-key-x9k2p8r4t7
 cd /path/to/mlops-solution-accelerator-v3
 pkill -f "uvicorn api.main"
 sleep 2
-nohup uvicorn api.main:app --host 0.0.0.0 --port 8000 > /tmp/api.log 2>&1 &
+nohup uvicorn api.main:app --host 127.0.0.1 --port 8000 > /tmp/api.log 2>&1 &
 sleep 8 && tail -5 /tmp/api.log     # expect "Application startup complete."
 # warmer first cycle completes ~60–70 s after startup
 ```
