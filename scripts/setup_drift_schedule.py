@@ -88,16 +88,59 @@ def _build_trigger(cadence: str, start_in_minutes: int) -> RecurrenceTrigger:
 
 
 def _load_pipeline_job(config_name: str, ctx: AzureContext):
-    """Build the pipeline job object the schedule will submit on each tick."""
+    """Build the pipeline job object the schedule will submit on each tick.
+
+    Wires the same arguments as ``submit_pipeline.py`` so the schedule fires a
+    real, runnable pipeline. The dataset folder URI is derived from the loaded
+    YAML's ``dataset.datastore_name`` (default ``mlops_blob``); recipes are
+    selected via ``select_recipes_for_tier`` to match interactive submissions.
+    """
+    import yaml as _yaml
+    from azure.ai.ml import Input as _Input
+
     repo_root = ROOT.parent  # mlops-solution-accelerator-v3/
     sys.path.insert(0, str(repo_root / "pipelines"))
+    sys.path.insert(0, str(repo_root))
     from pipeline_builder import full_pipeline  # type: ignore[import-untyped]
+    from src.utils.recipe_selector import select_recipes_for_tier  # type: ignore[import-untyped]
 
     config_path = repo_root / "configs" / f"{config_name}.yml"
     if not config_path.exists():
         raise FileNotFoundError(f"Config not found: {config_path}")
+    with open(config_path) as _f:
+        cfg = _yaml.safe_load(_f) or {}
 
-    job = full_pipeline(config_name=config_name)
+    task_type = cfg.get("task_type", "classification")
+    datastore_name = (cfg.get("dataset") or {}).get("datastore_name", "mlops_blob")
+    dataset_folder_uri = (
+        f"azureml://subscriptions/{ctx.subscription_id}"
+        f"/resourcegroups/{ctx.resource_group}"
+        f"/workspaces/{ctx.workspace_name}"
+        f"/datastores/{datastore_name}/paths/"
+    )
+    phase_b = (cfg.get("phases") or {}).get("phase_b_recipes", {}) or {}
+    recipes = select_recipes_for_tier(
+        task_type=task_type,
+        tier=phase_b.get("tier", "progressive"),
+        count=phase_b.get("max_recipes", 2),
+        library=phase_b.get("library", "variant_search"),
+        max_runtime_sec=phase_b.get("runtime_budget_sec"),
+        recipes_base_dir=repo_root / "configs" / "recipes",
+    )
+    if not recipes:
+        raise RuntimeError(f"No Phase B recipes selected for task_type={task_type}")
+    engines = "pycaret" if task_type == "clustering" else "pycaret,flaml"
+    time_budget = ((cfg.get("phases") or {}).get("phase_b") or {}).get(
+        "time_budget_per_variant", 600
+    )
+
+    job = full_pipeline(
+        config_name=f"{config_name}.yml",
+        dataset_folder=_Input(path=dataset_folder_uri, type="uri_folder"),
+        variants_list=",".join(recipes),
+        engine_list=engines,
+        time_budget_per_variant=time_budget,
+    )
     job.settings.default_compute = ctx.compute
     job.experiment_name = f"{config_name.replace('config_', '').replace('_azureml', '')}_drift"
     job.display_name = f"drift-monitor::{config_name}"

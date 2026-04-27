@@ -40,8 +40,14 @@ def _guard_no_running_jobs(config_name: str) -> None:
             status_filter=None,
             max_results=20,
         )
-    except Exception:  # noqa: BLE001 — best-effort guard
-        return
+    except Exception as exc:  # noqa: BLE001 — fail closed on guard uncertainty
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Cannot verify running jobs for config '{config_name}'. "
+                "Refusing mutation until Azure ML status can be checked."
+            ),
+        ) from exc
     items = getattr(jobs, "jobs", None) or []
     for j in items:
         status = getattr(j, "status", None) or ""

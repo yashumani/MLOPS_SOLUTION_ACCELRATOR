@@ -39,6 +39,8 @@ async def submit(req: SubmitRequest):
     """Submit a new pipeline job to Azure ML."""
     try:
         return pipeline_service.submit_pipeline(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
@@ -56,6 +58,8 @@ async def submit_async(req: SubmitRequest):
     """
     try:
         return pipeline_service.submit_pipeline_async(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
@@ -267,6 +271,8 @@ async def resubmit(req: ResubmitRequest):
     """Resubmit a pipeline job using the same configuration."""
     try:
         return pipeline_service.resubmit_pipeline(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:

@@ -13,12 +13,23 @@ from pydantic import BaseModel, Field
 class SubmitRequest(BaseModel):
     config_name: str = Field(
         ...,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9_]+$",
         description="Config filename stem, e.g. config_classification_telecom_churn_azureml",
     )
-    compute: str | None = Field(None, description="Override compute target")
+    compute: str | None = Field(
+        None,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9_-]+$",
+        description="Override compute target",
+    )
     force_rerun: bool = Field(False, description="Disable component caching")
     baseline_job: str | None = Field(
-        None, description="Previous job name for drift baseline comparison"
+        None,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9_-]+$",
+        description="Previous job name for drift baseline comparison",
     )
     tags: dict[str, str] = Field(default_factory=dict, description="Extra job tags")
 

@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.core.config import settings
 from api.routers import configs, health, pipelines
 
 logger = logging.getLogger(__name__)
@@ -72,12 +73,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins(),
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["X-API-Key", "Content-Type"],
 )
 
 # Routers
@@ -89,6 +89,9 @@ app.include_router(pipelines.router)
 if __name__ == "__main__":
     import uvicorn
 
-    from api.core.config import settings
-
-    uvicorn.run("api.main:app", host=settings.api_host, port=settings.api_port, reload=True)
+    uvicorn.run(
+        "api.main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=settings.api_reload,
+    )

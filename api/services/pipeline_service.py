@@ -1,6 +1,7 @@
 """Pipeline submission, monitoring, and output retrieval service."""
 
 import logging
+import re
 import shutil
 import sys
 import tempfile
@@ -42,6 +43,8 @@ from api.utils.azure_links import build_studio_url
 
 # Repo root so we can import pipeline_builder and read configs
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+_CONFIGS_DIR = _REPO_ROOT / "configs"
+_SAFE_CONFIG_NAME = re.compile(r"^[A-Za-z0-9_]+$")
 
 # In-memory cache for terminal-state job metrics/summaries.
 # Outputs are immutable once a job is Completed/Failed/Canceled.
@@ -126,11 +129,24 @@ def _derive_display_name(experiment_name: str) -> str:
 
 
 def _load_config_yaml(config_name: str) -> dict:
-    path = _REPO_ROOT / "configs" / f"{config_name}.yml"
+    if not _SAFE_CONFIG_NAME.fullmatch(config_name):
+        raise ValueError(f"Invalid config name: {config_name!r}")
+    path = (_CONFIGS_DIR / f"{config_name}.yml").resolve()
+    if _CONFIGS_DIR.resolve() not in path.parents:
+        raise ValueError(f"Invalid config path for: {config_name!r}")
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {config_name}")
     with open(path) as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f) or {}
+    if not isinstance(cfg, dict):
+        raise ValueError(f"Config must be a YAML mapping: {config_name}")
+    try:
+        from src.orchestration.config_schema import validate_config
+
+        validate_config(cfg)
+    except Exception as exc:
+        raise ValueError(f"Config validation failed for {config_name}: {exc}") from exc
+    return cfg
 
 
 # ---------------------------------------------------------------------------

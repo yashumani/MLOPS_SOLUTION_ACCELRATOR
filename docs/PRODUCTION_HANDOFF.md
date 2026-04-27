@@ -71,10 +71,10 @@ Loader = `scripts/_azure_ctx.load_azure_context()`. Missing any of the four rais
 
 | Variable | Used by | Notes |
 |----------|---------|-------|
-| `MLOPS_TEAMS_WEBHOOK_URL` | `send_teams_alert` | Standard Teams Incoming Webhook URL. |
-| `MLOPS_ACS_CONNECTION_STRING` | `send_acs_email` | Azure Communication Services connection string. |
-| `MLOPS_ACS_SENDER` | `send_acs_email` | Verified ACS sender (e.g. `DoNotReply@<verified-domain>`). |
-| `MLOPS_ALERT_RECIPIENTS` | `send_acs_email` | Comma-separated list of recipients. |
+| `TEAMS_WEBHOOK_URL` | `send_teams_alert` | Standard Teams Incoming Webhook URL. |
+| `ACS_CONNECTION_STRING` | `send_acs_email` | Azure Communication Services connection string. |
+| `ACS_SENDER_ADDRESS` | `send_acs_email` | Verified ACS sender (e.g. `DoNotReply@<verified-domain>`). |
+| `DRIFT_ALERT_RECIPIENTS` | `send_acs_email` | Comma-separated list of recipients. |
 
 **Contract:** `emit_drift_alert(...)` always returns `{teams: bool, email: bool}`
 and **never raises**. Missing env vars → channel returns `False` silently. The
