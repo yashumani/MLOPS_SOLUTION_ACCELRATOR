@@ -4,6 +4,13 @@ display_name: V3 Stage 0 - Data Quality Gate
 type: command
 is_deterministic: false
 description: |
+  ⚠️ NOT WIRED INTO ACTIVE PIPELINE (reserved for v3.1).
+  pipelines/pipeline_builder.py currently starts at s1 = ingestion(...).
+  Before wiring this component before s1, the `validated_dataset` output type
+  must be changed from `uri_file` to `uri_folder` to match Stage 1's
+  `dataset_in: uri_folder` contract, and src/steps/stage0_data_validation.py
+  must be updated to write a folder rather than a single file reference.
+
   Validates input dataset against defined expectations using Great Expectations.
   HARD FAIL on critical violations (schema, null values in required columns).
   Logs warnings for minor issues. Prevents bad data from entering training pipeline.

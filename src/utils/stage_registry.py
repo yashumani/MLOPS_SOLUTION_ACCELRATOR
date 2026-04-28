@@ -87,62 +87,33 @@ STAGE_REGISTRY: Dict[str, Dict[str, Any]] = {
         "script": "src/steps/aggregate_baseline.py",
         "description": "Select best baseline model from PyCaret vs FLAML",
     },
-
-    # --- Phase B: Recipe/Variant Tournament (legacy: s6a/s6b/s7a/s7b/s07z; v2: s06) ---
-    "s6a": {
-        "canonical_name": "phaseb_recipe1_pycaret",
-        "canonical_id": "S06a",
+    "s5t": {
+        "canonical_name": "baseline_timeseries",
+        "canonical_id": "S05t",
         "order": 8,
-        "phase": "phase_b_recipes",
-        "script": "src/steps/phaseb_pycaret_recipe.py",
-        "description": "Phase B Recipe 1 — PyCaret training (legacy pipeline)",
+        "phase": "phase_a_baseline",
+        "script": "src/steps/stage5_timeseries_train.py",
+        "description": "Time-series baseline training (skipped for non-forecasting tasks)",
     },
-    "s6b": {
-        "canonical_name": "phaseb_recipe1_flaml",
-        "canonical_id": "S06b",
-        "order": 9,
-        "phase": "phase_b_recipes",
-        "script": "src/steps/phaseb_flaml_recipe.py",
-        "description": "Phase B Recipe 1 — FLAML training (legacy pipeline)",
-    },
-    "s7a": {
-        "canonical_name": "phaseb_recipe2_pycaret",
-        "canonical_id": "S07a",
-        "order": 10,
-        "phase": "phase_b_recipes",
-        "script": "src/steps/phaseb_pycaret_recipe.py",
-        "description": "Phase B Recipe 2 — PyCaret training (legacy pipeline)",
-    },
-    "s7b": {
-        "canonical_name": "phaseb_recipe2_flaml",
-        "canonical_id": "S07b",
-        "order": 11,
-        "phase": "phase_b_recipes",
-        "script": "src/steps/phaseb_flaml_recipe.py",
-        "description": "Phase B Recipe 2 — FLAML training (legacy pipeline)",
-    },
-    "s07z": {
-        "canonical_name": "phaseb_aggregate",
-        "canonical_id": "S07z",
-        "order": 12,
-        "phase": "phase_b_recipes",
-        "script": "src/steps/aggregate_phaseb.py",
-        "description": "Select best Phase B model across recipes × engines (legacy pipeline)",
-    },
+
+    # --- Phase B: Variant Runner (active: s06) ---
+    # NOTE: Legacy keys (s6a/s6b/s7a/s7b/s07z) are not part of the active pipeline.
+    # They are retained in LEGACY_STAGE_REGISTRY (below) for back-compat with
+    # historical job artifacts only.
     "s06": {
         "canonical_name": "phaseb_variant_runner",
         "canonical_id": "S06",
-        "order": 8,
+        "order": 9,
         "phase": "phase_b_variants",
         "script": "src/steps/s06_phaseb_variant_runner.py",
-        "description": "Intelligent variant runner — bounded tournament with N variants (v2 pipeline)",
+        "description": "Intelligent variant runner — bounded tournament with N variants",
     },
 
     # --- Phase C: HPO (Stages s08, s09) ---
     "s08": {
         "canonical_name": "phasec_optuna_hpo",
         "canonical_id": "S08",
-        "order": 13,
+        "order": 10,
         "phase": "phase_c_hpo",
         "script": "src/steps/phasec_optuna_hpo.py",
         "description": "Optuna hyperparameter optimization on best algorithm family",
@@ -150,7 +121,7 @@ STAGE_REGISTRY: Dict[str, Dict[str, Any]] = {
     "s09": {
         "canonical_name": "phasec_aggregate",
         "canonical_id": "S09",
-        "order": 14,
+        "order": 11,
         "phase": "phase_c_hpo",
         "script": "src/steps/aggregate_phasec.py",
         "description": "Passthrough: copy HPO champion model as Phase C output",
@@ -160,10 +131,26 @@ STAGE_REGISTRY: Dict[str, Dict[str, Any]] = {
     "s10": {
         "canonical_name": "final_evaluation",
         "canonical_id": "S10",
-        "order": 15,
+        "order": 12,
         "phase": "final",
         "script": "src/steps/final_evaluation.py",
         "description": "Compare baseline vs Phase B vs Phase C — select overall champion",
+    },
+    "s12": {
+        "canonical_name": "model_registration",
+        "canonical_id": "S12",
+        "order": 13,
+        "phase": "registration",
+        "script": "src/steps/s12_model_registration.py",
+        "description": "Register the selected champion model when quality gates pass",
+    },
+    "s13": {
+        "canonical_name": "drift_monitor",
+        "canonical_id": "S13",
+        "order": 14,
+        "phase": "monitoring",
+        "script": "src/steps/s13_drift_monitor.py",
+        "description": "Generate drift report and baseline artifacts for monitoring",
     },
 }
 
@@ -234,3 +221,54 @@ def get_phase_stages(phase: str) -> list:
     return [
         (k, v) for k, v in STAGE_REGISTRY.items() if v["phase"] == phase
     ]
+
+
+# ---------------------------------------------------------------------------
+# Legacy stage entries (NOT in active pipeline)
+# ---------------------------------------------------------------------------
+# Retained only so historical job artifacts referencing s6a/s6b/s7a/s7b/s07z
+# can still resolve to a human-readable label. Do NOT use for new code.
+# ---------------------------------------------------------------------------
+
+LEGACY_STAGE_REGISTRY: Dict[str, Dict[str, Any]] = {
+    "s6a": {
+        "canonical_name": "phaseb_recipe1_pycaret",
+        "canonical_id": "S06a",
+        "phase": "phase_b_recipes_legacy",
+        "script": "src/steps/phaseb_pycaret_recipe.py",
+        "description": "Phase B Recipe 1 — PyCaret training (legacy)",
+    },
+    "s6b": {
+        "canonical_name": "phaseb_recipe1_flaml",
+        "canonical_id": "S06b",
+        "phase": "phase_b_recipes_legacy",
+        "script": "src/steps/phaseb_flaml_recipe.py",
+        "description": "Phase B Recipe 1 — FLAML training (legacy)",
+    },
+    "s7a": {
+        "canonical_name": "phaseb_recipe2_pycaret",
+        "canonical_id": "S07a",
+        "phase": "phase_b_recipes_legacy",
+        "script": "src/steps/phaseb_pycaret_recipe.py",
+        "description": "Phase B Recipe 2 — PyCaret training (legacy)",
+    },
+    "s7b": {
+        "canonical_name": "phaseb_recipe2_flaml",
+        "canonical_id": "S07b",
+        "phase": "phase_b_recipes_legacy",
+        "script": "src/steps/phaseb_flaml_recipe.py",
+        "description": "Phase B Recipe 2 — FLAML training (legacy)",
+    },
+    "s07z": {
+        "canonical_name": "phaseb_aggregate",
+        "canonical_id": "S07z",
+        "phase": "phase_b_recipes_legacy",
+        "script": "src/steps/aggregate_phaseb.py",
+        "description": "Phase B aggregation across recipes × engines (legacy)",
+    },
+}
+
+
+def lookup_stage(dsl_key: str) -> Optional[Dict[str, Any]]:
+    """Resolve a DSL key against active first, then legacy registries."""
+    return STAGE_REGISTRY.get(dsl_key) or LEGACY_STAGE_REGISTRY.get(dsl_key)
