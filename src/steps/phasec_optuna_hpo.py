@@ -118,6 +118,14 @@ def main():
             print(f"     {i}: {line[:100]}{'...' if len(line) > 100 else ''}")
     
     df = pd.read_csv(args.dataset_in, sep=delimiter)  # 🔥 FIXED
+
+    # 🔥 Agent 1: prefer sibling train.csv (holdout-leak-safe)
+    _train_sibling = dataset_path.parent / "train.csv"
+    if _train_sibling.exists() and _train_sibling.stat().st_size > 0:
+        df = pd.read_csv(_train_sibling, sep=delimiter)
+        print(f"  ✅ Switched to sibling train.csv ({len(df):,} rows) — holdout isolated")
+    else:
+        print(f"  ⚠️ No sibling train.csv — using combined dataset")
     
     print(f"\n📊 Dataset loaded:")
     print(f"  Shape: {df.shape}")

@@ -69,6 +69,37 @@ def _safe_disable_autolog():
         logger.info("🔗 MLflow tracking URI converted to HTTPS")
 
 
+def _detect_model_flavor(model):
+    """Agent 7: pick the correct MLflow flavor module by inspecting model class.
+
+    Returns one of mlflow.sklearn, mlflow.lightgbm, mlflow.xgboost, mlflow.catboost.
+    Falls back to mlflow.sklearn for unknown / wrapped sklearn estimators.
+    """
+    try:
+        mod = (type(model).__module__ or "").lower()
+    except Exception:
+        mod = ""
+    if "lightgbm" in mod:
+        try:
+            import mlflow.lightgbm as _mlf
+            return _mlf
+        except Exception:
+            pass
+    if "xgboost" in mod:
+        try:
+            import mlflow.xgboost as _mlf
+            return _mlf
+        except Exception:
+            pass
+    if "catboost" in mod:
+        try:
+            import mlflow.catboost as _mlf
+            return _mlf
+        except Exception:
+            pass
+    return mlflow.sklearn
+
+
 class ModelRegistry:
     """
     MLflow Model Registry integration for champion model tracking.
@@ -198,14 +229,25 @@ class ModelRegistry:
             # mlflow.sklearn.log_model with registered_model_name creates an
             # azureml://artifacts/... URI that the model registry accepts.
             try:
-                mlflow.sklearn.log_model(
-                    sk_model=sk_model,
-                    artifact_path="champion_model",
-                    registered_model_name=model_name
-                )
+                # Agent 7: route to correct MLflow flavor module so native
+                # LightGBM / XGBoost / CatBoost models are logged correctly
+                # instead of being mis-loaded via mlflow.sklearn.
+                _flavor_module = _detect_model_flavor(sk_model)
+                if _flavor_module is mlflow.sklearn:
+                    _flavor_module.log_model(
+                        sk_model=sk_model,
+                        artifact_path="champion_model",
+                        registered_model_name=model_name,
+                    )
+                else:
+                    _flavor_module.log_model(
+                        sk_model,
+                        artifact_path="champion_model",
+                        registered_model_name=model_name,
+                    )
             except Exception as log_err:
-                # Fallback for non-sklearn models (e.g. LightGBM, XGBoost native)
-                logger.warning(f"sklearn.log_model failed ({log_err}), trying pyfunc")
+                # Last-resort fallback: pyfunc with mlflow.sklearn loader
+                logger.warning(f"Native flavor log_model failed ({log_err}), trying pyfunc fallback")
                 mlflow.pyfunc.log_model(
                     artifact_path="champion_model",
                     loader_module="mlflow.sklearn",

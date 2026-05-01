@@ -54,7 +54,15 @@ def main():
     delimiter = cfg.get("dataset", {}).get("delimiter", ",")  # 🔥 CRITICAL FIX
     time_budget = cfg.get("phases", {}).get("phase_a_baseline", {}).get("flaml_config", {}).get("time_budget", 120)
 
-    df = pd.read_csv(args.dataset_in, sep=delimiter)
+    # 🔥 Agent 1: prefer sibling train.csv (holdout-leak-safe).
+    _ds_path = Path(args.dataset_in)
+    _train_sibling = _ds_path.parent / "train.csv"
+    if _train_sibling.exists() and _train_sibling.stat().st_size > 0:
+        df = pd.read_csv(_train_sibling, sep=delimiter)
+        print(f"   ✅ Loaded sibling train.csv ({len(df):,} rows) — holdout isolated")
+    else:
+        df = pd.read_csv(args.dataset_in, sep=delimiter)
+        print(f"   ⚠️ No sibling train.csv — using combined dataset ({len(df):,} rows)")
 
     outputs_dir = ensure_outputs_dir()
 
@@ -106,8 +114,9 @@ def main():
 
     # Hold out 20% for honest evaluation (avoid train=eval leak)
     stratify_col = y if task_type == "classification" else None
+    _seed = int(cfg.get("random_seed", 42))
     X_train, X_holdout, y_train, y_holdout = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=stratify_col
+        X, y, test_size=0.2, random_state=_seed, stratify=stratify_col
     )
 
     try:

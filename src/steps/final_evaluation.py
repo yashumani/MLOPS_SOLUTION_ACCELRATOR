@@ -138,7 +138,7 @@ def collect_all_stage_metrics(experiment_name: str) -> dict:
                 all_metrics['baseline_models'][engine] = {'metrics': metrics, 'params': params}
             elif 'phaseb' in run_name.lower() and 'aggregate' not in run_name.lower():
                 all_metrics['phaseb_recipes'][run_name] = {'metrics': metrics, 'params': params}
-            elif 'phasec' in run_name.lower() or 'optuna' in run_name.lower() and 'aggregate' not in run_name.lower():
+            elif ('phasec' in run_name.lower() or 'optuna' in run_name.lower()) and 'aggregate' not in run_name.lower():
                 all_metrics['phasec_hpo'][run_name] = {'metrics': metrics, 'params': params}
             elif 'aggregate' in run_name.lower():
                 phase = 'baseline' if 'baseline' in run_name.lower() else ('phaseb' if 'phaseb' in run_name.lower() else 'phasec')
@@ -511,26 +511,38 @@ def eval_model(model, X_test, y_test, task: str, label_encoder=None, threshold=N
             }
             return metrics
         elif task == "clustering":
-            # For clustering, y_test contains cluster assignments (or original if no y_test available)
-            preds = model.predict(X_test)
-            
+            # Clustering models (KMeans, DBSCAN, …) require purely numeric input.
+            # Select numeric columns and cast to float64 to match training-time
+            # behaviour in stage5_pycaret_train.py (which also casts to float64).
+            # Non-numeric columns (e.g. residual object cols surviving stage4)
+            # would cause model.predict() to raise, returning None and -inf score.
+            X_eval = X_test.select_dtypes(include=[np.number]).astype(np.float64)
+            if X_eval.shape[1] == 0:
+                print("  ❌ No numeric features available for clustering evaluation")
+                return None
+            # Align to model's expected feature set when available
+            if hasattr(model, 'feature_names_in_'):
+                X_eval = X_eval.reindex(columns=model.feature_names_in_, fill_value=0.0)
+                X_eval = X_eval.astype(np.float64)
+            preds = model.predict(X_eval)
+
             # Only compute silhouette if we have more than 1 cluster
             n_clusters = len(np.unique(preds))
             metrics = {}
-            
+
             if n_clusters > 1:
                 # 🔥 FIX: Sample data for clustering metrics to prevent OOM on large datasets
                 # silhouette_score is O(n²) — 541K rows will exhaust 16 GB RAM
                 _CLUSTER_EVAL_CAP = 10_000
-                n_total = len(X_test)
+                n_total = len(X_eval)
                 if n_total > _CLUSTER_EVAL_CAP:
                     rng = np.random.RandomState(42)
                     idx = rng.choice(n_total, size=_CLUSTER_EVAL_CAP, replace=False)
-                    X_sample = X_test.iloc[idx] if hasattr(X_test, 'iloc') else X_test[idx]
+                    X_sample = X_eval.iloc[idx] if hasattr(X_eval, 'iloc') else X_eval[idx]
                     preds_sample = preds[idx]
                     print(f"  📊 Sampling {_CLUSTER_EVAL_CAP:,}/{n_total:,} rows for clustering metrics")
                 else:
-                    X_sample = X_test
+                    X_sample = X_eval
                     preds_sample = preds
 
                 try:
@@ -739,8 +751,24 @@ def main():
     task_type = cfg.get("task_type") or cfg.get("dataset", {}).get("task_type") or "classification"
     target_col = cfg.get("dataset", {}).get("target_column")
     delimiter = cfg.get("dataset", {}).get("delimiter", ",")  # 🔥 CRITICAL FIX
-    
-    df = pd.read_csv(args.dataset_in, sep=delimiter)  # 🔥 FIXED
+
+    # 🔥 Agent 1: read sibling holdout.csv if present (honest evaluation,
+    # zero leakage). Only fall back to a stratified split of the combined
+    # dataset for legacy artifacts that lack the sibling file.
+    _ds_path = Path(args.dataset_in)
+    _holdout_sibling = _ds_path.parent / "holdout.csv"
+    _train_sibling = _ds_path.parent / "train.csv"
+    _holdout_source = "combined_split_fallback"
+
+    if _holdout_sibling.exists() and _holdout_sibling.stat().st_size > 0:
+        df_holdout = pd.read_csv(_holdout_sibling, sep=delimiter)
+        df = pd.read_csv(_train_sibling, sep=delimiter) if _train_sibling.exists() else df_holdout.copy()
+        _holdout_source = "holdout_sibling"
+        print(f"   ✅ Loaded sibling holdout.csv ({len(df_holdout):,} rows) — honest evaluation")
+    else:
+        df = pd.read_csv(args.dataset_in, sep=delimiter)
+        df_holdout = None
+        print(f"   ⚠️ No sibling holdout.csv — falling back to internal split (LEAKAGE RISK)")
     
     print(f"  Task: {task_type}")
     print(f"  Target: {target_col}")
@@ -774,23 +802,31 @@ def main():
     if task_type != "clustering":
         if not target_col or target_col not in df.columns:
             raise ValueError(f"Target column '{target_col}' required but not found in dataset")
-        
-        X = df.drop(columns=[target_col])
-        y = df[target_col]
-        
-        # Split into train/test (using test set for final evaluation)
-        from sklearn.model_selection import train_test_split
-        # Only stratify for classification; regression targets are continuous
-        stratify_param = y if task_type == "classification" else None
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=stratify_param
-        )
-        print(f"  Test set: {len(X_test):,} samples")
+
+        if df_holdout is not None:
+            # 🔥 Agent 1: honest holdout from stage4 sibling — no leakage
+            X_test = df_holdout.drop(columns=[target_col])
+            y_test = df_holdout[target_col]
+            X_train = df.drop(columns=[target_col])
+            y_train = df[target_col]
+            print(f"  ✅ Test set (sibling holdout.csv): {len(X_test):,} samples — honest")
+        else:
+            # Fallback: combined dataset, internal split (LEGACY — leakage risk)
+            X = df.drop(columns=[target_col])
+            y = df[target_col]
+            from sklearn.model_selection import train_test_split
+            stratify_param = y if task_type == "classification" else None
+            seed = int(cfg.get("random_seed", 42))
+            holdout_fraction = float(cfg.get("holdout_fraction", 0.2))
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=holdout_fraction, random_state=seed, stratify=stratify_param
+            )
+            print(f"  ⚠️ Test set (internal split, seed={seed}): {len(X_test):,} samples — leakage risk")
     else:
         # Clustering: no target column
-        X_test = df.copy()
+        X_test = (df_holdout if df_holdout is not None else df).copy()
         y_test = None
-        print(f"  Clustering mode: using full dataset ({len(X_test):,} samples)")
+        print(f"  Clustering mode: using {'holdout' if df_holdout is not None else 'full'} dataset ({len(X_test):,} samples)")
     
     # 4. LOAD MODELS AND LABEL ENCODERS
     print("\n🔧 Loading models from all phases...")
@@ -928,16 +964,27 @@ def main():
     else:
         print(f"  ✅ Champion: {best_key} (score={best_val:.4f})")
 
-    # T17: Quality gate — warn if champion score is below minimum quality threshold
-    QUALITY_THRESHOLDS = {
-        "classification": 0.50,  # balanced_accuracy above random-guess baseline
-        "regression": 0.0,       # R² above mean-predictor baseline
-        "clustering": 0.0,       # silhouette above zero (better than random)
+    # T17: Quality gate — configurable thresholds via cfg["registry"]["min_quality"].
+    # By default warn-only (block_on_quality_fail=False); set to true in config
+    # to hard-block registration when champion score is below threshold.
+    DEFAULT_QUALITY_THRESHOLDS = {
+        "classification": 0.50,  # balanced_accuracy — above random-guess baseline
+        "regression": 0.0,       # R² — above mean-predictor baseline
+        "clustering": 0.0,       # silhouette — above zero (any cluster separation)
     }
-    quality_threshold = QUALITY_THRESHOLDS.get(task_type, 0.0)
-    if champion_valid and best_val < quality_threshold:
-        print(f"  ⚠️  T17 QUALITY GATE: Champion score {best_val:.4f} is BELOW threshold "
-              f"{quality_threshold} for {task_type}. Registration will proceed but model quality is poor.")
+    _registry_cfg = cfg.get("registry", {}) if isinstance(cfg, dict) else {}
+    _min_q = _registry_cfg.get("min_quality", {}) or {}
+    quality_threshold = float(_min_q.get(task_type, DEFAULT_QUALITY_THRESHOLDS.get(task_type, 0.0)))
+    block_on_quality_fail = bool(_registry_cfg.get("block_on_quality_fail", False))
+    quality_gate_passed = bool(champion_valid and np.isfinite(best_val) and best_val >= quality_threshold)
+    if not quality_gate_passed:
+        if not champion_valid:
+            print(f"  ❌ T17 QUALITY GATE FAIL: no valid champion (registration will be blocked)")
+        else:
+            print(f"  ❌ T17 QUALITY GATE FAIL: champion score {best_val:.4f} < threshold "
+                  f"{quality_threshold} for {task_type}")
+    else:
+        print(f"  ✅ T17 QUALITY GATE PASS: champion score {best_val:.4f} ≥ threshold {quality_threshold}")
 
     # ── 6b. SHAP EXPLAINABILITY ─────────────────────────────────
     shap_summary = None
@@ -1012,8 +1059,10 @@ def main():
         "target_column": target_col,
         "test_samples": len(X_test),
         "champion_valid": champion_valid,
-        "quality_gate_passed": bool(not champion_valid or best_val >= quality_threshold),
+        "quality_gate_passed": quality_gate_passed,
         "quality_threshold": quality_threshold,
+        "block_on_quality_fail": block_on_quality_fail,
+        "holdout_source": _holdout_source,
         "baseline_metrics": mb,
         "phaseb_metrics": pb,
         "phasec_metrics": pc,
@@ -1225,6 +1274,7 @@ def main():
     # T9: Log champion validity for Azure ML Studio dashboard filtering
     try:
         logger.log_metric("champion_valid", 1.0 if champion_valid else 0.0)
+        logger.log_metric("quality_gate_passed", 1.0 if quality_gate_passed else 0.0)
     except Exception as _cv_err:
         logging.getLogger(__name__).debug("champion_valid metric log failed: %s", _cv_err)
 
@@ -1435,6 +1485,15 @@ def main():
             print("⚠️  No upstream stage ledger CSVs found to merge")
     except Exception as _ledger_err:
         print(f"⚠️  Candidate ledger merge failed (non-fatal): {_ledger_err}")
+
+    # ── Agent 2: STRICT QUALITY GATE — block downstream registration ──
+    if not quality_gate_passed and block_on_quality_fail:
+        print("\n" + "=" * 80)
+        print("🚫 BLOCKING: quality gate failed and registry.block_on_quality_fail=True")
+        print(f"   task_type={task_type}  threshold={quality_threshold}  champion_score={best_val}")
+        print("   Set registry.block_on_quality_fail=False in config to override.")
+        print("=" * 80)
+        sys.exit(2)
 
 
 if __name__ == "__main__":

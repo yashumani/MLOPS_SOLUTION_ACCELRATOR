@@ -312,19 +312,72 @@ def generate_report(kept_cols: list, pca_metadata: dict, imbalance_metadata: dic
     }
 
 
-def save_outputs(df: pd.DataFrame, report: dict, report_dir: str, dataset_out: str, delimiter: str = ","):
-    """Save outputs with preserved delimiter (critical for inter-step consistency)."""
+def save_outputs(df: pd.DataFrame, report: dict, report_dir: str, dataset_out: str,
+                 delimiter: str = ",", task_type: str = "classification",
+                 target_col: str = None, cfg: dict = None):
+    """Save outputs with preserved delimiter (critical for inter-step consistency).
+
+    Agent 1 (holdout leakage fix): in addition to writing the combined dataset to
+    ``dataset_out`` (kept for backward compatibility with immutable component YAMLs),
+    also emit ``train.csv`` and ``holdout.csv`` as siblings of ``dataset_out``.
+    Downstream training stages prefer the sibling ``train.csv``; final_evaluation
+    prefers the sibling ``holdout.csv``. Split is stratified for classification.
+    """
     Path(report_dir).mkdir(parents=True, exist_ok=True)
     with open(Path(report_dir) / "feature_engineering_report.json", "w") as f:
         json.dump(report, f, indent=2)
-    
+
     # Save imbalance metadata separately for training scripts to consume
     with open(Path(report_dir) / "imbalance_metadata.json", "w") as f:
         json.dump(report["imbalance_metadata"], f, indent=2)
-    
+
     out_path = Path(dataset_out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_path, sep=delimiter, index=False)
+
+    # ── Agent 1: emit honest train/holdout siblings ─────────────────────
+    cfg = cfg or {}
+    seed = int(cfg.get("random_seed", 42))
+    holdout_fraction = float(cfg.get("holdout_fraction", 0.2))
+    sibling_dir = out_path.parent
+    train_path = sibling_dir / "train.csv"
+    holdout_path = sibling_dir / "holdout.csv"
+    manifest_path = sibling_dir / "holdout_manifest.json"
+
+    try:
+        from sklearn.model_selection import train_test_split as _split
+        stratify = None
+        if task_type == "classification" and target_col and target_col in df.columns:
+            # Stratify only when each class has ≥ 2 samples
+            vc = df[target_col].value_counts()
+            if (vc >= 2).all():
+                stratify = df[target_col]
+        if task_type == "clustering":
+            train_df, holdout_df = _split(df, test_size=holdout_fraction, random_state=seed)
+        else:
+            train_df, holdout_df = _split(df, test_size=holdout_fraction,
+                                          random_state=seed, stratify=stratify)
+        train_df.to_csv(train_path, sep=delimiter, index=False)
+        holdout_df.to_csv(holdout_path, sep=delimiter, index=False)
+        manifest = {
+            "split_strategy": "stratified" if stratify is not None else "random",
+            "random_seed": seed,
+            "holdout_fraction": holdout_fraction,
+            "task_type": task_type,
+            "target_column": target_col,
+            "n_train": int(len(train_df)),
+            "n_holdout": int(len(holdout_df)),
+            "delimiter": delimiter,
+            "combined_path": str(out_path.name),
+            "train_path": str(train_path.name),
+            "holdout_path": str(holdout_path.name),
+        }
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+        print(f"   🔀 Holdout split written: train={len(train_df):,}, holdout={len(holdout_df):,} "
+              f"(seed={seed}, stratified={manifest['split_strategy']=='stratified'})")
+    except Exception as e:
+        print(f"   ⚠️ Sibling train/holdout split failed (non-fatal, downstream will fall back): {e}")
 
 
 def main():
@@ -373,7 +426,8 @@ def main():
         print(f"   📋 Feature selection method: {feature_selection_config.get('method', 'none')}")
     
     report = generate_report(kept, pca_metadata, imbalance_metadata)
-    save_outputs(df2, report, args.report_dir, args.dataset_out, delimiter=delimiter)
+    save_outputs(df2, report, args.report_dir, args.dataset_out, delimiter=delimiter,
+                 task_type=task_type, target_col=target_col, cfg=cfg)
     
     # 🎯 Multi-Stage EDA: Final feature set quality check
     print("\n🔍 Generating Stage 4 EDA (Final Feature Set)...")

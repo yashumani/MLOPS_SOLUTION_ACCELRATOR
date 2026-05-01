@@ -70,7 +70,16 @@ def main():
     target_col = cfg.get("dataset", {}).get("target_column")
     delimiter = cfg.get("dataset", {}).get("delimiter", ",")
 
-    df = pd.read_csv(args.dataset_in, sep=delimiter)
+    # 🔥 Agent 1: prefer sibling train.csv (holdout-leak-safe). Falls back to
+    # the combined dataset for backward compatibility with older artifacts.
+    _ds_path = Path(args.dataset_in)
+    _train_sibling = _ds_path.parent / "train.csv"
+    if _train_sibling.exists() and _train_sibling.stat().st_size > 0:
+        df = pd.read_csv(_train_sibling, sep=delimiter)
+        print(f"   ✅ Loaded sibling train.csv ({len(df):,} rows) — holdout isolated")
+    else:
+        df = pd.read_csv(args.dataset_in, sep=delimiter)
+        print(f"   ⚠️ No sibling train.csv — using combined dataset ({len(df):,} rows)")
 
     # Validate target column (required for classification/regression)
     if task_type != "clustering":
@@ -133,7 +142,7 @@ def main():
             setup(
                 data=df,
                 target=target_col,
-                session_id=42,
+                session_id=int(cfg.get("random_seed", 42)),
                 verbose=False,
                 log_experiment=False,
                 fix_imbalance=use_fix_imbalance,
@@ -218,7 +227,7 @@ def main():
             print(f"   CV folds: {_n_folds} (adaptive)")
             # K5: preprocess=False prevents PyCaret from re-encoding/re-scaling
             # data that stage 3 has already preprocessed via the recipe.
-            setup(data=df, target=target_col, session_id=42, verbose=False,
+            setup(data=df, target=target_col, session_id=int(cfg.get("random_seed", 42)), verbose=False,
                   log_experiment=False, fold=_n_folds,
                   preprocess=False, normalize=False, transformation=False)
             # T19: Guard against empty leaderboard from compare_models
@@ -253,7 +262,7 @@ def main():
             
             # K5: preprocess=False prevents PyCaret from re-scaling clustering
             # features. Stage 3 has already standardized them per the recipe.
-            setup(data=df, session_id=42, verbose=False, log_experiment=False,
+            setup(data=df, session_id=int(cfg.get("random_seed", 42)), verbose=False, log_experiment=False,
                   preprocess=False, normalize=False, transformation=False)
             best = create_model("kmeans")
             leaderboard = pull()

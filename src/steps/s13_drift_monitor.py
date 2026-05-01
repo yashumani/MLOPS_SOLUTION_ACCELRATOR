@@ -342,8 +342,9 @@ def run_drift_monitor(args):
     n_rows, n_features = X.shape
     logger.info(f"  Features: {n_features}, Target: {target_column or 'none (clustering)'}")
 
-    # ── Train/Test split (matches s10: 80/20, seed=42) ──────────
+    # ── Train/Test split (matches s10: 80/20, configurable seed) ──
     from sklearn.model_selection import train_test_split
+    _seed = int(config.get("random_seed", 42))
 
     if task_type == "classification" and y is not None:
         stratify_param = y
@@ -352,16 +353,16 @@ def run_drift_monitor(args):
 
     if y is not None:
         X_ref, X_test, y_ref, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=stratify_param
+            X, y, test_size=0.2, random_state=_seed, stratify=stratify_param
         )
     else:
         # Clustering: no target
-        X_ref, X_test = train_test_split(X, test_size=0.2, random_state=42)
+        X_ref, X_test = train_test_split(X, test_size=0.2, random_state=_seed)
 
     logger.info(f"  Reference: {X_ref.shape[0]} rows, Test: {X_test.shape[0]} rows")
 
-    # ── Compute per-feature PSI (self-check) ────────────────────
-    logger.info("  Computing per-feature PSI (self-check)...")
+    # ── Compute per-feature PSI (smoke test on random split) ───
+    logger.info("  Computing per-feature PSI (smoke test)...")
     psi_scores = compute_feature_psi(X_ref, X_test, n_bins=10)
 
     overall_psi = float(np.mean(list(psi_scores.values()))) if psi_scores else 0.0
@@ -374,14 +375,56 @@ def run_drift_monitor(args):
         if p >= PSI_GREEN
     ]
 
-    # Self-check should show minimal drift (same dataset split)
-    self_check_status = "PASS" if overall_psi < PSI_GREEN else "WARN"
-    if self_check_status == "WARN":
-        logger.warning(f"  ⚠️ Self-check PSI elevated: {overall_psi:.4f} (expected < {PSI_GREEN})")
+    # Smoke test should show minimal drift (same dataset random split)
+    smoke_test_status = "PASS" if overall_psi < PSI_GREEN else "WARN"
+    if smoke_test_status == "WARN":
+        logger.warning(f"  ⚠️ Smoke-test PSI elevated: {overall_psi:.4f} (expected < {PSI_GREEN})")
     else:
-        logger.info(f"  ✅ Self-check PSI: {overall_psi:.6f} (PASS)")
+        logger.info(f"  ✅ Smoke-test PSI: {overall_psi:.6f} (PASS)")
 
     logger.info(f"  Max feature PSI: {max_psi_feature} = {max_psi:.6f}")
+
+    # ── Drift injection self-validation test ───────────────────
+    # Shift the highest-variance numeric feature by 2 sigma; PSI must exceed
+    # PSI_YELLOW. If it doesn't, the detector itself is broken.
+    drift_injection_test = {
+        "feature": None,
+        "shift_sigma": 2.0,
+        "psi": None,
+        "expected_min": PSI_YELLOW,
+        "passed": False,
+        "reason": None,
+    }
+    try:
+        from utils.drift_detector import inject_synthetic_drift
+        numeric_cols = X_ref.select_dtypes(include=[np.number]).columns.tolist()
+        if numeric_cols:
+            variances = {c: float(X_ref[c].var(skipna=True)) for c in numeric_cols}
+            top_feat = max(variances, key=variances.get)
+            X_shifted = inject_synthetic_drift(X_ref, top_feat, shift_sigma=2.0)
+            shifted_psi = compute_feature_psi(
+                X_ref[[top_feat]], X_shifted[[top_feat]], n_bins=10
+            )
+            psi_val = float(shifted_psi.get(top_feat, 0.0))
+            drift_injection_test.update({
+                "feature": top_feat,
+                "psi": round(psi_val, 6),
+                "passed": bool(psi_val > PSI_YELLOW),
+            })
+            if drift_injection_test["passed"]:
+                logger.info(
+                    f"  ✅ Drift injection test: shifted '{top_feat}' by 2σ → PSI={psi_val:.4f} (>{PSI_YELLOW})"
+                )
+            else:
+                logger.warning(
+                    f"  ⚠️ Drift injection test FAILED: shifted '{top_feat}' by 2σ → PSI={psi_val:.4f} (≤{PSI_YELLOW}). Detector may be broken."
+                )
+        else:
+            drift_injection_test["reason"] = "no_numeric_features"
+            logger.info("  Drift injection test skipped (no numeric features)")
+    except Exception as e:
+        drift_injection_test["reason"] = f"error: {e}"
+        logger.warning(f"  Drift injection test errored (non-fatal): {e}")
 
     # ── Compute baseline statistics ─────────────────────────────
     logger.info("  Computing baseline statistics...")
@@ -465,10 +508,15 @@ def run_drift_monitor(args):
 
     # ── Warnings ────────────────────────────────────────────────
     warnings = []
-    if self_check_status == "WARN":
+    if smoke_test_status == "WARN":
         warnings.append(
-            f"Self-check PSI ({overall_psi:.4f}) exceeds green threshold ({PSI_GREEN}). "
+            f"Smoke-test PSI ({overall_psi:.4f}) exceeds green threshold ({PSI_GREEN}). "
             "This may indicate high variance features or small dataset."
+        )
+    if not drift_injection_test.get("passed") and drift_injection_test.get("reason") is None:
+        warnings.append(
+            f"Drift injection self-test FAILED for feature '{drift_injection_test.get('feature')}' "
+            f"(PSI={drift_injection_test.get('psi')} <= expected_min {PSI_YELLOW}). Drift detector may be broken."
         )
     if n_rows < 500:
         warnings.append(f"Small dataset ({n_rows} rows). PSI may be unreliable.")
@@ -499,15 +547,16 @@ def run_drift_monitor(args):
         "n_features": n_features,
         "target_column": target_column,
         "detector": "psi",
-        "self_check": {
-            "method": "train_test_split_80_20_seed_42",
+        "smoke_test": {
+            "method": f"random_split_smoke_test_seed_{_seed}",
             "overall_psi": round(overall_psi, 6),
             "max_feature_psi": round(max_psi, 6),
             "max_feature_name": max_psi_feature,
             "drifted_features": drifted_features,
             "n_drifted": len(drifted_features),
-            "status": self_check_status,
+            "status": smoke_test_status,
         },
+        "drift_injection_test": drift_injection_test,
         "feature_psi_scores": {f: round(p, 6) for f, p in sorted(psi_scores.items(), key=lambda x: -x[1])},
         "stability_assessment": {
             "stability_score": stability_score,
@@ -589,7 +638,8 @@ def run_drift_monitor(args):
         mlflow.log_metric("n_drifted_features", len(drifted_features))
         mlflow.log_param("detector", "psi")
         mlflow.log_param("cadence", cadence_name)
-        mlflow.log_param("self_check_status", self_check_status)
+        mlflow.log_param("smoke_test_status", smoke_test_status)
+        mlflow.log_param("drift_injection_passed", bool(drift_injection_test.get("passed")))
         mlflow.log_param("dataset_name", dataset_name)
         if comparison_drift.get("available"):
             ev = comparison_drift.get("evidently", {})
@@ -620,7 +670,11 @@ def run_drift_monitor(args):
     # ── Summary ─────────────────────────────────────────────────
     logger.info("═══ s13 Drift Monitor Summary ═══")
     logger.info(f"  Dataset: {dataset_name} ({task_type})")
-    logger.info(f"  Self-check: {self_check_status} (PSI={overall_psi:.6f})")
+    logger.info(f"  Smoke-test: {smoke_test_status} (PSI={overall_psi:.6f})")
+    logger.info(
+        f"  Drift injection: {'PASS' if drift_injection_test.get('passed') else 'FAIL'} "
+        f"(feature={drift_injection_test.get('feature')}, psi={drift_injection_test.get('psi')})"
+    )
     logger.info(f"  Stability: {stability_score}/100 → {cadence_name} ({cadence_days}d)")
     logger.info(f"  Champion: {champion_info.get('algorithm', '?')} (registered={champion_info.get('registered', '?')})")
     if comparison_drift.get("available"):
@@ -636,11 +690,11 @@ def run_drift_monitor(args):
     logger.info(f"  Runtime: {time.time() - start_time:.1f}s")
 
     # ── Drift alerts (no-op when env vars unset) ─────────────────
-    # Triggers on self-check WARN, Evidently dataset_drift, or concept drift.
+    # Triggers on smoke-test WARN, Evidently dataset_drift, or concept drift.
     try:
         ev_drift = bool(comparison_drift.get("evidently", {}).get("dataset_drift"))
         cd_drift = bool(comparison_drift.get("concept_drift", {}).get("detected"))
-        should_alert = (self_check_status == "WARN") or ev_drift or cd_drift
+        should_alert = (smoke_test_status == "WARN") or ev_drift or cd_drift
         if should_alert:
             from utils.alerts import emit_drift_alert  # local import: optional dep path
             extra: dict = {}
@@ -652,7 +706,7 @@ def run_drift_monitor(args):
             emit_drift_alert(
                 config_name=args.config_name,
                 job_name=os.environ.get("AZUREML_RUN_ID") or os.environ.get("MLFLOW_RUN_ID"),
-                self_check_status=self_check_status,
+                self_check_status=smoke_test_status,
                 overall_psi=overall_psi,
                 drifted_features=drifted_features,
                 cadence=cadence_name,
