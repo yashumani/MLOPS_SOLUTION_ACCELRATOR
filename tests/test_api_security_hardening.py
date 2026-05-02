@@ -39,6 +39,35 @@ def test_verify_api_key_uses_configured_secret(monkeypatch):
     assert exc_info.value.status_code == 401
 
 
+def test_root_endpoint_returns_api_metadata():
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+
+    client = TestClient(app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["service"] == "MLOps V3 Pipeline Management API"
+    assert data["status"] == "ok"
+    assert data["docs"] == "/docs"
+    assert data["health"] == "/api/v1/health"
+    assert data["api_base"] == "/api/v1"
+
+
+def test_healthz_liveness_probe_returns_ok():
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+
+    client = TestClient(app)
+    response = client.get("/healthz")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_config_mutation_guard_fails_closed_when_status_check_fails(monkeypatch):
     from api.routers import configs
 

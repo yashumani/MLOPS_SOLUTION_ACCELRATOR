@@ -80,6 +80,53 @@ app.add_middleware(
     allow_headers=["X-API-Key", "Content-Type"],
 )
 
+
+@app.get("/", tags=["root"])
+async def root():
+    """Root index. Points callers at docs and the most useful API routes."""
+    return {
+        "service": app.title,
+        "status": "ok",
+        "version": app.version,
+        "docs": "/docs",
+        "redoc": "/redoc",
+        "openapi": "/openapi.json",
+        "health": "/api/v1/health",
+        "liveness": "/healthz",
+        "api_base": "/api/v1",
+        "routes": {
+            "health": "GET /api/v1/health",
+            "configs_list": "GET /api/v1/configs",
+            "config_detail": "GET /api/v1/configs/{config_name}",
+            "pipelines_submit": "POST /api/v1/pipelines/submit",
+            "pipelines_submit_async": "POST /api/v1/pipelines/submit/async",
+            "pipelines_jobs": "GET /api/v1/pipelines/jobs",
+            "pipelines_experiments": "GET /api/v1/pipelines/experiments",
+            "pipelines_job_status": "GET /api/v1/pipelines/jobs/{job_name}",
+            "pipelines_job_outputs": "GET /api/v1/pipelines/jobs/{job_name}/outputs",
+            "pipelines_job_metrics": "GET /api/v1/pipelines/jobs/{job_name}/metrics",
+            "pipelines_job_summary": "GET /api/v1/pipelines/jobs/{job_name}/summary",
+        },
+        "auth": {
+            "header": "X-API-Key",
+            "note": "Required for all /api/v1/* routes except /api/v1/health and /healthz.",
+        },
+    }
+
+
+@app.get("/healthz", tags=["root"], include_in_schema=False)
+async def healthz():
+    """Lightweight liveness probe (no dependencies, no auth)."""
+    return {"status": "ok"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    # Silence repeated 404 noise from browsers hitting /favicon.ico
+    from fastapi import Response
+    return Response(status_code=204)
+
+
 # Routers
 app.include_router(health.router)
 app.include_router(configs.router)

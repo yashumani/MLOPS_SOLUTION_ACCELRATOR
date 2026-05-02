@@ -20,6 +20,8 @@ uvicorn api.main:app --host 127.0.0.1 --port 8000
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/` | API metadata and links (no auth) |
+| `GET` | `/healthz` | Lightweight liveness probe (no auth) |
 | `GET` | `/api/v1/health` | Health check (no auth) |
 | `GET` | `/api/v1/configs` | List available pipeline configs |
 | `GET` | `/api/v1/configs/{name}` | Get a specific config |
