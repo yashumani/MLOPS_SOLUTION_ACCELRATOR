@@ -46,6 +46,9 @@ class SubmitResponse(BaseModel):
 
 class StepStatus(BaseModel):
     name: str
+    display_name: str | None = None
+    stage_key: str | None = None
+    is_inferred: bool = False
     status: str
     start_time: datetime | None = None
     end_time: datetime | None = None
@@ -124,6 +127,23 @@ class OutputContentResponse(BaseModel):
     text_preview: str | None = None      # for non-JSON text files (truncated)
     csv_preview: list[dict] | None = None  # first N rows of any CSV
     primary_file: str | None = None
+    truncated: bool = False
+
+
+class LocalOutputFileInfo(BaseModel):
+    relative_path: str
+    name: str
+    is_dir: bool = False
+    size_bytes: int | None = None
+    modified_time: datetime | None = None
+    kind: str | None = None
+    depth: int = 0
+
+
+class LocalOutputsResponse(BaseModel):
+    root: str = "outputs"
+    files: list[LocalOutputFileInfo] = Field(default_factory=list)
+    total: int = 0
     truncated: bool = False
 
 

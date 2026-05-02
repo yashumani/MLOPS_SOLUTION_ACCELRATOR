@@ -1,65 +1,126 @@
+# V3 Usage Guide
 
-# Usage Guide
-
-This guide describes how to configure, execute, and troubleshoot the Savvy Minds MLOps solution accelerator.
+This guide describes how to submit and monitor the production V3 Azure ML pipeline. Local step execution is not a production validation path.
 
 ## Prerequisites
 
-- Python 3.8 or higher.
-- Basic familiarity with YAML, Python, and ML concepts.
-- A dataset in CSV format with a clear target column for supervised learning tasks.
-- Optional: MLflow installed globally if you wish to run the UI (`pip install mlflow`).
+- Azure ML workspace access to subscription `93044a08-5661-4f1b-b424-5eafe066a9d1`.
+- Resource group `mvpv1` and workspace `mlops-accelerator`.
+- Compute target `mlopsv2computecluster`.
+- A YAML config under `configs/` with Azure ML datastore input paths.
+- The working tree should be clean or intentionally reviewed before production submission.
 
-## Creating a Configuration File
+## Choose a Config
 
-1. Copy the example configuration from `config/sample_config.yaml` to a new file (e.g., `config/my_run_config.yaml`).
-2. Fill out the following fields:
-   - `industry`: Choose one of your organization’s supported industries.
-   - `dataset_path`: Path to your dataset CSV file.
-   - `task_type`: Specify `classification`, `regression`, or `clustering`.
-   - `primary_metric`: Choose the metric to optimize (e.g., `f1` for classification). See the evaluation module documentation for available metrics.
-   - `imbalance_handling`: Boolean (`true` or `false`) indicating whether to apply SMOTE on imbalanced datasets.
-   - `mlflow_tracking_uri`: Directory or server URL for MLflow. Local runs can use a directory like `mlruns`.
-3. Optionally fill in Azure ML details (subscription ID, resource group, workspace name) if you plan to register datasets or use AML compute for training in future iterations.
+Production configs live under `configs/`. Examples:
 
-## Running the Pipeline
+| Task | Example config |
+|---|---|
+| Classification | `configs/config_classification_telecom_churn_azureml.yml` |
+| Regression | `configs/config_regression_college_azureml.yml` |
+| Clustering | `configs/config_clustering_online_retail_azureml.yml` |
 
-To execute the pipeline:
+Each config controls dataset URI, task type, target column where applicable, stage parameters, Phase A engines, Phase B recipes, Phase C HPO, and final evaluation behavior.
+
+## Submit a Job
 
 ```bash
-python src/main.py --config config/my_run_config.yaml
+python pipelines/submit_pipeline.py \
+  --config configs/config_classification_telecom_churn_azureml.yml \
+  --subscription_id 93044a08-5661-4f1b-b424-5eafe066a9d1 \
+  --resource_group mvpv1 \
+  --workspace_name mlops-accelerator \
+  --compute mlopsv2computecluster
 ```
 
-The orchestrator will perform the following:
+Intentional resubmission:
 
-1. Load configuration and validate it.
-2. Ingest the dataset.
-3. Run initial data validation checks.
-4. Clean the data (handle missing values, duplicates, outliers).
-5. Validate the cleaned data.
-6. Detect class imbalance and apply SMOTE if enabled and the task is classification.
-7. Perform feature engineering, including Boruta feature selection.
-8. Validate the engineered data.
-9. Train models using PyCaret or FLAML (AutoML) based on the task type.
-10. Evaluate models using the specified primary metric and log results to MLflow.
-11. Identify and save the best pipeline configuration.
+```bash
+python pipelines/submit_pipeline.py \
+  --config configs/config_classification_telecom_churn_azureml.yml \
+  --subscription_id 93044a08-5661-4f1b-b424-5eafe066a9d1 \
+  --resource_group mvpv1 \
+  --workspace_name mlops-accelerator \
+  --compute mlopsv2computecluster \
+  --force
+```
 
-## Understanding the Results
+`--force` bypasses duplicate-submission guards. Use it only when the existing active job is known and intentional.
 
-- **MLflow experiments**: All runs and their metrics are logged to MLflow. You can view them via the UI.
-- **Console outputs**: The script prints intermediate progress and the best model details.
-- **Saved artifacts**: The best pipeline recipe and any evaluation artifacts are saved in the `artifacts/` directory.
+## What Happens at Submission
+
+1. K2 config validation runs before Azure work.
+2. The submission lock prevents concurrent local submit processes.
+3. Active Azure ML jobs in the same experiment are checked.
+4. The selected recipes and engines are resolved from config.
+5. Azure ML receives a component pipeline job.
+6. The submitted job name is printed and saved under `~/.mlops/last_submitted_job.json`.
+
+On NFS-mounted workspaces, `ml_client.jobs.create_or_update()` can take several minutes. Seeing no immediate job ID during that upload window is normal.
+
+## Monitor a Job
+
+```bash
+az ml job show \
+  --name <job_name> \
+  --resource-group mvpv1 \
+  --workspace-name mlops-accelerator \
+  --query status \
+  --output tsv
+```
+
+List active jobs:
+
+```bash
+az ml job list \
+  --resource-group mvpv1 \
+  --workspace-name mlops-accelerator \
+  --query "[?status=='Running' || status=='Queued' || status=='Starting'].{name:name,status:status,experiment:experiment_name}" \
+  --output table
+```
+
+## Quality Gate Behavior
+
+Final evaluation computes `quality_gate_passed` and writes the value to MLflow and the final report.
+
+Defaults:
+
+| Task | Threshold | Blocking |
+|---|---:|---|
+| Classification | `0.50` | Warn-only |
+| Regression | `0.0` | Warn-only |
+| Clustering | `0.0` | Warn-only |
+
+To hard-block weak champions, set:
+
+```yaml
+registry:
+  block_on_quality_fail: true
+```
+
+To override thresholds, set:
+
+```yaml
+registry:
+  min_quality:
+    classification: 0.60
+    regression: 0.10
+    clustering: 0.05
+```
+
+Do not raise production thresholds casually; recent failures were caused by a dirty working tree that accidentally turned the gate into strict blocking.
 
 ## Troubleshooting
 
-- **Missing dependencies**: Ensure all packages listed in `requirements.txt` are installed.
-- **Config errors**: If the script fails at startup, check your YAML configuration for syntax errors or missing fields.
-- **Invalid metrics**: Make sure the primary metric you select is appropriate for the task type.
+| Symptom | Likely cause | Action |
+|---|---|---|
+| K2 validation fails | Config schema problem. | Fix the YAML config before submitting. |
+| Submission appears stuck | NFS snapshot upload. | Wait 10 to 12 minutes before assuming failure. |
+| Active job guard blocks submission | Same experiment already has an active job. | Wait for it or use `--force` only if intentional. |
+| `pathOnCompute` warning appears | Azure ML SDK warning. | Non-fatal if a job name is printed. |
+| `quality_gate_passed=false` | Champion below threshold or invalid. | Inspect champion score, threshold, and `block_on_quality_fail`. |
+| `No sibling holdout.csv` | Legacy dataset artifact. | Resubmit through current Stage 4 to produce holdout siblings. |
 
-## Extending the Framework
+## Documentation
 
-- **Adding new features**: Implement new functions in the relevant module (e.g., new pre-processing techniques in `feature_engineering.py`). Update the orchestrator to call your function.
-- **Custom metrics**: Add custom evaluation metrics by importing functions from `sklearn.metrics` or writing your own. Update `evaluation.py` to include these metrics.
-- **Additional data sources**: For ingestion from other sources (e.g., databases, APIs), extend `data_ingestion.py` with new methods.
-
-If you encounter issues or wish to contribute, create an issue in the repository or contact the maintainers.
+Use `docs/PRODUCTION_FREEZE_SUMMARY.md` for current freeze status and `docs/COMMIT_LEDGER_20260501.md` for commit history.

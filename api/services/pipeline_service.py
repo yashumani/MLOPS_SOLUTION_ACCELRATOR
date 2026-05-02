@@ -11,9 +11,14 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import yaml
 from azure.ai.ml import Input, MLClient
+try:
+    from azure.ai.ml.constants import ListViewType
+except Exception:  # pragma: no cover - older SDKs may not expose this enum
+    ListViewType = None  # type: ignore[assignment]
 
 from api.core.azure_ml import get_ml_client
 from api.core.config import settings
@@ -27,6 +32,8 @@ from api.schemas.pipeline import (
     JobListResponse,
     JobStatus,
     JobSummary,
+    LocalOutputFileInfo,
+    LocalOutputsResponse,
     MetricsResponse,
     ModelMetric,
     OutputContentResponse,
@@ -44,6 +51,7 @@ from api.utils.azure_links import build_studio_url
 # Repo root so we can import pipeline_builder and read configs
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _CONFIGS_DIR = _REPO_ROOT / "configs"
+_LOCAL_OUTPUTS_DIR = _REPO_ROOT / "outputs"
 _SAFE_CONFIG_NAME = re.compile(r"^[A-Za-z0-9_]+$")
 
 # In-memory cache for terminal-state job metrics/summaries.
@@ -62,6 +70,139 @@ _experiments_cache: dict = {
     "duration_s": None,      # float | None
 }
 _experiments_lock = threading.Lock()
+
+_STAGE_ALIASES = {
+    "s01": "s1",
+    "s02": "s2",
+    "s03": "s3",
+    "s04": "s4",
+    "s05a": "s5a",
+    "s05b": "s5b",
+    "s05t": "s5t",
+    "s05z": "s5z",
+    "s6": "s06",
+    "s08": "s08",
+    "s8": "s08",
+    "s09": "s09",
+    "s9": "s09",
+}
+
+_STAGE_KEYWORDS = {
+    "ingestion": "s1",
+    "preparation": "s2",
+    "preprocessing": "s3",
+    "feature_engineering": "s4",
+    "pycaret": "s5a",
+    "flaml": "s5b",
+    "timeseries": "s5t",
+    "forecasting": "s5t",
+    "aggregate_baseline": "s5z",
+    "baseline_aggregate": "s5z",
+    "variant_runner": "s06",
+    "phaseb": "s06",
+    "phasec_hpo": "s08",
+    "optuna": "s08",
+    "aggregate_phasec": "s09",
+    "phasec_aggregate": "s09",
+    "final_evaluation": "s10",
+    "model_registration": "s12",
+    "drift_monitor": "s13",
+    "drift": "s13",
+}
+
+_CANONICAL_STAGE_LABELS = {
+    "s1": "S01 Ingestion",
+    "s2": "S02 Preparation",
+    "s3": "S03 Preprocessing",
+    "s4": "S04 Feature Engineering",
+    "s5a": "S05a PyCaret Baseline",
+    "s5b": "S05b FLAML Baseline",
+    "s5t": "S05t Time-Series Baseline",
+    "s5z": "S05z Baseline Aggregate",
+    "s06": "S06 Phase B Variant Runner",
+    "s08": "S08 Phase C Optuna HPO",
+    "s09": "S09 Phase C Aggregate",
+    "s10": "S10 Final Evaluation",
+    "s12": "S12 Model Registration",
+    "s13": "S13 Drift Monitor",
+}
+
+_OUTPUT_STAGE_FALLBACKS: dict[str, tuple[str, ...]] = {
+    "eda_report": ("s1",),
+    "prep_report": ("s2",),
+    "prep3_report": ("s3",),
+    "fe_report": ("s4",),
+    "baseline_pycaret_metrics": ("s5a",),
+    "baseline_flaml_metrics": ("s5b",),
+    "baseline_aggregate_report": ("s5z",),
+    "baseline_champion_model": ("s5z",),
+    "phaseb_leaderboard": ("s06",),
+    "phaseb_all_results": ("s06",),
+    "phaseb_champion_manifest": ("s06",),
+    "phaseb_champion_model": ("s06",),
+    # s09 depends on s08, so this output confirms both for historical jobs
+    # where Azure ML child step metadata is missing.
+    "phasec_aggregate_report": ("s08", "s09"),
+    "phasec_champion_model": ("s09",),
+    "final_report": ("s10",),
+    "final_champion_model": ("s10",),
+    "registry_info": ("s12",),
+    "drift_report": ("s13",),
+    "drift_baseline": ("s13",),
+}
+
+
+def _infer_stage_key(*names: str | None) -> str | None:
+    """Infer the canonical DSL stage key from Azure child job identifiers."""
+    for raw in names:
+        text = (raw or "").lower()
+        if not text:
+            continue
+        for token in re.findall(r"s\d{1,2}[a-z]?", text):
+            normalized = _STAGE_ALIASES.get(token, token)
+            if normalized in {
+                "s1", "s2", "s3", "s4", "s5a", "s5b", "s5t",
+                "s5z", "s06", "s08", "s09", "s10", "s12", "s13",
+            }:
+                return normalized
+        compact = text.replace("-", "_").replace(" ", "_")
+        for keyword, stage_key in _STAGE_KEYWORDS.items():
+            if keyword in compact:
+                return stage_key
+    return None
+
+
+def _stage_display_name(stage_key: str | None, fallback: str | None = None) -> str | None:
+    if stage_key:
+        return _CANONICAL_STAGE_LABELS.get(stage_key, fallback or stage_key)
+    return fallback
+
+
+def _append_inferred_steps_from_outputs(
+    steps: list[StepStatus],
+    outputs: dict[str, Any],
+) -> None:
+    """Backfill completed stages from parent named outputs for old job records."""
+    seen = {step.stage_key for step in steps if step.stage_key}
+    for output_name, stage_keys in _OUTPUT_STAGE_FALLBACKS.items():
+        if output_name not in outputs:
+            continue
+        for stage_key in stage_keys:
+            if stage_key in seen:
+                continue
+            steps.append(
+                StepStatus(
+                    name=f"{stage_key}_inferred_from_{output_name}",
+                    display_name=(
+                        f"{_stage_display_name(stage_key)} "
+                        f"(inferred from {output_name})"
+                    ),
+                    stage_key=stage_key,
+                    status="Completed",
+                    is_inferred=True,
+                )
+            )
+            seen.add(stage_key)
 
 
 def refresh_experiments_cache(max_per_experiment: int) -> "ExperimentTreeResponse":
@@ -392,10 +533,20 @@ def get_job(job_name: str) -> JobStatus:
     # Fetch child step statuses
     steps: list[StepStatus] = []
     try:
-        for child in ml_client.jobs.list(parent_job_name=job_name):
+        list_kwargs: dict[str, Any] = {"parent_job_name": job_name}
+        if ListViewType is not None:
+            list_kwargs["list_view_type"] = ListViewType.ALL
+        for child in ml_client.jobs.list(**list_kwargs):
+            child_name = child.name
+            azure_display_name = getattr(child, "display_name", None)
+            properties = getattr(child, "properties", None) or {}
+            module_name = properties.get("azureml.moduleName")
+            stage_key = _infer_stage_key(azure_display_name, child_name, module_name)
             steps.append(
                 StepStatus(
-                    name=getattr(child, "display_name", None) or child.name,
+                    name=child_name,
+                    display_name=_stage_display_name(stage_key, azure_display_name),
+                    stage_key=stage_key,
                     status=child.status or "Unknown",
                     start_time=getattr(child, "creation_context", None)
                     and getattr(child.creation_context, "created_at", None),
@@ -403,7 +554,9 @@ def get_job(job_name: str) -> JobStatus:
                 )
             )
     except Exception:
-        pass
+        _logger.exception("failed to list child steps for job %s", job_name)
+
+    _append_inferred_steps_from_outputs(steps, j.outputs or {})
 
     return JobStatus(
         job_name=j.name,
@@ -607,6 +760,54 @@ def get_output_content(job_name: str, output_name: str) -> OutputContentResponse
         text_preview=text_preview,
         csv_preview=csv_preview,
         primary_file=primary_file,
+        truncated=truncated,
+    )
+
+
+def list_local_outputs(max_depth: int = 4, max_files: int = 500) -> LocalOutputsResponse:
+    """Return a read-only inventory of the repo-local outputs/ folder."""
+    max_depth = max(1, min(max_depth, 10))
+    max_files = max(1, min(max_files, 2_000))
+
+    if not _LOCAL_OUTPUTS_DIR.exists():
+        return LocalOutputsResponse(files=[], total=0, truncated=False)
+
+    items: list[LocalOutputFileInfo] = []
+    truncated = False
+    base = _LOCAL_OUTPUTS_DIR.resolve()
+
+    for path in sorted(base.rglob("*"), key=lambda p: str(p).lower()):
+        try:
+            rel = path.relative_to(base)
+        except ValueError:
+            continue
+        if any(part.startswith("__pycache__") for part in rel.parts):
+            continue
+        depth = len(rel.parts)
+        if depth > max_depth:
+            continue
+        if len(items) >= max_files:
+            truncated = True
+            break
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        items.append(
+            LocalOutputFileInfo(
+                relative_path=str(rel),
+                name=path.name,
+                is_dir=path.is_dir(),
+                size_bytes=None if path.is_dir() else stat.st_size,
+                modified_time=datetime.fromtimestamp(stat.st_mtime),
+                kind="directory" if path.is_dir() else _classify_file(path),
+                depth=depth,
+            )
+        )
+
+    return LocalOutputsResponse(
+        files=items,
+        total=len(items),
         truncated=truncated,
     )
 

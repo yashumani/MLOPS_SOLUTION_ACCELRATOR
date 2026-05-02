@@ -1,10 +1,23 @@
-# Drift Detection — Architecture, Implementation & Execution Guide
+# Drift Detection - Production Guide
 
-> **Branch:** `drift-detection-v1`  
-> **Step ID:** `s13` (Terminal step — last in the pipeline DAG)  
-> **Feature Status:** Implemented and wired into pipeline; runs on every pipeline execution.
+> **Branch:** `prod-hardening-20260425`
+> **Step ID:** `s13` (terminal step, last in the pipeline DAG)
+> **Feature Status:** Implemented and wired into the production Azure ML pipeline.
+> **Current posture:** Drift alerts are non-blocking; they report risk and do not trigger automatic retraining during the freeze window.
 
----
+## Current Production Thresholds
+
+The standalone drift config is `configs/drift_config.yaml`.
+
+| Drift type | Method | Threshold |
+|---|---|---:|
+| Feature drift | PSI mean across features | `0.15` |
+| Prediction drift | Kolmogorov-Smirnov statistic | `0.10` |
+| Concept drift | Accuracy drop versus baseline | `0.05` |
+| Label drift | Chi-square complement | `0.10` |
+
+Alert dispatch is best-effort and non-fatal. Missing Teams or email environment variables should not fail `s13`.
+
 
 ## Table of Contents
 

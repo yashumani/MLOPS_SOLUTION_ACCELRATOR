@@ -15,6 +15,7 @@ from api.schemas.pipeline import (
     ExperimentTreeResponse,
     JobListResponse,
     JobStatus,
+    LocalOutputsResponse,
     MetricsResponse,
     OutputContentResponse,
     OutputListResponse,
@@ -35,7 +36,7 @@ router = APIRouter(
 # ── Submit ────────────────────────────────────────────────────
 
 @router.post("/submit", response_model=SubmitResponse, status_code=202)
-async def submit(req: SubmitRequest):
+def submit(req: SubmitRequest):
     """Submit a new pipeline job to Azure ML."""
     try:
         return pipeline_service.submit_pipeline(req)
@@ -50,7 +51,7 @@ async def submit(req: SubmitRequest):
 # ── Submit (async) ────────────────────────────────────────────
 
 @router.post("/submit/async", status_code=202)
-async def submit_async(req: SubmitRequest):
+def submit_async(req: SubmitRequest):
     """Enqueue a pipeline submission and return immediately with a request_id.
 
     Clients poll GET /submit/status/{request_id} until status='submitted',
@@ -67,7 +68,7 @@ async def submit_async(req: SubmitRequest):
 
 
 @router.get("/submit/status/{request_id}")
-async def submit_status(request_id: str):
+def submit_status(request_id: str):
     """Return the current state of an async submit request."""
     record = pipeline_service.get_submit_request(request_id)
     if record is None:
@@ -78,7 +79,7 @@ async def submit_status(request_id: str):
 # ── List ──────────────────────────────────────────────────────
 
 @router.get("/jobs", response_model=JobListResponse)
-async def list_jobs(
+def list_jobs(
     experiment_name: str | None = Query(None),
     status: str | None = Query(None),
     max_results: int = Query(50, ge=1, le=500),
@@ -94,7 +95,7 @@ async def list_jobs(
 # ── Experiment tree (hierarchical picker) ─────────────────────
 
 @router.get("/experiments", response_model=ExperimentTreeResponse)
-async def list_experiments(
+def list_experiments(
     response: Response,
     max_results_per_experiment: int = Query(100, ge=1, le=500),
     force_refresh: bool = Query(False, description="Bypass warm cache and re-fetch from Azure ML"),
@@ -149,10 +150,24 @@ async def refresh_experiments(
     }
 
 
+# ── Local outputs folder ──────────────────────────────────────
+
+@router.get("/local-outputs", response_model=LocalOutputsResponse)
+def list_local_outputs(
+    max_depth: int = Query(4, ge=1, le=10),
+    max_files: int = Query(500, ge=1, le=2000),
+):
+    """List the repo-local outputs/ folder for UI artifact visibility."""
+    return pipeline_service.list_local_outputs(
+        max_depth=max_depth,
+        max_files=max_files,
+    )
+
+
 # ── Status ────────────────────────────────────────────────────
 
 @router.get("/jobs/{job_name}", response_model=JobStatus)
-async def get_job(job_name: str):
+def get_job(job_name: str):
     """Get detailed status of a pipeline job and its child steps."""
     try:
         return pipeline_service.get_job(job_name)
@@ -163,7 +178,7 @@ async def get_job(job_name: str):
 # ── Cancel ────────────────────────────────────────────────────
 
 @router.post("/jobs/{job_name}/cancel", response_model=JobStatus)
-async def cancel_job(job_name: str):
+def cancel_job(job_name: str):
     """Cancel a running pipeline job."""
     try:
         return pipeline_service.cancel_job(job_name)
@@ -174,7 +189,7 @@ async def cancel_job(job_name: str):
 # ── Outputs ───────────────────────────────────────────────────
 
 @router.get("/jobs/{job_name}/outputs", response_model=OutputListResponse)
-async def list_outputs(job_name: str):
+def list_outputs(job_name: str):
     """List available outputs for a pipeline job."""
     try:
         return pipeline_service.list_outputs(job_name)
@@ -183,7 +198,7 @@ async def list_outputs(job_name: str):
 
 
 @router.get("/jobs/{job_name}/outputs/{output_name}/download")
-async def download_output(job_name: str, output_name: str):
+def download_output(job_name: str, output_name: str):
     """Download a specific output artifact from a pipeline job."""
     try:
         tmp = pipeline_service.download_output(job_name, output_name)
@@ -213,7 +228,7 @@ async def download_output(job_name: str, output_name: str):
 # ── Metrics (Phase 0a) ───────────────────────────────────────
 
 @router.get("/jobs/{job_name}/metrics", response_model=MetricsResponse)
-async def get_job_metrics(job_name: str):
+def get_job_metrics(job_name: str):
     """Get per-model MLflow metrics for a pipeline job."""
     try:
         return pipeline_service.get_job_metrics(job_name)
@@ -227,7 +242,7 @@ async def get_job_metrics(job_name: str):
     "/jobs/{job_name}/outputs/{output_name}/content",
     response_model=OutputContentResponse,
 )
-async def get_output_content(job_name: str, output_name: str):
+def get_output_content(job_name: str, output_name: str):
     """Return parsed file content (JSON/CSV/text) of a named output for UI rendering."""
     try:
         return pipeline_service.get_output_content(job_name, output_name)
@@ -238,7 +253,7 @@ async def get_output_content(job_name: str, output_name: str):
 # ── Pipeline summary (combined aggregate reports) ────────────
 
 @router.get("/jobs/{job_name}/summary", response_model=PipelineSummaryResponse)
-async def get_pipeline_summary(job_name: str):
+def get_pipeline_summary(job_name: str):
     """Return combined baseline / phaseB / phaseC / final reports for a job."""
     try:
         return pipeline_service.get_pipeline_summary(job_name)
@@ -256,7 +271,7 @@ async def get_pipeline_summary(job_name: str):
 # ── Drift (Phase 0b) ─────────────────────────────────────────
 
 @router.get("/jobs/{job_name}/drift", response_model=DriftResponse)
-async def get_job_drift(job_name: str):
+def get_job_drift(job_name: str):
     """Get drift detection results for a pipeline job."""
     try:
         return pipeline_service.get_job_drift(job_name)
@@ -267,7 +282,7 @@ async def get_job_drift(job_name: str):
 # ── Resubmit (Phase 0d) ──────────────────────────────────────
 
 @router.post("/resubmit", response_model=SubmitResponse, status_code=202)
-async def resubmit(req: ResubmitRequest):
+def resubmit(req: ResubmitRequest):
     """Resubmit a pipeline job using the same configuration."""
     try:
         return pipeline_service.resubmit_pipeline(req)
@@ -282,7 +297,7 @@ async def resubmit(req: ResubmitRequest):
 # ── Baseline capture (Phase 0c) ──────────────────────────────
 
 @router.post("/baseline/capture", response_model=BaselineCaptureResponse)
-async def capture_baseline(req: BaselineCaptureRequest):
+def capture_baseline(req: BaselineCaptureRequest):
     """Extract drift baseline artifacts from a completed job."""
     try:
         return pipeline_service.capture_baseline(req)

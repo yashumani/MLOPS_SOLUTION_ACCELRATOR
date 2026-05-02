@@ -1,9 +1,10 @@
-# FastAPI Integration — V3 Pipeline
+# FastAPI Integration - V3 Pipeline
 
 > **Service:** `uvicorn api.main:app` on `:8000`
-> **Branch:** `FAST-API-v1`
-> **Auth:** Header `X-API-Key: <redacted>` (configured with the `API_KEY` environment variable)
-> **OpenAPI:** `GET /openapi.json` · interactive docs at `/docs`
+> **Branch:** `prod-hardening-20260425`
+> **Auth:** Header `X-API-Key: <redacted>` configured by `API_KEY`
+> **OpenAPI:** `GET /openapi.json`; interactive docs at `/docs`
+> **Production note:** API/UI files currently have additional uncommitted working-tree changes. Treat this document as the service contract, and freeze API/UI changes only after that surface is separately reviewed and committed.
 
 ---
 

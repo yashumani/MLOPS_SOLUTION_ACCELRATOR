@@ -265,7 +265,7 @@ def compute_stability_score(
     stability = int(round(total))
 
     components = {
-        "self_check_psi": {"raw": round(mean_psi, 6), "score": round(psi_score, 1), "weight": 0.40},
+        "smoke_test_psi": {"raw": round(mean_psi, 6), "score": round(psi_score, 1), "weight": 0.40},
         "dataset_size": {"raw": n_rows, "score": round(size_score, 1), "weight": 0.20},
         "feature_complexity": {"raw": round(complexity_ratio, 6), "score": round(complexity_score, 1), "weight": 0.20},
         "class_balance": {"raw": round(imbalance_ratio, 4) if imbalance_ratio is not None else None, "score": round(balance_score, 1), "weight": 0.10},
@@ -347,3 +347,29 @@ def compute_feature_volatility(df: pd.DataFrame) -> float:
             cvs.append(vals.std() / abs(mean_val))
 
     return float(np.mean(cvs)) if cvs else 0.0
+
+
+def inject_synthetic_drift(df: pd.DataFrame, col: str, shift_sigma: float = 2.0) -> pd.DataFrame:
+    """Inject synthetic drift by shifting a column by N standard deviations.
+
+    Used by drift detection self-validation: shifts a known feature, then
+    PSI for that feature is expected to exceed PSI_YELLOW. If it doesn't,
+    the drift detector itself is broken.
+
+    Args:
+        df: Input DataFrame (will not be mutated).
+        col: Column to shift. Must be numeric.
+        shift_sigma: Multiplier for std-based shift (default 2.0).
+
+    Returns:
+        New DataFrame with `col` shifted by shift_sigma * std(col).
+    """
+    out = df.copy()
+    if col not in out.columns:
+        raise ValueError(f"Column '{col}' not in DataFrame")
+    series = pd.to_numeric(out[col], errors="coerce")
+    sigma = float(series.std(skipna=True))
+    if not np.isfinite(sigma) or sigma == 0.0:
+        sigma = 1.0
+    out[col] = series + shift_sigma * sigma
+    return out

@@ -53,6 +53,31 @@ def test_config_mutation_guard_fails_closed_when_status_check_fails(monkeypatch)
     assert exc_info.value.status_code == 503
 
 
+def test_stage_key_inference_matches_current_pipeline_names():
+    from api.services import pipeline_service
+
+    assert pipeline_service._infer_stage_key("s1") == "s1"
+    assert pipeline_service._infer_stage_key("V3 Stage 1 - Ingestion") == "s1"
+    assert pipeline_service._infer_stage_key("s06 - V3 Phase B - Variant Runner") == "s06"
+    assert pipeline_service._infer_stage_key("s13 - Drift Monitor") == "s13"
+
+
+def test_list_local_outputs_is_read_only_and_bounded(tmp_path, monkeypatch):
+    from api.services import pipeline_service
+
+    (tmp_path / "batch").mkdir()
+    report = tmp_path / "batch" / "report.json"
+    report.write_text('{"ok": true}')
+    monkeypatch.setattr(pipeline_service, "_LOCAL_OUTPUTS_DIR", tmp_path)
+
+    result = pipeline_service.list_local_outputs(max_depth=2, max_files=10)
+
+    paths = {item.relative_path for item in result.files}
+    assert "batch" in paths
+    assert "batch/report.json" in paths
+    assert result.truncated is False
+
+
 def test_s12_skips_registration_when_quality_gate_failed(tmp_path, monkeypatch):
     import src.steps.s12_model_registration as s12
 

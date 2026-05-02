@@ -11,6 +11,7 @@ _STATUS_MAP = {
     "preparing": ("🔵", "blue"),
     "queued": ("🟡", "orange"),
     "notstarted": ("⚪", "gray"),
+    "notreported": ("⚪", "gray"),
     "failed": ("🔴", "red"),
     "canceled": ("⚫", "gray"),
     "cancelled": ("⚫", "gray"),

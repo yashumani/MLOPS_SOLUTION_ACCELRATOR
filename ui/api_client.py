@@ -115,6 +115,14 @@ class APIClient:
         """Fetch combined baseline/phaseB/phaseC/final reports for a job."""
         return self._get(f"/api/v1/pipelines/jobs/{job_name}/summary")
 
+    def list_local_outputs(self, max_depth: int = 4, max_files: int = 500) -> dict:
+        """Fetch a read-only inventory of the repo-local outputs/ folder."""
+        return self._get(
+            "/api/v1/pipelines/local-outputs",
+            max_depth=max_depth,
+            max_files=max_files,
+        )
+
     def download_output(self, job_name: str, output_name: str) -> bytes:
         resp = self._session.get(
             self._url(f"/api/v1/pipelines/jobs/{job_name}/outputs/{output_name}/download"),

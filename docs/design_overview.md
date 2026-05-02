@@ -1,38 +1,68 @@
+# V3 Design Overview
 
-# Design Overview
+This document describes the current production architecture for the MLOps Solution Accelerator V3. V3 is an Azure ML component pipeline; it is not a local `src/main.py` workflow.
 
-This document provides a high-level overview of the MLOps solution accelerator's architecture.
+## Architecture Principles
 
-## Pipeline Stages
+| Principle | Production rule |
+|---|---|
+| Azure-only validation | Production validation happens through Azure ML jobs. |
+| Single orchestrator | `pipelines/pipeline_builder.py` owns `@dsl.pipeline` assembly. |
+| Config-driven behavior | Dataset paths, task type, engines, recipes, budgets, and metrics come from YAML config. |
+| Read-only datastore access | Step scripts read datastore URIs and write only job outputs. |
+| Stable component contracts | Component YAML inputs and outputs are stable unless explicitly approved. |
+| Task isolation | Classification, regression, and clustering branches are kept separate. |
 
-1. **Configuration Input**: A user-defined YAML config file specifies the industry, dataset, task type, and various options. It also includes details for Azure ML integration (if needed).
+## Pipeline Flow
 
-2. **Data Ingestion**: The system reads the dataset from the specified path or remote location (e.g., Azure ML datastore). The ingestion module registers the dataset in Azure ML, although the main repository does not handle deployment.
+| Step | ID | Purpose |
+|---|---|---|
+| Data validation | `s00` | Validate schema, column types, target presence, and dataset quality. |
+| Ingestion | `s01` | Read Azure ML datastore input into the pipeline. |
+| Preparation | `s02` | Clean, deduplicate, impute, and normalize early dataset issues. |
+| Preprocessing | `s03` | Apply recipe-driven encoding, scaling, imputation, and imbalance handling. |
+| Feature engineering | `s04` | Select features, reduce dimensionality when configured, and emit train/holdout siblings. |
+| Baseline PyCaret | `s05a` | Train baseline PyCaret models. |
+| Baseline FLAML | `s05b` | Train baseline FLAML models where supported. |
+| Baseline timeseries | `s05t` | Optional timeseries baseline. |
+| Baseline aggregate | `s05z` | Merge baseline outputs and pick Phase A champion. |
+| Phase B variants | `s06` | Run intelligent recipe variants with nested MLflow runs. |
+| Model selection | `s08` | Compare Phase A and Phase B champions. |
+| Phase C HPO | `s09` | Tune the selected champion with Optuna. |
+| Final evaluation | `s10` | Evaluate champions on holdout, run quality gate, write manifest. |
+| Model registration | `s12` | Register the final champion when allowed. |
+| Drift monitor | `s13` | Produce drift baseline, drift metrics, and non-blocking alerts. |
 
-3. **Data Validation**: Utilizes Pandera or Great Expectations to ensure the input data meets required schemas (e.g., data types, missing values, allowed ranges). This happens multiple times: after ingestion, after cleaning, and after feature engineering.
+## Data Flow
 
-4. **Data Cleaning**: Removes duplicates, handles missing values via imputation or removal, and detects outliers. The cleaned data is validated again.
+```text
+Azure ML datastore URI
+  -> s00/s01/s02/s03/s04
+  -> feature-engineered dataset_out
+  -> sibling train.csv + holdout.csv + holdout_manifest.json
+  -> s05/s06/s09 train-only model search
+  -> s10 holdout final evaluation
+  -> s12 model registration
+  -> s13 drift baseline and monitoring artifacts
+```
 
-5. **Imbalance Handling** (Classification tasks): Detects imbalanced class distribution; applies SMOTE via imbalanced-learn. The balanced dataset is logged in MLflow.
+Stage 4 preserves the original `dataset_out` for component compatibility and adds sibling files beside it. That design avoids component YAML churn while preventing training steps from seeing holdout rows.
 
-6. **Feature Engineering**: Includes encoding categorical variables (one-hot or target encoding), scaling numeric columns, and performing feature selection with Boruta. Optionally, polynomial features can be added based on config settings. The engineered dataset is validated again.
+## Variant Search
 
-7. **Model Training**: Uses AutoML libraries (PyCaret and FLAML) to train and tune models for the given task. PyCaret automatically selects algorithms and hyperparameters, while FLAML provides light-weight hyperparameter optimization. All runs are recorded in MLflow.
+Phase B does not blindly run every recipe. The production design profiles the dataset, scores available recipes, and selects a bounded set of relevant variants. The current clustering submissions used 10 selected variants; the telecom churn resubmission used 2 selected variants with PyCaret and FLAML engines.
 
-8. **Model Evaluation**: Compares candidate models using a primary metric defined in the config (e.g., F1 score for classification, RMSE for regression). Secondary metrics are also recorded. The best pipeline configuration is identified and its recipe is saved.
+## Observability
 
-9. **MLflow Tracking**: All parameters, metrics, models, and artifacts (e.g., plots, validation reports) are logged in MLflow for traceability and reproducibility.
+MLflow is the primary observability surface. Each step logs parameters, metrics, and artifacts. Training and variant steps use nested runs; aggregate and final steps write champion manifests and summary metrics. Final evaluation records `quality_gate_passed`, `quality_threshold`, and `block_on_quality_fail`.
 
-## Extensibility
+## Production Risks Managed
 
-- **Additional Featurizers**: New feature engineering modules can be added by implementing functions in `feature_engineering.py` and updating the orchestrator in `main.py`.
-- **Alternative Imbalance Techniques**: If desired, other imbalance handling methods (e.g., ADASYN) can be integrated in `imbalance_handling.py`.
-- **Task Types**: Clustering is supported but limited to algorithms available in PyCaret or FLAML. Extend evaluation metrics accordingly.
-- **Azure ML Integration**: The config includes placeholders for Azure ML workspace details. Future versions may connect to Azure ML for training and deployment.
-
-## Modularity & Best Practices
-
-- Each module (ingestion, validation, cleaning, etc.) is self-contained, promoting unit testing and reuse.
-- Functions are documented via docstrings specifying inputs, outputs, and behavior.
-- The orchestrator in `main.py` ensures that pipeline stages can be executed sequentially or individually (useful for debugging).
-- Logging via Python `logging` library captures runtime information; MLflow handles experiment tracking.
+| Risk | Mitigation |
+|---|---|
+| Dirty working-tree uploads | Commit or stash unrelated changes before production submission. |
+| Duplicate submissions | Lock file plus active-job guard in `submit_pipeline.py`. |
+| Holdout leakage | Stage 4 sibling split; downstream train-only readers; s10 holdout reader. |
+| Clustering prediction crash | Numeric-only final eval with `feature_names_in_` alignment. |
+| Over-blocking weak-but-valid jobs | Warn-only quality gate by default; blocking is explicit config. |
+| MLflow Azure URI incompatibility | Convert `azureml://` tracking URI to `https://` in MLflow-using steps. |

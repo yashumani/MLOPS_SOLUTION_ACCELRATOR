@@ -40,6 +40,7 @@ from ui.data_cache import (
     cached_get_job,
     cached_job_drift,
     cached_job_metrics,
+    cached_local_outputs,
     cached_pipeline_summary,
     invalidate_job_caches,
 )
@@ -228,8 +229,8 @@ with tab_lb:
 # ── Tab 3: Outputs (summary + on-demand artifact extraction) ─
 with tab_outputs:
 
-    sub_summary, sub_artifacts = st.tabs(
-        ["📊 Pipeline Summary", "📁 Named Artifacts"]
+    sub_summary, sub_artifacts, sub_local_outputs = st.tabs(
+        ["📊 Pipeline Summary", "📁 Named Artifacts", "🗂️ Local outputs/"]
     )
 
     with sub_summary:
@@ -371,6 +372,64 @@ with tab_outputs:
                         except Exception as exc:  # noqa: BLE001
                             st.caption(f"Download not available: {exc}")
 
+    with sub_local_outputs:
+        st.caption(
+            "Read-only view of the repo-local `outputs/` folder on this compute "
+            "instance. This complements Azure ML named outputs and helps inspect "
+            "batch logs, downloaded artifacts, and drift analysis files."
+        )
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            max_depth = st.slider(
+                "Depth",
+                min_value=1,
+                max_value=10,
+                value=4,
+                key="focus_local_outputs_depth",
+            )
+        with c2:
+            max_files = st.number_input(
+                "Max entries",
+                min_value=50,
+                max_value=2000,
+                value=500,
+                step=50,
+                key="focus_local_outputs_max",
+            )
+        try:
+            local_data = cached_local_outputs(
+                max_depth=int(max_depth),
+                max_files=int(max_files),
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Failed to list local outputs/: {exc}")
+            local_data = {}
+
+        files = local_data.get("files") or []
+        if not files:
+            st.info("No local outputs/ files found on this compute instance.")
+        else:
+            st.caption(
+                f"{local_data.get('total', len(files))} entries"
+                + (" · truncated" if local_data.get("truncated") else "")
+            )
+            df = pd.DataFrame(files)
+            if not df.empty:
+                df["type"] = df["kind"].fillna("unknown")
+                df["size"] = df["size_bytes"].fillna(0).astype("int64")
+                st.dataframe(
+                    df[
+                        [
+                            "relative_path",
+                            "type",
+                            "size",
+                            "modified_time",
+                        ]
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
 
 # ── Tab 4: Drift ─────────────────────────────────────────────
 with tab_drift:
@@ -449,14 +508,22 @@ with tab_logs:
 
     detail_for_steps = cached_get_job(job_name, known_status=known_status) or {}
     steps = detail_for_steps.get("steps") or []
-    step_names = [s.get("name", f"step_{i}") for i, s in enumerate(steps)]
+    step_targets: dict[str, str] = {"(parent job)": job_name}
+    for i, step in enumerate(steps):
+        if step.get("is_inferred"):
+            continue
+        target_name = step.get("name") or f"step_{i}"
+        label = step.get("display_name") or target_name
+        stage = step.get("stage_key")
+        option = f"{stage} · {label}" if stage else label
+        step_targets[option] = target_name
 
     step_choice = st.selectbox(
         "Pipeline step",
-        options=["(parent job)"] + step_names,
+        options=list(step_targets.keys()),
         key="focus_logs_step",
     )
-    target = job_name if step_choice == "(parent job)" else step_choice
+    target = step_targets[step_choice]
 
     @st.fragment(run_every=f"{REFRESH_INTERVAL * 2}s")
     def _logs_panel() -> None:
