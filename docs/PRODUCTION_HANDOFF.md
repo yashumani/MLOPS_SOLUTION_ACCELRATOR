@@ -2,7 +2,7 @@
 
 Current as of: 2026-05-01
 Branch: `prod-hardening-20260425`
-Commit: `fd63a2e3`
+Freeze head commit: `b526b4fb`
 Repository: `SAVYMINDS/YS_MVP`
 
 This handoff covers the Azure ML V3 production pipeline, its submission guardrails, quality gates, drift monitoring, and operator workflow. It supersedes older backend-only handoff and freeze-review documents now archived outside the pipeline folder.

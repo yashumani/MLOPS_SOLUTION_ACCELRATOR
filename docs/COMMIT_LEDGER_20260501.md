@@ -3,8 +3,8 @@
 Branch: `prod-hardening-20260425`  
 Default branch: `main`  
 Comparison: `origin/main..HEAD`  
-Commit count ahead of `origin/main`: `46`  
-Latest production pipeline commit: `fd63a2e3`
+Commit count ahead of `origin/main`: `47`
+Freeze head commit: `b526b4fb`
 
 This ledger documents the production branch history that led to the current V3 state. It is intentionally commit-focused; operational status and gates are covered in `PRODUCTION_FREEZE_SUMMARY.md`.
 
@@ -18,6 +18,7 @@ This ledger documents the production branch history that led to the current V3 s
 | Critical and high hardening batches | 13 | Fixed preprocessing, Phase B selection, MLflow URI handling, JSONL/EDA robustness, active-job guard, and balanced-accuracy selection. |
 | Backend production hardening and docs | 11 | Added backend guards, scheduler, drift alerts, production handoff docs, and dry-run sweep tooling. |
 | Latest critical freeze fix | 1 | Fixed clustering final evaluation and restored quality-gate defaults. |
+| Documentation freeze commit | 1 | Archived stale docs, added current freeze docs, and committed remaining hardening artifacts. |
 | Runtime/state cleanup | 2 | Removed runtime artifact tracking and committed sprint support files. |
 
 ## Full Ledger
@@ -70,6 +71,7 @@ This ledger documents the production branch history that led to the current V3 s
 | 44 | `a6721e4c` | 2026-04-28 | stage_registry: prune dead legacy keys; flag stage0 component as not wired |
 | 45 | `a6d6d56d` | 2026-04-28 | scripts: add dry-run job sweep for 16 azureml configs (NO FIRING) |
 | 46 | `fd63a2e3` | 2026-05-01 | fix(critical): clustering eval crash + quality gate defaults |
+| 47 | `b526b4fb` | 2026-05-02 | docs(freeze): production docs and remaining hardening |
 
 ## Latest Commit Detail
 
@@ -79,4 +81,4 @@ This ledger documents the production branch history that led to the current V3 s
 2. Over-aggressive quality blocking by restoring default thresholds to `classification=0.50`, `regression=0.0`, `clustering=0.0` and making `block_on_quality_fail=false` the default.
 3. Holdout-safe readers and model-registration hardening committed alongside the final evaluation fix.
 
-Documentation cleanup was performed after `fd63a2e3` and should be committed separately when the docs are approved.
+Documentation cleanup and remaining hardening artifacts were committed in `b526b4fb`.

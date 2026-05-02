@@ -3,7 +3,7 @@
 Current as of: 2026-05-01  
 Repository: `SAVYMINDS/YS_MVP`  
 Branch: `prod-hardening-20260425`  
-Production pipeline commit: `fd63a2e3`
+Freeze head commit: `b526b4fb`
 
 This folder is the production-facing documentation set for the V3 MLOps Solution Accelerator. Development notes, PR drafts, historical incident writeups, and session logs have been moved out of this folder so operators see only current guidance.
 

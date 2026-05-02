@@ -2,7 +2,7 @@
 
 ## Current State
 
-The V3 pipeline is the production path for this repository. The active branch is `prod-hardening-20260425`; the current production pipeline commit is `fd63a2e3` (`fix(critical): clustering eval crash + quality gate defaults`).
+The V3 pipeline is the production path for this repository. The active branch is `prod-hardening-20260425`; the current freeze head is `b526b4fb` (`docs(freeze): production docs and remaining hardening`). The latest critical pipeline behavior fix remains `fd63a2e3` (`fix(critical): clustering eval crash + quality gate defaults`).
 
 Azure ML context:
 
