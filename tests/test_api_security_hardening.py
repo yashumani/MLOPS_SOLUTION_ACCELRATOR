@@ -54,6 +54,45 @@ def test_root_endpoint_returns_api_metadata():
     assert data["docs"] == "/docs"
     assert data["health"] == "/api/v1/health"
     assert data["api_base"] == "/api/v1"
+    assert data["frontend"]["service"] == "Streamlit dashboard"
+
+
+def test_root_endpoint_redirects_browsers_to_dashboard(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.core.config import settings
+    from api.main import app
+
+    monkeypatch.setattr(settings, "ui_base_url", "https://example.test/dashboard")
+
+    client = TestClient(app)
+    response = client.get(
+        "/", headers={"Accept": "text/html"}, follow_redirects=False
+    )
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://example.test/dashboard/"
+
+
+def test_root_endpoint_derives_azureml_dashboard_url(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.core.config import settings
+    from api.main import app
+
+    monkeypatch.setattr(settings, "ui_base_url", "")
+
+    client = TestClient(
+        app,
+        base_url="http://mlopspipelinev2-8000.eastus2.instances.azureml.ms",
+    )
+    response = client.get("/", headers={"Accept": "application/json"})
+
+    assert response.status_code == 200
+    assert (
+        response.json()["dashboard"]
+        == "https://mlopspipelinev2-8501.eastus2.instances.azureml.ms/"
+    )
 
 
 def test_healthz_liveness_probe_returns_ok():

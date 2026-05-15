@@ -26,9 +26,11 @@ from ui.data_cache import (
 st.set_page_config(page_title="Submit Pipeline", page_icon="🚀", layout="wide")
 inject_theme()
 render_sidebar()
-prewarm(st.session_state)
 
 page_header("Submit Pipeline", "Launch a new Azure ML V3 pipeline job", "🚀")
+
+# Warm expensive API caches only after the page header is visible.
+prewarm(st.session_state)
 
 client = get_client()
 
@@ -55,12 +57,34 @@ selected_config = st.selectbox(
     help="Choose a pipeline configuration YAML",
 )
 
-# ── Summary card ──────────────────────────────────────────────
+# ── Summary card + YAML preview ───────────────────────────────
+cfg_loaded: dict | None = None
 if selected_config:
     try:
-        cfg = cached_get_config(selected_config)
+        cfg_loaded = cached_get_config(selected_config)
+        # ConfigDetail wraps the YAML body in `content`.
+        cfg_body = (
+            cfg_loaded.get("content")
+            if isinstance(cfg_loaded, dict) and "content" in cfg_loaded
+            else cfg_loaded
+        )
         with st.container(border=True):
-            render_config_summary_card(selected_config, cfg)
+            render_config_summary_card(selected_config, cfg_body)
+
+        with st.expander("📄  Preview YAML before submit", expanded=False):
+            try:
+                import yaml as _yaml
+
+                st.code(
+                    _yaml.safe_dump(cfg_body, sort_keys=False, default_flow_style=False),
+                    language="yaml",
+                )
+            except Exception:  # noqa: BLE001
+                st.json(cfg_body)
+            st.caption(
+                "Hint: edit this config on the **Configs** page. The API "
+                "validates against the config schema on save."
+            )
     except Exception:  # noqa: BLE001
         st.info("Could not load config preview.")
 
@@ -69,22 +93,41 @@ with st.expander("⚙️ Advanced Options", expanded=False):
     col1, col2 = st.columns(2)
     with col1:
         compute_override = st.text_input(
-            "Compute Target (override)",
-            placeholder="<AZURE_COMPUTE>",
-            help="Leave empty to use default from config",
+            "Compute target (override)",
+            placeholder="cpu-cluster",
+            help="Leave empty to use the compute target defined in the config.",
             key="submit_compute_override",
         )
-        force_rerun = st.checkbox("Force Re-run", value=False, key="submit_force_rerun")
+        force_rerun = st.checkbox(
+            "Disable component cache (force re-run all steps)",
+            value=False,
+            key="submit_force_rerun",
+            help=(
+                "When checked, every pipeline step is re-executed instead of "
+                "reusing cached outputs from previous runs."
+            ),
+        )
     with col2:
         baseline_job = st.text_input(
-            "Baseline Job Name",
-            placeholder="(optional)",
-            help="Reference job for drift comparison",
+            "Baseline job for drift comparison (optional)",
+            placeholder="e.g. previous successful job_name",
+            help=(
+                "If set, the optional `s13_drift_monitor` step compares this "
+                "run's data distribution against the baseline job and produces "
+                "a PSI report viewable on the Drift Monitor page."
+            ),
             key="submit_baseline_job",
         )
-        tag_key = st.text_input("Custom Tag Key", placeholder="team", key="submit_tag_key")
+        tag_key = st.text_input(
+            "Custom tag key",
+            placeholder="team",
+            help="Stored as Azure ML job tag for attribution.",
+            key="submit_tag_key",
+        )
         tag_val = st.text_input(
-            "Custom Tag Value", placeholder="ml-engineering", key="submit_tag_val"
+            "Custom tag value",
+            placeholder="ml-engineering",
+            key="submit_tag_val",
         )
 
 # ── Submit ────────────────────────────────────────────────────

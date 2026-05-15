@@ -30,8 +30,11 @@ class APIClient:
             return None
         return resp.json()
 
-    def _get(self, path: str, **params) -> Any:
-        return self._request("GET", path, params=params)
+    def _get(self, path: str, _timeout: int | None = None, **params) -> Any:
+        kwargs: dict[str, Any] = {"params": params}
+        if _timeout is not None:
+            kwargs["timeout"] = _timeout
+        return self._request("GET", path, **kwargs)
 
     def _post(self, path: str, json: dict | None = None) -> Any:
         return self._request("POST", path, json=json)
@@ -93,11 +96,12 @@ class APIClient:
         """Return jobs grouped by experiment for hierarchical UI pickers."""
         return self._get(
             "/api/v1/pipelines/experiments",
+            _timeout=8,
             max_results_per_experiment=max_results_per_experiment,
         )
 
     def get_job(self, job_name: str) -> dict:
-        return self._get(f"/api/v1/pipelines/jobs/{job_name}")
+        return self._get(f"/api/v1/pipelines/jobs/{job_name}", _timeout=20)
 
     def cancel_job(self, job_name: str) -> dict:
         return self._post(f"/api/v1/pipelines/jobs/{job_name}/cancel")

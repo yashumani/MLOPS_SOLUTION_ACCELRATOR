@@ -17,25 +17,51 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UI_DIR="${REPO_ROOT}/ui"
-PORT=8501
+
+# ── Source .env before Azure CLI detection ───────────────────
+if [[ -f "${REPO_ROOT}/.env" ]]; then
+  echo "🔑 Loading .env …"
+  set -a; source "${REPO_ROOT}/.env"; set +a
+fi
+
+PORT="${STREAMLIT_PORT:-8501}"
+API_PORT="${API_PORT:-8000}"
+AZURE_RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
+AZURE_WORKSPACE_NAME="${AZURE_WORKSPACE_NAME:-}"
+API_BASE_URL="${API_BASE_URL:-http://localhost:${API_PORT}}"
+export API_BASE_URL
 
 # ── Detect compute name and region from Azure CLI ────────────
 echo "⏳ Detecting Azure ML workspace region…"
-REGION=$(az ml workspace show \
-  --resource-group <AZURE_RESOURCE_GROUP> \
-  --name <AZURE_WORKSPACE_NAME> \
-  --query "location" -o tsv 2>/dev/null || echo "unknown")
+if [[ -n "${AZURE_RESOURCE_GROUP}" && -n "${AZURE_WORKSPACE_NAME}" ]]; then
+  REGION=$(az ml workspace show \
+    --resource-group "${AZURE_RESOURCE_GROUP}" \
+    --name "${AZURE_WORKSPACE_NAME}" \
+    --query "location" -o tsv 2>/dev/null || echo "unknown")
+else
+  REGION="unknown"
+fi
 
 COMPUTE_NAME=$(hostname -s)
+if [[ "${REGION}" != "unknown" ]]; then
+  PUBLIC_URL="https://${COMPUTE_NAME}-${PORT}.${REGION}.instances.azureml.ms/"
+  export UI_BASE_URL="${UI_BASE_URL:-${PUBLIC_URL%/}}"
+else
+  PUBLIC_URL="https://${COMPUTE_NAME}-${PORT}.<region>.instances.azureml.ms/"
+fi
 
 echo ""
 echo "============================================================"
 echo "  Compute : ${COMPUTE_NAME}"
 echo "  Region  : ${REGION}"
 echo "  Port    : ${PORT}"
+echo "  API     : ${API_BASE_URL}"
 echo ""
 echo "  🌐 Public URL (once Streamlit starts):"
-echo "     https://${COMPUTE_NAME}-${PORT}.${REGION}.instances.azureml.ms/"
+echo "     ${PUBLIC_URL}"
+echo ""
+echo "  ℹ️  The :${API_PORT} URL is the FastAPI backend."
+echo "     The Streamlit dashboard is exposed on :${PORT}."
 echo ""
 echo "  ℹ️  You can also open this from Azure ML Studio:"
 echo "     Compute → ${COMPUTE_NAME} → Applications tab"
@@ -43,14 +69,8 @@ echo "============================================================"
 echo ""
 
 # ── Install / update Streamlit if needed ─────────────────────
-echo "📦 Checking Streamlit installation…"
-pip install --quiet --upgrade "streamlit>=1.35,<2" requests python-dotenv
-
-# ── Source .env if present ───────────────────────────────────
-if [[ -f "${REPO_ROOT}/.env" ]]; then
-  echo "🔑 Loading .env …"
-  set -a; source "${REPO_ROOT}/.env"; set +a
-fi
+echo "📦 Checking Streamlit dependencies…"
+pip install --quiet --upgrade -r "${UI_DIR}/requirements.txt"
 
 # ── Kill any existing Streamlit on this port ─────────────────
 OLD_PID=$(lsof -ti tcp:${PORT} 2>/dev/null || true)
@@ -87,7 +107,7 @@ for i in $(seq 1 30); do
     echo "  ✅ Streamlit is UP!"
     echo ""
     echo "  🌐 Open in browser:"
-    echo "     https://${COMPUTE_NAME}-${PORT}.${REGION}.instances.azureml.ms/"
+    echo "     ${PUBLIC_URL}"
     echo ""
     echo "  Logs : tail -f /tmp/streamlit_azureml.log"
     echo "  Stop : kill \$(cat /tmp/streamlit_azureml.pid)"
@@ -103,4 +123,4 @@ echo "⚠️  Streamlit may still be starting. Check logs:"
 echo "    tail -f /tmp/streamlit_azureml.log"
 echo ""
 echo "🌐 Try the URL:"
-echo "   https://${COMPUTE_NAME}-${PORT}.${REGION}.instances.azureml.ms/"
+echo "   ${PUBLIC_URL}"

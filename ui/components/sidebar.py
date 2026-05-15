@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from html import escape
+
 import streamlit as st
 
 from ui.components.theme import LOGO_HTML
@@ -62,12 +64,16 @@ def render_sidebar() -> None:
                 st.page_link(page_path, label=label)
 
         # Footer
+        api_docs_url = escape(
+            f"{st.session_state.get('api_base_url', API_BASE_URL).rstrip('/')}/docs",
+            quote=True,
+        )
         st.markdown('<div class="svm-section-label">Resources</div>', unsafe_allow_html=True)
         st.markdown(
             '<a href="https://ml.azure.com" target="_blank" '
             'style="display:block;color:#475569;font-size:0.82rem;'
             'text-decoration:none;padding:6px 0;">↗ Azure ML Studio</a>'
-            '<a href="/docs" target="_blank" '
+            f'<a href="{api_docs_url}" target="_blank" '
             'style="display:block;color:#475569;font-size:0.82rem;'
             'text-decoration:none;padding:6px 0;">↗ API Reference</a>',
             unsafe_allow_html=True,

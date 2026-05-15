@@ -28,9 +28,36 @@ from ui.data_cache import (
 st.set_page_config(page_title="Configurations", page_icon="⚙️", layout="wide")
 inject_theme()
 render_sidebar()
-prewarm(st.session_state)
 
 page_header("Pipeline Configs", "Browse, inspect, and edit pipeline configuration files", "⚙️")
+
+# Warm expensive API caches only after the page header is visible.
+prewarm(st.session_state)
+
+with st.expander("ℹ️  What is a pipeline config?", expanded=False):
+    st.markdown(
+        """
+A **pipeline config** is a single YAML file that fully describes one Azure ML
+training run:
+
+- **`dataset`** — datastore path + target column
+- **`azureml`** — workspace, compute target, environment names
+- **`stage1`…`stage5`** — validation, preparation, preprocessing, feature engineering, baseline settings
+- **`phases`** — what to train:
+  - `phase_a_baseline` → quick PyCaret + FLAML baseline
+  - `phase_b_recipes` → top-N recommended variants × engines
+  - `phase_c_hpo` → Optuna search on the Phase B champion
+- **`final_evaluation`** — holdout metrics & plots, when present
+
+You can:
+1. Browse every config (cards below).
+2. Open one in **Detail** to read / edit its YAML, duplicate it, or delete it.
+3. Submit it from the **Submit Pipeline** page.
+
+The API validates against `src/orchestration/config_schema.py` on save, so
+invalid YAML is rejected before it ever reaches Azure ML.
+"""
+    )
 
 client = get_client()
 
@@ -47,6 +74,13 @@ def _refresh_and_rerun() -> None:
     st.rerun()
 
 
+def _config_body(payload: dict | None) -> dict:
+    if not isinstance(payload, dict):
+        return {}
+    content = payload.get("content")
+    return content if isinstance(content, dict) else payload
+
+
 # ── Config List ───────────────────────────────────────────────
 try:
     data = cached_list_configs()
@@ -55,14 +89,69 @@ except Exception as exc:  # noqa: BLE001
     st.error(f"Failed to list configs: {exc}")
     config_names = []
 
-st.info(f"Found **{len(config_names)}** configuration(s)")
+# ── Search / filter bar ───────────────────────────────────────
+fc1, fc2, fc3 = st.columns([2, 1.5, 1.5])
+with fc1:
+    search = st.text_input(
+        "🔍 Search by name",
+        placeholder="telecom_churn, college, …",
+        key="cfg_search",
+    )
+with fc2:
+    task_filter = st.selectbox(
+        "Task type",
+        ["All", "classification", "regression", "clustering", "timeseries"],
+        key="cfg_task_filter",
+    )
+with fc3:
+    source_filter = st.selectbox(
+        "Source",
+        ["All", "Built-in", "User copy", "Custom"],
+        key="cfg_source_filter",
+    )
 
-# ── Summary Cards ─────────────────────────────────────────────
+# Pre-load configs we'll show — single shot, cached.
+loaded: list[tuple[str, dict]] = []
 for name in config_names:
     try:
-        cfg = cached_get_config(name)
-        render_config_summary_card(name, cfg)
+        cfg = _config_body(cached_get_config(name) or {})
     except Exception:  # noqa: BLE001
+        cfg = {}
+    loaded.append((name, cfg))
+
+
+def _matches(name: str, cfg: dict) -> bool:
+    if search and search.lower() not in name.lower():
+        return False
+    if task_filter != "All":
+        if (cfg.get("task_type") or "").lower() != task_filter:
+            return False
+    if source_filter != "All":
+        n = name.lower()
+        is_builtin = n.startswith("config_") and (
+            n.endswith("_azureml") or n.endswith("_local")
+        )
+        is_user_copy = "_copy" in n or "_user_" in n
+        if source_filter == "Built-in" and not is_builtin:
+            return False
+        if source_filter == "User copy" and not is_user_copy:
+            return False
+        if source_filter == "Custom" and (is_builtin or is_user_copy):
+            return False
+    return True
+
+
+visible = [(n, c) for n, c in loaded if _matches(n, c)]
+st.info(
+    f"Showing **{len(visible)}** of **{len(config_names)}** configuration(s)"
+    + (" (filtered)" if len(visible) != len(config_names) else "")
+)
+
+# ── Summary Cards ─────────────────────────────────────────────
+for name, cfg in visible:
+    if cfg:
+        render_config_summary_card(name, cfg)
+    else:
         st.markdown(f"📋 **{name}** — _unable to load_")
 
 # ── Detail / Edit / Delete ────────────────────────────────────

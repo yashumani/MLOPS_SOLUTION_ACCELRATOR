@@ -29,10 +29,6 @@ from ui.data_cache import (  # noqa: E402
 inject_theme()
 render_sidebar()
 
-# Warm list_experiments + list_configs exactly once per session so the
-# home page and downstream pages render instantly.
-prewarm(st.session_state)
-
 # Initialise the shared "focused job" slot used by Phase 2 (Focus page) so
 # other pages can read it without guarding every access.
 st.session_state.setdefault("focused_job", None)
@@ -73,6 +69,10 @@ for i, (path, icon, title, desc) in enumerate(_TILES):
                 unsafe_allow_html=True,
             )
             st.page_link(path, label=f"Open {title} →")
+
+# Warm expensive API caches only after the visible shell is painted. A slow
+# Azure ML experiments call should not leave the main panel blank.
+prewarm(st.session_state)
 
 # ── Live stats + Filter bar + Jobs table ─────────────────────────────────────
 import datetime as _dt  # noqa: E402

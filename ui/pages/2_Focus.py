@@ -30,7 +30,10 @@ from ui.components.drift_gauge import render_drift_gauge
 from ui.components.drift_heatmap import render_drift_heatmap
 from ui.components.job_picker import pick_single_job
 from ui.components.log_stream import render_log_stream
-from ui.components.metrics_table import render_metrics_table
+from ui.components.metrics_table import (
+    render_champion_rationale,
+    render_phase_grouped_leaderboard,
+)
 from ui.components.sidebar import render_sidebar
 from ui.components.status_badge import status_badge
 from ui.components.step_timeline import render_step_timeline
@@ -40,6 +43,7 @@ from ui.data_cache import (
     cached_get_job,
     cached_job_drift,
     cached_job_metrics,
+    cached_list_jobs,
     cached_local_outputs,
     cached_pipeline_summary,
     invalidate_job_caches,
@@ -57,6 +61,27 @@ page_header(
 
 client = get_client()
 
+
+def _markdown_table(df: pd.DataFrame, *, max_rows: int = 50) -> str:
+    if df.empty:
+        return ""
+    display_df = df.head(max_rows).copy()
+    display_df.columns = [str(col) for col in display_df.columns]
+    for col in display_df.columns:
+        if display_df[col].dtype == "object":
+            display_df[col] = display_df[col].map(lambda value: "" if value is None else str(value))
+    columns = list(display_df.columns)
+    header = "| " + " | ".join(columns) + " |"
+    separator = "|" + "|".join("---" for _ in columns) + "|"
+    rows = []
+    for _, row in display_df.iterrows():
+        values = [str(row[col]).replace("|", "\\|").replace("\n", " ") for col in columns]
+        rows.append("| " + " | ".join(values) + " |")
+    suffix = ""
+    if len(df) > max_rows:
+        suffix = f"\n\n_Showing first {max_rows} of {len(df)} rows._"
+    return "\n".join([header, separator, *rows]) + suffix
+
 # ── Resolve focused job ──────────────────────────────────────
 focused: dict | None = st.session_state.get("focused_job")
 
@@ -65,6 +90,15 @@ if not focused:
         "Pick a job to focus on. Once selected, every tab below targets the "
         "same job and refreshes independently."
     )
+    try:
+        recent_jobs = (cached_list_jobs(max_results=1) or {}).get("jobs") or []
+    except Exception:  # noqa: BLE001
+        recent_jobs = []
+    if recent_jobs:
+        st.session_state["focused_job"] = recent_jobs[0]
+        focused = recent_jobs[0]
+        st.rerun()
+
     sel = pick_single_job(
         client,
         key="focus_picker",
@@ -86,7 +120,11 @@ studio_url: str | None = focused.get("studio_url")
 # ── Sticky header (live status badge + actions) ──────────────
 @st.fragment(run_every=f"{REFRESH_INTERVAL}s")
 def _focus_header() -> None:
-    detail = cached_get_job(job_name, known_status=known_status) or {}
+    try:
+        detail = cached_get_job(job_name, known_status=known_status) or {}
+    except Exception as exc:  # noqa: BLE001
+        detail = {}
+        st.caption(f"Live status refresh unavailable; showing cached status. {exc}")
     live_status = detail.get("status") or known_status or "Unknown"
     live_studio = detail.get("studio_url") or studio_url
 
@@ -180,9 +218,9 @@ with tab_overview:
 # ── Tab 2: Live Leaderboard (partial) ────────────────────────
 with tab_lb:
     st.caption(
-        "Phase A baseline → Phase B variants → Phase C HPO. Refreshes "
-        "automatically; while a job is still running this shows whatever "
-        "aggregate reports have been written so far."
+        "Phase A baseline → Phase B variants → Phase C HPO. Each phase is "
+        "shown in its own collapsible group; the champion banner above the "
+        "groups summarises the overall winner."
     )
 
     @st.fragment(run_every=f"{REFRESH_INTERVAL}s")
@@ -199,24 +237,26 @@ with tab_lb:
         metrics = data.get("models") or data.get("metrics") or []
         if not metrics:
             st.info(
-                "No leaderboard rows yet — waiting for `s05`/`s06`/`s09` "
+                "No leaderboard rows yet — waiting for `s05z`/`s06`/`s09` "
                 "aggregate reports."
             )
             return
 
-        task_type = data.get("task_type")
-        champion = next((m for m in metrics if m.get("is_champion")), None)
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Records", len(metrics))
-        k2.metric("Task type", task_type or "—")
-        k3.metric("Champion phase", (champion or {}).get("phase", "—"))
-        k4.metric("Champion engine", (champion or {}).get("engine") or "—")
+        try:
+            summary = cached_pipeline_summary(
+                job_name, known_status=known_status
+            ) or {}
+        except Exception:  # noqa: BLE001
+            summary = {}
 
-        st.markdown("#### Metrics")
-        df = render_metrics_table(metrics)
+        # Champion banner.
+        render_champion_rationale(metrics, summary)
+
+        # Phase-grouped leaderboard with one expander per phase.
+        df = render_phase_grouped_leaderboard(metrics)
         if df is not None and not df.empty:
             st.download_button(
-                "⬇️ Download CSV",
+                "⬇️ Download full leaderboard (CSV)",
                 data=df.to_csv(index=False),
                 file_name=f"{display_name}_metrics.csv",
                 mime="text/csv",
@@ -343,21 +383,13 @@ with tab_outputs:
                         m3.metric("Truncated", "yes" if content.get("truncated") else "no")
 
                         if files:
-                            st.dataframe(
-                                pd.DataFrame(files),
-                                use_container_width=True,
-                                hide_index=True,
-                            )
+                            st.markdown(_markdown_table(pd.DataFrame(files)))
                         if content.get("json_content") is not None:
                             st.markdown("##### JSON content")
                             st.json(content["json_content"])
                         if content.get("csv_preview"):
                             st.markdown("##### CSV preview")
-                            st.dataframe(
-                                pd.DataFrame(content["csv_preview"]),
-                                use_container_width=True,
-                                hide_index=True,
-                            )
+                            st.markdown(_markdown_table(pd.DataFrame(content["csv_preview"])))
                         if content.get("text_preview"):
                             st.markdown("##### Text preview")
                             st.code(content["text_preview"], language="text")
@@ -417,17 +449,17 @@ with tab_outputs:
             if not df.empty:
                 df["type"] = df["kind"].fillna("unknown")
                 df["size"] = df["size_bytes"].fillna(0).astype("int64")
-                st.dataframe(
-                    df[
-                        [
-                            "relative_path",
-                            "type",
-                            "size",
-                            "modified_time",
+                st.markdown(
+                    _markdown_table(
+                        df[
+                            [
+                                "relative_path",
+                                "type",
+                                "size",
+                                "modified_time",
+                            ]
                         ]
-                    ],
-                    use_container_width=True,
-                    hide_index=True,
+                    )
                 )
 
 
@@ -476,7 +508,7 @@ with tab_drift:
             render_drift_heatmap(features)
         except Exception as exc:  # noqa: BLE001
             st.warning(f"Could not render heatmap: {exc}")
-            st.dataframe(pd.DataFrame(features), use_container_width=True)
+            st.markdown(_markdown_table(pd.DataFrame(features)))
 
         # Top-N gauges for the worst offenders
         worst = sorted(

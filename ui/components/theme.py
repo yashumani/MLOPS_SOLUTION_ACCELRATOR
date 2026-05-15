@@ -457,7 +457,7 @@ def inject_theme() -> None:
 
 
 def page_header(title: str, subtitle: str = "", icon: str = "") -> None:
-    display_title = f"{icon} {title}" if icon else title
+    display_title = f"{icon} {title}" if icon and icon.isascii() else title
     sub = f'<p class="svm-page-subtitle">{subtitle}</p>' if subtitle else ""
     st.markdown(
         f'<div class="svm-page-header">'

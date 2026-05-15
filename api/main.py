@@ -4,8 +4,9 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from api.core.config import settings
 from api.routers import configs, health, pipelines
@@ -81,13 +82,50 @@ app.add_middleware(
 )
 
 
+def _dashboard_url(request: Request) -> str:
+    """Return the Streamlit dashboard URL for this deployment."""
+    configured_url = settings.ui_base_url.strip().rstrip("/")
+    if configured_url:
+        return f"{configured_url}/"
+
+    host = request.url.hostname or "localhost"
+    scheme = (
+        "https"
+        if host.endswith(".instances.azureml.ms")
+        else request.url.scheme or "http"
+    )
+
+    if host.endswith(".instances.azureml.ms"):
+        labels = host.split(".")
+        api_suffix = f"-{settings.api_port}"
+        ui_suffix = f"-{settings.ui_port}"
+        if labels and labels[0].endswith(api_suffix):
+            labels[0] = f"{labels[0][:-len(api_suffix)]}{ui_suffix}"
+        return f"{scheme}://{'.'.join(labels)}/"
+
+    if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        return f"http://{host}:{settings.ui_port}/"
+
+    return f"{scheme}://{host}:{settings.ui_port}/"
+
+
+def _wants_html(request: Request) -> bool:
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept and "application/json" not in accept
+
+
 @app.get("/", tags=["root"])
-async def root():
-    """Root index. Points callers at docs and the most useful API routes."""
+async def root(request: Request):
+    """Root index. Redirect browsers to the UI; keep JSON for API clients."""
+    dashboard_url = _dashboard_url(request)
+    if _wants_html(request):
+        return RedirectResponse(dashboard_url, status_code=307)
+
     return {
         "service": app.title,
         "status": "ok",
         "version": app.version,
+        "dashboard": dashboard_url,
         "docs": "/docs",
         "redoc": "/redoc",
         "openapi": "/openapi.json",
@@ -110,6 +148,11 @@ async def root():
         "auth": {
             "header": "X-API-Key",
             "note": "Required for all /api/v1/* routes except /api/v1/health and /healthz.",
+        },
+        "frontend": {
+            "service": "Streamlit dashboard",
+            "url": dashboard_url,
+            "note": "Port 8000 is the FastAPI backend; use the dashboard URL for the frontend.",
         },
     }
 

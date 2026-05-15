@@ -6,30 +6,31 @@ import re
 from datetime import datetime
 from typing import Any
 
-import pandas as pd
 import streamlit as st
 
 from ui.components.status_badge import status_badge, status_color
 
 
 CANONICAL_STEPS = [
+    {"key": "s0", "id": "S00", "label": "Data validation", "phase": "Data"},
     {"key": "s1", "id": "S01", "label": "Ingestion", "phase": "Data"},
     {"key": "s2", "id": "S02", "label": "Preparation", "phase": "Data"},
     {"key": "s3", "id": "S03", "label": "Preprocessing", "phase": "Data"},
     {"key": "s4", "id": "S04", "label": "Feature engineering", "phase": "Data"},
-    {"key": "s5a", "id": "S05a", "label": "PyCaret baseline", "phase": "Baseline"},
-    {"key": "s5b", "id": "S05b", "label": "FLAML baseline", "phase": "Baseline"},
-    {"key": "s5t", "id": "S05t", "label": "Time-series baseline", "phase": "Baseline"},
-    {"key": "s5z", "id": "S05z", "label": "Baseline aggregate", "phase": "Baseline"},
-    {"key": "s06", "id": "S06", "label": "Variant runner", "phase": "Phase B"},
-    {"key": "s08", "id": "S08", "label": "Optuna HPO", "phase": "Phase C"},
-    {"key": "s09", "id": "S09", "label": "Phase C aggregate", "phase": "Phase C"},
+    {"key": "s5a", "id": "S05a", "label": "PyCaret baseline", "phase": "Phase A (Baseline)"},
+    {"key": "s5b", "id": "S05b", "label": "FLAML baseline", "phase": "Phase A (Baseline)"},
+    {"key": "s5t", "id": "S05t", "label": "Time-series baseline", "phase": "Phase A (Baseline)"},
+    {"key": "s5z", "id": "S05z", "label": "Baseline aggregate", "phase": "Phase A (Baseline)"},
+    {"key": "s06", "id": "S06", "label": "Variant runner", "phase": "Phase B (Variants)"},
+    {"key": "s08", "id": "S08", "label": "Optuna HPO", "phase": "Phase C (HPO)"},
+    {"key": "s09", "id": "S09", "label": "Phase C aggregate", "phase": "Phase C (HPO)"},
     {"key": "s10", "id": "S10", "label": "Final evaluation", "phase": "Final"},
     {"key": "s12", "id": "S12", "label": "Model registration", "phase": "Register"},
-    {"key": "s13", "id": "S13", "label": "Drift monitor", "phase": "Monitor"},
+    {"key": "s13", "id": "S13", "label": "Drift monitor (optional)", "phase": "Monitor"},
 ]
 
 _STAGE_ALIASES = {
+    "s00": "s0",
     "s01": "s1",
     "s02": "s2",
     "s03": "s3",
@@ -44,6 +45,8 @@ _STAGE_ALIASES = {
 }
 
 _KEYWORDS = {
+    "data_validation": "s0",
+    "validation": "s0",
     "ingestion": "s1",
     "preparation": "s2",
     "preprocessing": "s3",
@@ -113,16 +116,49 @@ def render_step_timeline(steps: list[dict]):
         else:
             extras.append(step)
 
-    cols = st.columns(7)
-    for i, stage in enumerate(CANONICAL_STEPS):
-        step = step_map.get(stage["key"])
-        status = step.get("status") if step else "Not reported"
-        caption = f"{status} (artifact)" if step and step.get("is_inferred") else status
-        color = status_color(status)
-        label = stage["id"]
-        with cols[i % len(cols)]:
-            st.markdown(f":{color}[**{label}**]")
-            st.caption(caption)
+    # Group stages by phase and render each group inside an expander so users
+    # can collapse data-prep noise and focus on a single phase.
+    from itertools import groupby
+
+    for phase_name, phase_iter in groupby(CANONICAL_STEPS, key=lambda s: s["phase"]):
+        phase_stages = list(phase_iter)
+        present = [s for s in phase_stages if step_map.get(s["key"])]
+        running = sum(
+            1 for s in present
+            if (step_map[s["key"]].get("status") or "").lower()
+            in ("running", "preparing", "starting")
+        )
+        completed = sum(
+            1 for s in present
+            if (step_map[s["key"]].get("status") or "").lower()
+            in ("completed", "finished")
+        )
+        failed = sum(
+            1 for s in present
+            if (step_map[s["key"]].get("status") or "").lower() == "failed"
+        )
+        summary = f" — {completed}/{len(phase_stages)} done"
+        if running:
+            summary += f", {running} running"
+        if failed:
+            summary += f", {failed} failed"
+
+        # Default-expand phases with active or failed work; collapse the rest.
+        expand = bool(running or failed) or phase_name.startswith("Phase")
+        with st.expander(f"**{phase_name}**{summary}", expanded=expand):
+            cols = st.columns(min(4, len(phase_stages)) or 1)
+            for i, stage in enumerate(phase_stages):
+                step = step_map.get(stage["key"])
+                status = step.get("status") if step else "Not reported"
+                caption = (
+                    f"{status} (artifact)"
+                    if step and step.get("is_inferred")
+                    else status
+                )
+                color = status_color(status)
+                with cols[i % len(cols)]:
+                    st.markdown(f":{color}[**{stage['id']}**]  {stage['label']}")
+                    st.caption(caption)
 
     rows = []
     for stage in CANONICAL_STEPS:
@@ -146,11 +182,14 @@ def render_step_timeline(steps: list[dict]):
             }
         )
 
-    st.dataframe(
-        pd.DataFrame(rows),
-        use_container_width=True,
-        hide_index=True,
+    st.markdown("#### Step details")
+    header = "| Stage | Name | Phase | Status | Source | Azure child job | Started |"
+    separator = "|---|---|---|---|---|---|---|"
+    body = "\n".join(
+        "| " + " | ".join(str(row[col]).replace("|", "\\|") for col in row) + " |"
+        for row in rows
     )
+    st.markdown("\n".join([header, separator, body]))
 
     if extras:
         with st.expander(f"Unmapped Azure child steps ({len(extras)})", expanded=False):

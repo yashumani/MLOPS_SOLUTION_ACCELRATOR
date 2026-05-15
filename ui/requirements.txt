@@ -4,3 +4,8 @@ streamlit>=1.39,<1.50
 streamlit-echarts==0.4.0
 requests>=2.31,<3
 python-dotenv>=1.0,<2
+# Charting / data — used by ui/components/{drift_gauge,drift_heatmap,metrics_charts}.py
+# and several pages (Focus, Drift Monitor, Configs).
+pandas>=2.0,<2.2
+plotly>=5.0,<6
+PyYAML>=6.0,<7

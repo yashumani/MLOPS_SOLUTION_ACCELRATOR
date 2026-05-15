@@ -239,14 +239,13 @@ def invalidate_config_caches() -> None:
 
 
 def prewarm(session_state: Any) -> None:
-    """Warm list_experiments + list_configs exactly once per session.
+    """Warm inexpensive UI caches exactly once per session.
 
     Pass ``st.session_state``. Idempotent: subsequent calls are no-ops.
     """
     if session_state.get("_prewarmed"):
         return
     try:
-        cached_list_experiments()
         cached_list_configs()
     except Exception:
         # Prewarm is best-effort; swallow so the UI can still render and

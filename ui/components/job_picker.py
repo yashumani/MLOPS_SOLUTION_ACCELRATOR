@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+import requests
 import streamlit as st
 
 from ui.api_client import APIClient
@@ -59,8 +60,42 @@ def _fmt_when(when: Any) -> str:
 
 @st.cache_data(ttl=20, show_spinner=False)
 def _load_tree(_client: APIClient, max_per_experiment: int) -> dict:
-    """Fetch the experiment → jobs tree once, cached for 20s."""
-    return _client.list_experiments(max_results_per_experiment=max_per_experiment)
+    """Fetch a responsive experiment → jobs tree for pickers.
+
+    The full `/experiments` endpoint can be slow in large Azure ML workspaces.
+    For an interactive picker, grouping the latest flat `/jobs` response gives
+    users the same two-level experience without blocking the page.
+    """
+    return _load_recent_jobs_tree(_client, max_per_experiment)
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def _load_recent_jobs_tree(_client: APIClient, max_results: int) -> dict:
+    """Fallback tree built from the faster flat jobs endpoint."""
+    data = _client.list_jobs(max_results=max_results) or {}
+    grouped: dict[str, list[dict]] = {}
+    for job in data.get("jobs", []) or []:
+        exp = job.get("experiment_name") or "(no experiment)"
+        grouped.setdefault(exp, []).append(job)
+
+    nodes: list[dict] = []
+    for exp, jobs in grouped.items():
+        jobs.sort(key=lambda j: str(j.get("start_time") or ""), reverse=True)
+        nodes.append(
+            {
+                "experiment_name": exp,
+                "job_count": len(jobs),
+                "last_activity": jobs[0].get("start_time") if jobs else None,
+                "jobs": jobs,
+            }
+        )
+    nodes.sort(key=lambda n: str(n.get("last_activity") or ""), reverse=True)
+    return {
+        "experiments": nodes,
+        "total_experiments": len(nodes),
+        "total_jobs": sum(len(n.get("jobs", [])) for n in nodes),
+        "source": "recent_jobs_fallback",
+    }
 
 
 def _render_picker(
@@ -78,13 +113,31 @@ def _render_picker(
     with refresh_col:
         if st.button("🔄 Refresh", key=f"{key}_refresh", use_container_width=True):
             _load_tree.clear()
+            _load_recent_jobs_tree.clear()
 
     try:
-        with st.spinner("Loading experiments..."):
+        with st.spinner("Loading recent jobs..."):
             tree = _load_tree(client, max_per_experiment)
+    except requests.Timeout:
+        st.warning(
+            "Experiment tree is taking too long, so this picker is showing "
+            "recent jobs instead. Use Refresh to try the full tree again."
+        )
+        try:
+            tree = _load_recent_jobs_tree(client, max_per_experiment)
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not load recent jobs: {exc}")
+            return []
     except Exception as exc:  # noqa: BLE001
-        st.error(f"Could not load experiment list: {exc}")
-        return []
+        st.warning(
+            "Could not load the full experiment tree; showing recent jobs "
+            "from the faster jobs endpoint instead."
+        )
+        try:
+            tree = _load_recent_jobs_tree(client, max_per_experiment)
+        except Exception:
+            st.error(f"Could not load experiment list: {exc}")
+            return []
 
     experiments = tree.get("experiments", []) or []
     if not experiments:
@@ -183,7 +236,7 @@ def pick_jobs(
     status_filter: list[str] | None = None,
     label_experiment: str = "Experiment",
     label_job: str = "Jobs",
-    max_per_experiment: int = 100,
+    max_per_experiment: int = 20,
 ) -> list[dict]:
     """Render an experiment → jobs picker; return selected job objects.
 
@@ -208,7 +261,7 @@ def pick_single_job(
     status_filter: list[str] | None = None,
     label_experiment: str = "Experiment",
     label_job: str = "Job",
-    max_per_experiment: int = 100,
+    max_per_experiment: int = 20,
 ) -> dict | None:
     """Convenience wrapper: render the picker in single-select mode."""
     chosen = _render_picker(
