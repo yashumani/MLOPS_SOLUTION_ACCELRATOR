@@ -62,6 +62,16 @@ def test_production_submission_requires_content_identity() -> None:
     )
 
 
+def test_local_manifest_input_uses_native_absolute_path(tmp_path: Path) -> None:
+    manifest = tmp_path / "execution-manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+
+    resolved = submit_pipeline._sdk_local_input_path(manifest)
+
+    assert Path(resolved) == manifest.resolve()
+    assert not resolved.startswith("file:")
+
+
 def test_legacy_operator_scripts_delegate_to_canonical_submitter() -> None:
     root = Path(__file__).resolve().parents[1]
     for relative_path in (

@@ -930,10 +930,10 @@ def _persist_execution_artifacts(
 
 
 def _sdk_local_input_path(path: Path) -> str:
-    """Return an SDK-safe absolute local path without an ``azureml:`` prefix."""
+    """Return an absolute filesystem path that Azure ML SDK uploads as input."""
 
     resolved = path.expanduser().resolve(strict=True)
-    return resolved.as_uri()
+    return str(resolved)
 
 
 def _azure_from_local_config(cfg):
