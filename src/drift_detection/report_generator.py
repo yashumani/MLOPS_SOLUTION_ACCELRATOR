@@ -13,11 +13,9 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-from evidently.legacy.pipeline.column_mapping import ColumnMapping
-from evidently.legacy.metric_preset import DataDriftPreset
-from evidently.legacy.report import Report
 
 from .drift_config import DriftConfig
+from .evidently_compat import ColumnMapping, DataDriftPreset, Report
 
 logger = logging.getLogger(__name__)
 

@@ -19,16 +19,16 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from evidently.legacy.pipeline.column_mapping import ColumnMapping
-from evidently.legacy.metric_preset import DataDriftPreset
-from evidently.legacy.metrics import (
-    ColumnDriftMetric,
-    DatasetDriftMetric,
-)
-from evidently.legacy.report import Report
 
 from .baseline_capture import BaselineCapture
 from .drift_config import DriftConfig
+from .evidently_compat import (
+    ColumnDriftMetric,
+    ColumnMapping,
+    DataDriftPreset,
+    DatasetDriftMetric,
+    Report,
+)
 
 logger = logging.getLogger(__name__)
 
