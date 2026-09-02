@@ -28,7 +28,11 @@ from utils.holdout_partition import (
     TRAIN_PARTITION,
     ensure_holdout_partition,
 )
-from orchestration.contracts import SplitManifest, canonical_hash
+from orchestration.contracts import (
+    SplitManifest,
+    canonical_hash,
+    dataset_version_identity,
+)
 
 
 def load_csv(path: str, delimiter: str = ",") -> pd.DataFrame:
@@ -556,12 +560,7 @@ def main():
         test_ids_hash=canonical_hash(
             df2.loc[holdout_rows, ROW_ID_COLUMN].astype(str).tolist()
         ),
-        data_version=(
-            f"{dataset_cfg.get('name', 'dataset')}@"
-            f"{dataset_cfg.get('version', 'unversioned')}:"
-            f"{dataset_cfg.get('blob_path', '')}:"
-            f"{dataset_cfg.get('content_sha256') or 'content-unverified'}"
-        ),
+        data_version=dataset_version_identity(dataset_cfg),
         locked_test=True,
         group_column=dataset_cfg.get("group_column"),
         time_column=dataset_cfg.get("time_column"),

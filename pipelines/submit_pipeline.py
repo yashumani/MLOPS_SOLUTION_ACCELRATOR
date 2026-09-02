@@ -469,6 +469,7 @@ from src.orchestration.contracts import (
     CandidateRecord,
     ExecutionManifest,
     canonical_hash,
+    dataset_version_identity,
 )
 from src.orchestration.config_compiler import compile_config
 from src.utils.recipe_catalog import (
@@ -808,11 +809,7 @@ def _build_execution_manifest(
     phase_b = cfg["phases"]["phase_b"]
     engines = tuple(phase_b["engines"])
     split_id = canonical_hash(cfg["split"])
-    data_version = (
-        f"{cfg['dataset']['name']}@{cfg['dataset']['version']}:"
-        f"{cfg['dataset'].get('blob_path', '')}:"
-        f"{cfg['dataset'].get('content_sha256') or 'content-unverified'}"
-    )
+    data_version = dataset_version_identity(cfg["dataset"])
     resolved_environments = dict(component_environments or {})
     training_environment = resolved_environments.get("variant_runner", environment)
     if _normalize_azureml_environment(training_environment) != (

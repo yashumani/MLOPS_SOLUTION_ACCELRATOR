@@ -14,6 +14,7 @@ from orchestration.contracts import (
     QualityDecision,
     SplitManifest,
     canonical_hash,
+    dataset_version_identity,
 )
 from steps.s06_phaseb_variant_runner import (
     bind_candidate_records_to_runtime_split,
@@ -212,6 +213,8 @@ def test_s06_validates_exact_config_recipe_engine_and_budget_binding(
             "dataset": {
                 "name": "sample",
                 "version": "1",
+                "blob_path": "datasets/sample.csv",
+                "content_sha256": "f" * 64,
                 "target_column": "target",
             },
             "phases": {
@@ -240,7 +243,7 @@ def test_s06_validates_exact_config_recipe_engine_and_budget_binding(
         algorithm="engine_search",
         parameters=normalize_recipe(recipe, task_type="classification"),
         split_id=canonical_hash(config["split"]),
-        data_version="sample@1:",
+        data_version=dataset_version_identity(config["dataset"]),
         code_sha=code_sha,
         environment_hash=environment_hash,
     )

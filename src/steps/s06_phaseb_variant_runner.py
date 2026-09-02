@@ -69,6 +69,7 @@ from orchestration.contracts import (
     QualityDecision,
     SplitManifest,
     canonical_hash,
+    dataset_version_identity,
 )
 from utils.recipe_catalog import normalize_recipe, semantic_recipe_hash
 from utils.fitted_variant_preprocessor import FittedVariantPreprocessor
@@ -1658,11 +1659,7 @@ def validate_execution_manifest_for_run(
         CandidateRecord.from_dict(item) for item in candidate_payloads
     )
     split_id = canonical_hash(config["split"])
-    dataset = config["dataset"]
-    data_version = (
-        f"{dataset['name']}@{dataset['version']}:"
-        f"{dataset.get('blob_path', '')}"
-    )
+    data_version = dataset_version_identity(config["dataset"])
     environment_hash = manifest.environment_hashes.get("training")
     expected_records = tuple(
         CandidateRecord(

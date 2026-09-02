@@ -66,6 +66,20 @@ def canonical_hash(value: Any) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def dataset_version_identity(dataset: Mapping[str, Any]) -> str:
+    """Bind dataset name, version, path, and content digest into one identity."""
+
+    if not isinstance(dataset, Mapping):
+        raise ContractValidationError("dataset must be a mapping")
+    name = _require_non_empty("dataset.name", dataset.get("name"))
+    version = _require_non_empty("dataset.version", dataset.get("version"))
+    blob_path = str(dataset.get("blob_path") or "")
+    content_sha256 = str(
+        dataset.get("content_sha256") or "content-unverified"
+    )
+    return f"{name}@{version}:{blob_path}:{content_sha256}"
+
+
 def _require_non_empty(name: str, value: Any) -> str:
     text = str(value or "").strip()
     if not text:

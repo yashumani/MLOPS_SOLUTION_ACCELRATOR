@@ -1083,10 +1083,9 @@ def main():
             logger.log_param(f"recommend_{param_name}", str(param_value))
     logger.log_param("is_time_series", str(ts_detection["is_time_series"]))
     
-    # V4 Pattern: Use hardcoded outputs/ folder for Azure ML Studio visibility
-    # Component output parameters (args.eda_dir) are NOT visible in Studio UI
-    # Files written to outputs/ folder ARE automatically captured and visible
-    job_outputs_dir = Path("outputs")
+    # Keep EDA evidence in the declared component output so downstream steps and
+    # operators read the same durable artifact from the configured datastore.
+    job_outputs_dir = Path(args.eda_dir)
     job_outputs_dir.mkdir(parents=True, exist_ok=True)
     
     # 🎯 NEW: Generate advanced EDA visualizations (missing heatmap, outliers, target distribution)
@@ -1115,7 +1114,7 @@ def main():
     df.to_csv(args.dataset_out, sep=delimiter, index=False)
     print(f"💾 Saved dataset to: {args.dataset_out} (delimiter: '{delimiter}')")
     
-    # Save comprehensive EDA artifacts to outputs/ folder (visible in Studio)
+    # Save comprehensive EDA artifacts to the named component output.
     
     # Save full EDA JSON
     eda_report_path = job_outputs_dir / "eda_report.json"
@@ -1158,8 +1157,8 @@ def main():
     
     print()
     print("💡 Azure ML Studio Visibility:")
-    print(f"   → Navigate to: Outputs + logs → outputs/")
-    print(f"   → Download HTML report for interactive exploration")
+    print("   → Open the named output: eda_report")
+    print("   → Download the HTML report for interactive exploration")
     
     # End logging
     logger.end_run()
