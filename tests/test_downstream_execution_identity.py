@@ -109,7 +109,7 @@ def test_execution_manifest_is_wired_through_all_downstream_components() -> None
     )
 
     assert phasec["inputs"]["execution_manifest"]["type"] == "uri_file"
-    assert final["version"] == 16
+    assert final["version"] == 17
     assert final["inputs"]["execution_manifest_in"]["type"] == "uri_file"
     assert registration["version"] == 13
     assert registration["inputs"]["execution_manifest"]["type"] == "uri_file"

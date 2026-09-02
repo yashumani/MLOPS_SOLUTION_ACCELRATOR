@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.cluster import KMeans
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 from src.utils.model_bundle import (
@@ -18,6 +19,15 @@ from src.utils.model_bundle import (
     save_model_bundle,
 )
 from src.steps.final_evaluation import eval_model
+
+
+class _MixedFeaturePreprocessor:
+    def __getstate__(self) -> dict[str, object]:
+        return {}
+
+    def transform(self, frame: pd.DataFrame) -> np.ndarray:
+        country = frame["country"].map({"US": 0.0, "UK": 1.0}).to_numpy()
+        return np.column_stack((frame["quantity"].to_numpy(), country))
 
 
 def _bundle():
@@ -197,6 +207,31 @@ def test_locked_test_evaluation_uses_decoded_target_domain():
 
     assert metrics is not None
     assert metrics["accuracy"] == 1.0
+
+
+def test_clustering_evaluation_uses_bundle_raw_input_contract():
+    raw = pd.DataFrame(
+        {
+            "quantity": [1.0, 1.2, 9.8, 10.0],
+            "country": ["US", "US", "UK", "UK"],
+        }
+    )
+    preprocessing = _MixedFeaturePreprocessor()
+    transformed = preprocessing.transform(raw)
+    estimator = KMeans(n_clusters=2, random_state=42, n_init=10).fit(transformed)
+    bundle = ModelBundle(
+        estimator=estimator,
+        preprocessing=preprocessing,
+        task_type="clustering",
+        candidate_id="cluster-raw-contract",
+        input_schema=capture_input_schema(raw),
+    )
+
+    metrics = eval_model(bundle, raw, None, "clustering")
+
+    assert metrics is not None
+    assert metrics["n_clusters"] == 2
+    assert metrics["silhouette_score"] > 0.0
 
 
 def test_random_forest_bundle_hash_is_stable_across_save_load(tmp_path):

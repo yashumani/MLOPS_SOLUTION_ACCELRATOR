@@ -395,6 +395,12 @@ class ModelBundle:
             )
         return predictions
 
+    def transform_features(self, raw_input: Any) -> Any:
+        """Apply the exact fitted preprocessing contract to raw features."""
+
+        self.assert_integrity()
+        return self._transform(raw_input)
+
     def predict_proba(self, raw_input: Any) -> Any:
         self.assert_integrity()
         if not hasattr(self.estimator, "predict_proba"):

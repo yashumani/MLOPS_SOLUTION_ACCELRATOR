@@ -784,20 +784,36 @@ def eval_model(model, X_test, y_test, task: str, label_encoder=None, threshold=N
             }
             return metrics
         elif task == "clustering":
-            # Clustering models (KMeans, DBSCAN, …) require purely numeric input.
-            # Select numeric columns and cast to float64 to match training-time
-            # behaviour in stage5_pycaret_train.py (which also casts to float64).
-            # Non-numeric columns (e.g. residual object cols surviving stage4)
-            # would cause model.predict() to raise, returning None and -inf score.
-            X_eval = X_test.select_dtypes(include=[np.number]).astype(np.float64)
-            if X_eval.shape[1] == 0:
-                print("  ❌ No numeric features available for clustering evaluation")
+            if isinstance(model, ModelBundle) or (
+                hasattr(model, "input_schema")
+                and callable(getattr(model, "transform_features", None))
+            ):
+                # The bundle owns raw schema validation and categorical
+                # preprocessing. Metrics are computed in its fitted feature
+                # space, while prediction receives the untouched holdout.
+                preds = model.predict(X_test)
+                X_eval = model.transform_features(X_test)
+            else:
+                # Compatibility path for legacy bare clustering estimators.
+                X_eval = X_test.select_dtypes(include=[np.number]).astype(
+                    np.float64
+                )
+                if X_eval.shape[1] == 0:
+                    print(
+                        "  ❌ No numeric features available for clustering "
+                        "evaluation"
+                    )
+                    return None
+                if hasattr(model, "feature_names_in_"):
+                    X_eval = X_eval.reindex(
+                        columns=model.feature_names_in_,
+                        fill_value=0.0,
+                    ).astype(np.float64)
+                preds = model.predict(X_eval)
+
+            if getattr(X_eval, "shape", (0, 0))[1] == 0:
+                print("  ❌ No transformed features available for clustering evaluation")
                 return None
-            # Align to model's expected feature set when available
-            if hasattr(model, 'feature_names_in_'):
-                X_eval = X_eval.reindex(columns=model.feature_names_in_, fill_value=0.0)
-                X_eval = X_eval.astype(np.float64)
-            preds = model.predict(X_eval)
 
             # Only compute silhouette if we have more than 1 cluster
             n_clusters = len(np.unique(preds))
@@ -807,7 +823,7 @@ def eval_model(model, X_test, y_test, task: str, label_encoder=None, threshold=N
                 # 🔥 FIX: Sample data for clustering metrics to prevent OOM on large datasets
                 # silhouette_score is O(n²) — 541K rows will exhaust 16 GB RAM
                 _CLUSTER_EVAL_CAP = 10_000
-                n_total = len(X_eval)
+                n_total = int(X_eval.shape[0])
                 if n_total > _CLUSTER_EVAL_CAP:
                     rng = np.random.RandomState(42)
                     idx = rng.choice(n_total, size=_CLUSTER_EVAL_CAP, replace=False)
