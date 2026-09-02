@@ -33,6 +33,6 @@ command: >-
   --metrics_out ${{outputs.metrics_json}}
   --manifest_out ${{outputs.manifest_json}}
   --model_out ${{outputs.best_model}}
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 history:
   enableMLflowTracking: true

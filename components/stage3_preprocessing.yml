@@ -27,6 +27,6 @@ command: >-
   $[[--recipe_name "${{inputs.recipe_name}}"]]
   --report_dir ${{outputs.prep3_report}}
   --dataset_out ${{outputs.dataset_out}}
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 history:
   enableMLflowTracking: true

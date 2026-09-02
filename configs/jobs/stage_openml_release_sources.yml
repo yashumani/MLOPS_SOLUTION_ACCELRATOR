@@ -23,7 +23,7 @@ outputs:
     type: uri_folder
     path: azureml://datastores/mlops_blob/paths/qualification/source-data/openml-release-matrix-v1-20260902/
     mode: upload
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 compute: azureml:mlopsv2computecluster
 limits:
   timeout: 1200

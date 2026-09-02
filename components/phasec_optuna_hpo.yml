@@ -33,6 +33,6 @@ command: >-
   --study_out ${{outputs.hpo_study}}
   --model_out ${{outputs.optimized_model}}
   $[[--phaseb_manifest ${{inputs.phaseb_manifest}}]]
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 history:
   enableMLflowTracking: true

@@ -43,7 +43,7 @@ azureml:
   resource_group: mvpv1
   workspace_name: mlops-accelerator
   compute_target: mlopsv2computecluster
-  environment: mlops-v3-unified:32
+  environment: mlops-v3-unified:33
   environment_name_preprocessing: mlops-v3-preprocessing
   environment_name_training: mlops-v3-training
 

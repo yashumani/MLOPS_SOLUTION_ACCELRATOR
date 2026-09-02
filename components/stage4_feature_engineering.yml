@@ -32,6 +32,6 @@ command: >-
   --dataset_out ${{outputs.dataset_out}}
   --train_out ${{outputs.train_out}}
   --holdout_out ${{outputs.holdout_out}}
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 history:
   enableMLflowTracking: true

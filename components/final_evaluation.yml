@@ -39,6 +39,6 @@ command: >-
   --phasec_model ${{inputs.phasec_champion}}
   --report_out ${{outputs.final_report}}
   --champion_out ${{outputs.final_champion_model}}
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 history:
   enableMLflowTracking: true

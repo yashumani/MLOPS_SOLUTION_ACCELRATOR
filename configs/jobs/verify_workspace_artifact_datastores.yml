@@ -11,7 +11,7 @@ outputs:
   probe:
     type: uri_folder
     mode: upload
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 compute: azureml:mlopsv2computecluster
 limits:
   timeout: 900

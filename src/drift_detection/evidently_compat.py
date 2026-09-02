@@ -1,7 +1,7 @@
 """Evidently imports shared across supported runtime versions."""
 
 try:
-    # Evidently 0.4.x, pinned by the Azure ML v32 environment.
+    # Evidently 0.4.x, pinned by the active Azure ML unified environment.
     from evidently.metric_preset import DataDriftPreset
     from evidently.metrics import ColumnDriftMetric, DatasetDriftMetric
     from evidently.pipeline.column_mapping import ColumnMapping

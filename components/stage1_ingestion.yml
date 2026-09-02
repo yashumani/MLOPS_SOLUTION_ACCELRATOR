@@ -15,6 +15,6 @@ outputs:
     type: uri_file
 code: ../
 command: python src/steps/stage1_ingestion.py --config configs/${{inputs.config_name}} --dataset_in ${{inputs.dataset_in}} --eda_dir ${{outputs.eda_report}} --dataset_out ${{outputs.dataset_out}}
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 history:
   enableMLflowTracking: true

@@ -3,7 +3,7 @@ name: mlops-v3-unified
 version: 33
 description: Release-candidate runtime with current Azure ML and MLflow packages plus pinned security remediations.
 image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04@sha256:74a79815972fc52df633e894463c51ba80b178d039a7fc50c2072930b298fc33
-conda_file: conda.yml
+conda_file: conda_v33.yml
 tags:
   evidence_scope: release-candidate
   predecessor_environment: mlops-v3-unified:32

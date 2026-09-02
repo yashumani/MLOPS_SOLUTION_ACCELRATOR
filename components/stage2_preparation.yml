@@ -40,6 +40,6 @@ command: >-
   --raw_holdout_out ${{outputs.raw_holdout_out}}
   --split_manifest_out ${{outputs.split_manifest_out}}
   $[[--eda_dir ${{inputs.eda_report}}]]
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 history:
   enableMLflowTracking: true

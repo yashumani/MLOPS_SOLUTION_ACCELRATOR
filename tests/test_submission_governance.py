@@ -44,7 +44,7 @@ def test_active_component_environment_identity_is_exact() -> None:
     assert identities["variant_runner"] != identities["model_reg"]
     assert submit_pipeline._normalize_azureml_environment(
         identities["variant_runner"]
-    ) == "mlops-v3-unified:32"
+    ) == "mlops-v3-unified:33"
 
 
 def test_production_submission_requires_content_identity() -> None:

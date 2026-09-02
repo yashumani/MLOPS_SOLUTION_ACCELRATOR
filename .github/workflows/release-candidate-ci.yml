@@ -31,17 +31,17 @@ jobs:
           cache: pip
           cache-dependency-path: |
             api/requirements.txt
-            config/mlops_v3_unified_environment/conda_v32.yml
+            config/mlops_v3_unified_environment/conda_v33.yml
 
       - name: Materialize pinned Azure ML dependencies
         run: |
           python -m pip install --upgrade pip==24.2
-          python -m pip install pyyaml==6.0.2 pytest==8.3.5
+          python -m pip install pip-audit==2.10.1 pyyaml==6.0.2 pytest==8.3.5
           python - <<'PY'
           from pathlib import Path
           import yaml
 
-          source = Path("config/mlops_v3_unified_environment/conda_v32.yml")
+          source = Path("config/mlops_v3_unified_environment/conda_v33.yml")
           dependencies = yaml.safe_load(source.read_text(encoding="utf-8"))["dependencies"]
           pip_dependencies = next(item["pip"] for item in dependencies if isinstance(item, dict) and "pip" in item)
           Path(".ci-runtime-requirements.txt").write_text(
@@ -51,6 +51,17 @@ jobs:
           PY
           python -m pip install -r .ci-runtime-requirements.txt -r api/requirements.txt
           python -m pip check
+
+      - name: Audit Python dependencies
+        run: |
+          # Reviewed runtime exceptions are documented in docs/RUNTIME_V33_SECURITY_REVIEW_2026-09-02.md.
+          python -m pip_audit -r .ci-runtime-requirements.txt --progress-spinner off \
+            --ignore-vuln PYSEC-2026-3447 \
+            --ignore-vuln PYSEC-2024-110 \
+            --ignore-vuln CVE-2026-71211 \
+            --ignore-vuln PYSEC-2026-3552 \
+            --ignore-vuln PYSEC-2026-3740
+          python -m pip_audit -r api/requirements.txt --progress-spinner off
 
       - name: Run backend tests
         env:

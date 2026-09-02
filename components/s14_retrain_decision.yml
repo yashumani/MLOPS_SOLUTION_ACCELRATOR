@@ -57,7 +57,7 @@ command: >
   --retrain_decision ${{outputs.retrain_decision}}
   --decision_ledger_record ${{outputs.decision_ledger_record}}
 
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 
 resources:
   instance_count: 1

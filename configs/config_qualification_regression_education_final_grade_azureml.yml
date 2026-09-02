@@ -21,7 +21,7 @@ azureml:
   workspace_name: mlops-accelerator
   compute_target: mlopsv2computecluster
   default_datastore: mlops_blob
-  environment: mlops-v3-unified:32
+  environment: mlops-v3-unified:33
 stage1:
   min_rows: 100
   max_missing_pct: 50

@@ -1224,7 +1224,7 @@ def main():
     env_version = (
         args.env_version
         or (cfg.get("azureml") or cfg.get("azure_ml") or {}).get("environment")
-        or "mlops-v3-unified:32"
+        or "mlops-v3-unified:33"
     )
     component_environments = _component_environment_identities()
     pinned_training_environment = component_environments["variant_runner"]

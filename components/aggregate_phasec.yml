@@ -24,6 +24,6 @@ command: >-
   --optimized_model ${{inputs.optimized_model}}
   --report_out ${{outputs.aggregate_report}}
   --champion_out ${{outputs.optimized_champion_model}}
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 history:
   enableMLflowTracking: true

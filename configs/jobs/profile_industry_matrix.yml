@@ -19,7 +19,7 @@ outputs:
     type: uri_folder
     path: azureml://datastores/mlops_blob/paths/qualification/reports/industry-matrix-v4-20260902/
     mode: upload
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 compute: azureml:mlopsv2computecluster
 limits:
   timeout: 3600

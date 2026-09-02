@@ -114,7 +114,7 @@ command: >-
   --round2_max_variants ${{inputs.round2_max_variants}}
   --proxy_prune_threshold ${{inputs.proxy_prune_threshold}}
   --cache_enabled ${{inputs.cache_enabled}}
-environment: azureml:mlops-v3-unified:32
+environment: azureml:mlops-v3-unified:33
 
 history:
   enableMLflowTracking: true

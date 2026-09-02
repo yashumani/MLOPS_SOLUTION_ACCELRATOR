@@ -827,7 +827,7 @@ def compile_config(
                 )
             ),
             "environment": str(
-                azure_raw.get("environment", "mlops-v3-unified:32")
+                azure_raw.get("environment", "mlops-v3-unified:33")
             ),
             "environment_name_preprocessing": str(
                 azure_raw.get(

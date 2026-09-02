@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import yaml
+from packaging.requirements import Requirement
 
 
 REQUIRED_PACKAGES = (
@@ -43,11 +45,14 @@ REQUIRED_PACKAGES = (
 
 IMPORT_MODULES = (
     "azure.ai.ml",
+    "azure.core",
+    "azure.identity",
     "azureml.mlflow",
     "azureml.fsspec",
     "boruta",
     "catboost",
     "category_encoders",
+    "cryptography",
     "evidently",
     "flaml",
     "imblearn",
@@ -55,10 +60,56 @@ IMPORT_MODULES = (
     "mlflow",
     "optuna",
     "pycaret",
+    "pyarrow",
     "pkg_resources",
+    "google.protobuf",
     "sklearn",
     "xgboost",
 )
+
+
+def _load_expected_versions(conda_path: Path) -> dict[str, str]:
+    payload = yaml.safe_load(conda_path.read_text(encoding="utf-8"))
+    dependencies = payload.get("dependencies", [])
+    pip_dependencies = next(
+        (
+            item["pip"]
+            for item in dependencies
+            if isinstance(item, dict) and isinstance(item.get("pip"), list)
+        ),
+        None,
+    )
+    if not pip_dependencies:
+        raise RuntimeError(f"No pip dependencies found in {conda_path}")
+
+    expected: dict[str, str] = {}
+    for raw_requirement in pip_dependencies:
+        requirement = Requirement(raw_requirement)
+        specifiers = list(requirement.specifier)
+        if len(specifiers) != 1 or specifiers[0].operator != "==":
+            raise RuntimeError(
+                f"Direct dependency is not exactly pinned: {raw_requirement}"
+            )
+        expected[requirement.name] = specifiers[0].version
+    return expected
+
+
+def _validate_expected_versions(expected: dict[str, str]) -> dict[str, str]:
+    observed = {
+        name: importlib.metadata.version(name)
+        for name in sorted(expected)
+    }
+    mismatches = {
+        name: {"expected": expected[name], "observed": observed[name]}
+        for name in sorted(expected)
+        if observed[name] != expected[name]
+    }
+    if mismatches:
+        raise RuntimeError(
+            "Azure ML environment package version mismatch: "
+            + json.dumps(mismatches, sort_keys=True)
+        )
+    return observed
 
 
 def _run_pip_check() -> str:
@@ -123,6 +174,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--environment", required=True)
+    parser.add_argument("--expected-conda", type=Path)
     args = parser.parse_args()
     os.environ["MLOPS_ENVIRONMENT_UNDER_TEST"] = args.environment
 
@@ -132,10 +184,17 @@ def main() -> int:
         importlib.import_module(module_name)
         imported.append(module_name)
 
+    expected_versions = (
+        _load_expected_versions(args.expected_conda.resolve())
+        if args.expected_conda
+        else {}
+    )
     package_versions = {
         name: importlib.metadata.version(name)
         for name in REQUIRED_PACKAGES
     }
+    if expected_versions:
+        package_versions.update(_validate_expected_versions(expected_versions))
     evidence = {
         "schema_version": "1.0",
         "validated_at": datetime.now(timezone.utc).isoformat(),
@@ -145,6 +204,8 @@ def main() -> int:
         "platform": platform.platform(),
         "pip_check": pip_check,
         "package_versions": package_versions,
+        "expected_package_versions": expected_versions,
+        "package_version_check": "pass" if expected_versions else "not_requested",
         "imports": imported,
         "evidently": _validate_evidently(),
         "mlflow": _validate_mlflow(),
