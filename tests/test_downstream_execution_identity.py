@@ -54,7 +54,9 @@ def test_downstream_manifest_binds_exact_compiled_config(tmp_path: Path) -> None
     config = _compiled_config()
     manifest = _manifest(config)
     path = tmp_path / "execution_manifest.json"
-    path.write_text(manifest.to_json(), encoding="utf-8")
+    enriched = manifest.to_dict()
+    enriched["realized_candidate_records"] = [{"candidate_id": "realized"}]
+    path.write_text(json.dumps(enriched), encoding="utf-8")
 
     assert validate_execution_manifest_binding(path, config) == manifest
 
@@ -89,6 +91,7 @@ def test_execution_manifest_is_wired_through_all_downstream_components() -> None
     phasec = yaml.safe_load(
         (root / "components/phasec_optuna_hpo.yml").read_text(encoding="utf-8")
     )
+    assert phasec["version"] == 13
     final = yaml.safe_load(
         (root / "components/final_evaluation.yml").read_text(encoding="utf-8")
     )

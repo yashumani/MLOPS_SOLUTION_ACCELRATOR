@@ -133,6 +133,17 @@ def build_partitioned_stage2_inputs(
     return raw_partitioned, model_partitioned
 
 
+def resolve_raw_model_exclusions(
+    configured_exclusions: list[str],
+    learned_high_cardinality_drops: list[str],
+) -> list[str]:
+    """Return the schema filters shared by raw train and locked holdout."""
+
+    return sorted(
+        set(configured_exclusions).union(learned_high_cardinality_drops)
+    )
+
+
 def extract_raw_train_and_holdout(
     raw_partitioned: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -530,6 +541,12 @@ def main():
     )
     report["excluded_feature_columns"] = excluded_feature_columns
     report["excluded_feature_columns_count"] = len(excluded_feature_columns)
+    raw_model_exclusions = resolve_raw_model_exclusions(
+        excluded_feature_columns,
+        dropped,
+    )
+    report["raw_model_input_excluded_columns"] = raw_model_exclusions
+    report["raw_model_input_excluded_columns_count"] = len(raw_model_exclusions)
 
     # Propagate time-series signal into the prep report
     if ts_detection:
@@ -553,11 +570,11 @@ def main():
     )
     raw_train_frame = drop_excluded_feature_columns(
         raw_train_frame,
-        excluded_feature_columns,
+        raw_model_exclusions,
     )
     raw_holdout_frame = drop_excluded_feature_columns(
         raw_holdout_frame,
-        excluded_feature_columns,
+        raw_model_exclusions,
     )
     if len(raw_train_frame) != len(train_frame):
         raise RuntimeError(

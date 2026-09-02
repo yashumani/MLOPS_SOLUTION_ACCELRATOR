@@ -50,6 +50,30 @@ def test_candidate_identity_is_stable_and_deeply_immutable() -> None:
         first.parameters["new"] = "value"
 
 
+def test_execution_manifest_tolerates_runtime_candidate_enrichment() -> None:
+    manifest = ExecutionManifest(
+        config_hash="a" * 64,
+        task_type="classification",
+        dataset={"name": "sample", "version": "1"},
+        split_policy={"strategy": "random"},
+        engines=("pycaret",),
+        recipe_paths=("classification/variant.yml",),
+        recipe_ids=("recipe-1",),
+        candidate_ids=("candidate-1",),
+        budgets={"round1_max_variants": 1},
+        code_sha="c" * 40,
+        environment_hashes={"training": "d" * 64},
+        recipe_catalog_hash="e" * 64,
+    )
+    payload = manifest.to_dict()
+    payload["candidate_records"] = [{"candidate_id": "submitted"}]
+    payload["realized_candidate_records"] = [{"candidate_id": "realized"}]
+
+    loaded = ExecutionManifest.from_dict(payload)
+
+    assert loaded.execution_id == manifest.execution_id
+
+
 def test_phaseb_requires_training_environment_identity() -> None:
     manifest = ExecutionManifest(
         config_hash="a" * 64,

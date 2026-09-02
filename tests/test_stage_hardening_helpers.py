@@ -13,6 +13,7 @@ from src.steps.stage2_preparation import (
     prep_dataframe,
     resolve_excluded_feature_columns,
     resolve_protected_columns,
+    resolve_raw_model_exclusions,
 )
 from src.steps.stage3_preprocessing import (
     build_preprocessing_anomaly_report,
@@ -104,6 +105,25 @@ def test_stage2_excludes_columns_before_learned_preparation() -> None:
     assert {"description", "invoice_id"}.isdisjoint(model_partitioned.columns)
     assert {"description", "invoice_id"}.isdisjoint(prepared.columns)
     assert dropped == []
+
+
+def test_stage2_propagates_learned_schema_drops_to_raw_model_inputs() -> None:
+    exclusions = resolve_raw_model_exclusions(
+        ["customer_id"],
+        ["invoice_date", "customer_id"],
+    )
+    frame = pd.DataFrame(
+        {
+            "customer_id": ["a", "b"],
+            "invoice_date": ["2026-01-01", "2026-01-02"],
+            "quantity": [1, 2],
+        }
+    )
+
+    filtered = drop_excluded_feature_columns(frame, exclusions)
+
+    assert exclusions == ["customer_id", "invoice_date"]
+    assert filtered.columns.tolist() == ["quantity"]
 
 
 def test_stage3_resolves_task_specific_baseline_alias() -> None:
