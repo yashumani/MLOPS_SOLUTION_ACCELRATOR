@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest import mock
@@ -32,6 +33,24 @@ if str(_REPO_ROOT) not in sys.path:
 # Importing submit_pipeline executes module-level code (logger setup, recipe
 # selector import).  Skip the entire module cleanly if a dependency is missing.
 sp = pytest.importorskip("pipelines.submit_pipeline")
+
+
+def test_aml_snapshot_excludes_frontend_dependencies():
+    from azure.ai.ml._utils._asset_utils import get_ignore_file
+
+    ignore = get_ignore_file(_REPO_ROOT)
+    assert ignore.is_file_excluded(
+        str(
+            _REPO_ROOT
+            / "react-ui"
+            / "node_modules"
+            / "package"
+            / "index.js"
+        )
+    )
+    assert ignore.is_file_excluded(
+        str(_REPO_ROOT / "react-ui" / "dist" / "bundle.js")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +139,7 @@ class TestSubmitLock:
             "expires": 10**12,        # not TTL-expired
             "user": "ghost",
         }))
-        with mock.patch("os.kill", side_effect=ProcessLookupError):
+        with mock.patch.object(sp, "_pid_is_alive", return_value=False):
             assert sp._acquire_lock() is True
 
     def test_cross_user_lock_is_genuine_eperm(self):
@@ -132,9 +151,31 @@ class TestSubmitLock:
             "expires": __import__("datetime").datetime.now().timestamp() + 3600,
             "user": "another_user",
         }))
-        with mock.patch("os.kill", side_effect=PermissionError):
+        with mock.patch.object(sp, "_pid_is_alive", return_value=True):
             assert sp._acquire_lock() is False
         assert sp._LOCK_FILE.exists(), "Cross-user lock must NOT be removed"
+
+    @pytest.mark.skipif(os.name != "nt", reason="Windows-specific liveness probe")
+    def test_windows_probe_does_not_call_os_kill(self):
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        try:
+            with mock.patch(
+                "os.kill",
+                side_effect=AssertionError("destructive probe"),
+            ):
+                assert sp._pid_is_alive(proc.pid) is True
+        finally:
+            proc.terminate()
+            proc.wait(timeout=10)
+
+        with mock.patch(
+            "os.kill",
+            side_effect=AssertionError("destructive probe"),
+        ):
+            assert sp._pid_is_alive(proc.pid) is False
 
     def test_ttl_expiry_reclaims_lock(self):
         sp._LOCK_FILE.write_text(json.dumps({
@@ -164,6 +205,7 @@ class TestForceAudit:
             experiment_name = "exp1"
             display_name = "disp1"
             compute = "mlopsv2computecluster"
+            force_reason = "operator-approved recovery"
 
         sp._record_force_audit(_Args(), user="alice")
         sp._record_force_audit(_Args(), user="bob")
@@ -174,14 +216,13 @@ class TestForceAudit:
         assert rec["user"] == "alice"
         assert rec["config"] == "configs/x.yml"
         assert rec["experiment_name"] == "exp1"
+        assert rec["reason"] == "operator-approved recovery"
+        assert rec["audit_id"]
         assert rec["pid"] == os.getpid()
         assert "timestamp" in rec
 
-    def test_audit_failure_does_not_raise(self, tmp_path, monkeypatch):
-        # Point audit at a non-writable directory; must downgrade to warning, not raise.
-        bad = tmp_path / "ro_dir" / "audit.jsonl"
-        bad.parent.mkdir()
-        bad.parent.chmod(0o400)
+    def test_audit_failure_fails_closed(self, tmp_path, monkeypatch):
+        bad = tmp_path / "missing" / "audit.jsonl"
         monkeypatch.setattr(sp, "_FORCE_AUDIT_FILE", bad)
 
         class _Args:
@@ -189,11 +230,17 @@ class TestForceAudit:
             experiment_name = None
             display_name = None
             compute = None
+            force_reason = "approved duplicate"
 
-        try:
-            sp._record_force_audit(_Args(), user="ci")  # must not raise
-        finally:
-            bad.parent.chmod(0o700)
+        with pytest.raises(OSError):
+            sp._record_force_audit(_Args(), user="ci")
+
+    def test_force_requires_reason(self):
+        class _Args:
+            force_reason = "  "
+
+        with pytest.raises(ValueError, match="force_reason"):
+            sp._record_force_audit(_Args(), user="ci")
 
 
 # ---------------------------------------------------------------------------
@@ -210,3 +257,37 @@ class TestComponentLoaderHardFail:
         # Manifest should contain at least the canonical s00 → s12 keys.
         assert isinstance(pb._COMPONENT_MANIFEST, dict)
         assert len(pb._COMPONENT_MANIFEST) >= 1
+
+
+@pytest.mark.parametrize(
+    ("pipeline_name", "extra_args"),
+    [
+        ("full_pipeline", {}),
+        ("full_pipeline_v2", {"variants_list": "classification/baseline"}),
+    ],
+)
+def test_model_registration_uses_delegated_user_identity(
+    pipeline_name, extra_args
+):
+    from azure.ai.ml import Input
+    from azure.ai.ml.entities import UserIdentityConfiguration
+
+    pb = pytest.importorskip("pipelines.pipeline_builder")
+    pipeline = getattr(pb, pipeline_name)(
+        config_name="config_classification_telecom_churn_azureml.yml",
+        dataset_folder=Input(
+            type="uri_folder",
+            path="azureml://datastores/mlops_blob/paths/datasets/",
+        ),
+        **extra_args,
+    )
+
+    assert isinstance(
+        pipeline.jobs["s12"].identity,
+        UserIdentityConfiguration,
+    )
+    assert {
+        job_name
+        for job_name, job in pipeline.jobs.items()
+        if job.identity is not None
+    } == {"s12"}

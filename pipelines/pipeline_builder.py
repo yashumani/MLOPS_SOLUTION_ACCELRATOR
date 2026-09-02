@@ -1,6 +1,7 @@
 import logging
+import yaml
 from azure.ai.ml import dsl, Input, Output
-from azure.ai.ml.entities import PipelineJob
+from azure.ai.ml.entities import PipelineJob, UserIdentityConfiguration
 from azure.ai.ml import load_component
 from pathlib import Path
 
@@ -32,6 +33,24 @@ def _load_component_safe(name: str, source: str):
         ) from e
 
 
+def _phase_b_safety_net_review_required(config_name: str) -> bool:
+    """Return the Phase B safety-net review flag for submit-time diagnostics."""
+    try:
+        path = ROOT / "configs" / str(config_name)
+        if not path.exists():
+            path = ROOT / "configs" / f"{config_name}.yml"
+        if not path.exists():
+            return True
+        with open(path, "r") as f:
+            cfg = yaml.safe_load(f) or {}
+        phase_b = (cfg.get("phases") or {}).get("phase_b") or (cfg.get("phases") or {}).get("phase_b_recipes") or {}
+        if isinstance(phase_b, dict):
+            return bool(phase_b.get("safety_net_review_required", True))
+    except Exception as exc:  # noqa: BLE001 - diagnostics only; never block graph construction
+        logger.warning("could not inspect Phase B safety-net review flag: %s", exc)
+    return True
+
+
 # Load components fresh from YAML files
 # Note: Version changes ensure Azure ML reloads from disk
 ingestion = _load_component_safe("ingestion", str(ROOT / "components/stage1_ingestion.yml"))
@@ -48,9 +67,10 @@ phasec_hpo = _load_component_safe("phasec_hpo", str(ROOT / "components/phasec_op
 agg_phasec = _load_component_safe("agg_phasec", str(ROOT / "components/aggregate_phasec.yml"))
 final_eval = _load_component_safe("final_eval", str(ROOT / "components/final_evaluation.yml"))
 model_reg = _load_component_safe("model_reg", str(ROOT / "components/s12_model_registration.yml"))
-timeseries_train = _load_component_safe("timeseries_train", str(ROOT / "components/stage5_timeseries_train.yml"))
 # Drift detection (s13) — additive layer on top of v3-production
 drift_monitor = _load_component_safe("drift_monitor", str(ROOT / "components/s13_drift_monitor.yml"))
+# Auto-retrain decision gate (s14) — decision artifact only; controller owns submissions
+retrain_decision = _load_component_safe("retrain_decision", str(ROOT / "components/s14_retrain_decision.yml"))
 
 # [PB2] One-time summary log of all components loaded at import time.
 logger.info(
@@ -62,16 +82,20 @@ logger.info(
 def full_pipeline(
     config_name: str,
     dataset_folder: Input(type="uri_folder"),
+    execution_manifest: Input(type="uri_file"),
+    candidate_catalog: Input(type="uri_file"),
     variants_list: str = "",
     engine_list: str = "pycaret,flaml",
     time_budget_per_variant: int = 300,
+    phaseb_time_budget_sec: int = 10800,
     drift_baseline_in: Input(type="uri_folder", optional=True) = None,
+    drift_baseline_uri: str = "",
 ):
     """V3 production pipeline — runs ALL selected variants via the variant runner.
     
     ARCHITECTURE (Feb 2026):
     - Stages 1-4: Ingestion → Preparation → Preprocessing → Feature Engineering
-    - Stage 5 (Baseline): PyCaret + FLAML + TimeSeries (parallel)
+    - Stage 5 (Baseline): PyCaret + FLAML (parallel)
     - Stage 6 (Phase B): Single variant runner step that processes N variants
       with nested MLflow runs per variant×engine. No more 2-recipe limit.
     - Stage 8 (Phase C): Optuna HPO
@@ -80,32 +104,39 @@ def full_pipeline(
     Args:
         config_name: Config YAML filename (from uploaded code/configs directory)
         dataset_folder: Datastore folder URI containing dataset
-        variants_list: Comma-separated list of ALL recipe/variant paths to run
+        candidate_catalog: Immutable complete recipe/candidate catalog artifact
+        variants_list: Bounded compatibility input for older direct callers
         engine_list: Comma-separated engines (e.g. "pycaret,flaml")
         time_budget_per_variant: Max seconds per variant training
     """
     s1 = ingestion(config_name=config_name, dataset_in=dataset_folder)
     s2 = preparation(config_name=config_name, dataset_in=s1.outputs.dataset_out,
                      eda_report=s1.outputs.eda_report)
+    s2.outputs.train_out = Output(type="uri_file")
+    s2.outputs.raw_train_out = Output(type="uri_file")
+    s2.outputs.raw_holdout_out = Output(type="uri_file")
+    s2.outputs.split_manifest_out = Output(type="uri_file")
     s3 = preprocessing(config_name=config_name, dataset_in=s2.outputs.dataset_out, prep_report=s2.outputs.prep_report, recipe_name="recipe_baseline.yml")
     s4 = feature_eng(config_name=config_name, dataset_in=s3.outputs.dataset_out, recipe_name="recipe_baseline.yml")
     
     # Baseline training - explicitly wire outputs to force Azure ML recognition
-    s5a = pycaret_train(config_name=config_name, dataset_in=s4.outputs.dataset_out)
+    s5a = pycaret_train(
+        config_name=config_name,
+        dataset_in=s2.outputs.raw_train_out,
+        split_manifest=s2.outputs.split_manifest_out,
+    )
     s5a.outputs.metrics_json = Output(type="uri_file")
     s5a.outputs.manifest_json = Output(type="uri_file")
     s5a.outputs.best_model = Output(type="uri_folder")
     
-    s5b = flaml_train(config_name=config_name, dataset_in=s4.outputs.dataset_out)
+    s5b = flaml_train(
+        config_name=config_name,
+        dataset_in=s2.outputs.raw_train_out,
+        split_manifest=s2.outputs.split_manifest_out,
+    )
     s5b.outputs.metrics_json = Output(type="uri_file")
     s5b.outputs.manifest_json = Output(type="uri_file")
     s5b.outputs.best_model = Output(type="uri_folder")
-    
-    # Time-series forecasting (skips internally if not time-series)
-    s5t = timeseries_train(config_name=config_name, dataset_in=s4.outputs.dataset_out)
-    s5t.outputs.metrics_json = Output(type="uri_file")
-    s5t.outputs.manifest_json = Output(type="uri_file")
-    s5t.outputs.best_model = Output(type="uri_folder")
     
     s5z = agg_baseline(
         config_name=config_name,
@@ -120,30 +151,37 @@ def full_pipeline(
     # Each variant×engine gets its own nested MLflow run for full traceability.
     # C2 FIX: Wire to s2 (prepared data) so variant runner applies its OWN preprocessing recipes.
     # Using s4 (already preprocessed) would double-preprocess and defeat variant-specific recipes.
-    s06 = variant_runner(
+    if _phase_b_safety_net_review_required(config_name):
+        logger.warning(
+            "Phase B safety-net champions require operator review before registration."
+        )
+    s06_kwargs = dict(
         config_name=config_name,
-        variants_list=variants_list,
         engine_list=engine_list,
-        dataset_in=s2.outputs.dataset_out,
+        dataset_in=s2.outputs.raw_train_out,
+        split_manifest=s2.outputs.split_manifest_out,
         time_budget_per_variant=time_budget_per_variant,
+        phaseb_time_budget_sec=phaseb_time_budget_sec,
     )
+    s06_kwargs["execution_manifest"] = execution_manifest
+    s06_kwargs["candidate_catalog"] = candidate_catalog
+    s06 = variant_runner(**s06_kwargs)
     s06.outputs.leaderboard_csv = Output(type="uri_file")
     s06.outputs.all_results_json = Output(type="uri_file")
     s06.outputs.champion_manifest = Output(type="uri_file")
     s06.outputs.champion_model = Output(type="uri_folder")
+    s06.outputs.execution_manifest_out = Output(type="uri_file")
+    s06.outputs.split_manifest_out = Output(type="uri_file")
+    s06.outputs.quality_decision_out = Output(type="uri_file")
     
     # Phase C - Optuna HPO (s08) and aggregate (s09)
     # 🔥 FIX (A1): Wire Phase B champion manifest so Phase C tunes the correct algorithm
-    # ARCHITECTURAL DECISION (2026-03-29): Phase C receives s4 (baseline-preprocessed)
-    # data, NOT s2 or Phase B variant-preprocessed data. This is INTENTIONAL because:
-    #   (a) s06 runs N variants × M engines — there is no single "Phase B dataset"
-    #   (b) phasec_optuna_hpo.py replicates the champion recipe's encoding + scaling
-    #       transforms onto s4 data (see phasec L390-440), bridging the gap
-    #   (c) Blueprint Row 11 specifies "Engineered dataset from s04"
-    #   (d) For tree-based champions, the preprocessing difference is negligible
+    # Phase C fits the complete champion recipe on the same raw/prepared
+    # training-only boundary as Phase B.
     s08 = phasec_hpo(
         config_name=config_name,
-        dataset_in=s4.outputs.dataset_out,
+        dataset_in=s2.outputs.raw_train_out,
+        execution_manifest=s06.outputs.execution_manifest_out,
         phaseb_manifest=s06.outputs.champion_manifest,
     )
     s08.outputs.hpo_metrics_json = Output(type="uri_file")
@@ -158,7 +196,10 @@ def full_pipeline(
     # Final evaluation (s10) - select champion among baseline, phase B, phase C
     s10 = final_eval(
         config_name=config_name,
-        dataset_in=s4.outputs.dataset_out,
+        dataset_in=s2.outputs.raw_train_out,
+        holdout_in=s2.outputs.raw_holdout_out,
+        split_manifest_in=s2.outputs.split_manifest_out,
+        execution_manifest_in=s06.outputs.execution_manifest_out,
         baseline_champion=s5z.outputs.champion_model,
         phaseb_champion=s06.outputs.champion_model,
         phasec_champion=s09.outputs.optimized_champion_model,
@@ -169,19 +210,35 @@ def full_pipeline(
         config_name=config_name,
         champion_manifest=s10.outputs.final_report,
         champion_model=s10.outputs.final_champion_model,
+        execution_manifest=s06.outputs.execution_manifest_out,
     )
+    # Model registration uses the submitting user's delegated identity.
+    s12.identity = UserIdentityConfiguration()
     
     # s13 — Drift monitoring & cadence assessment (additive layer)
     # s13_kwargs: optional wiring for s13 (model registration); empty dict if upstream did not produce expected outputs
     s13_kwargs = dict(
         config_name=config_name,
-        dataset_in=s4.outputs.dataset_out,
+        # Drift reference evidence must exclude the locked final holdout.
+        dataset_in=s4.outputs.train_out,
         final_report=s10.outputs.final_report,
         registry_info=s12.outputs.registry_info,
     )
     if drift_baseline_in is not None:
         s13_kwargs["baseline_in"] = drift_baseline_in
+        s13_kwargs["baseline_uri"] = drift_baseline_uri
     s13 = drift_monitor(**s13_kwargs)
+
+    # s14 — Auto-retrain decision gate (artifact-only; no nested submissions)
+    s14 = retrain_decision(
+        config_name=config_name,
+        drift_report=s13.outputs.drift_report,
+        candidate_baseline=s13.outputs.drift_baseline,
+        final_report=s10.outputs.final_report,
+        registry_info=s12.outputs.registry_info,
+    )
+    s14.outputs.retrain_decision = Output(type="uri_file")
+    s14.outputs.decision_ledger_record = Output(type="uri_file")
     
     return {
         "eda_report": s1.outputs.eda_report,
@@ -189,6 +246,8 @@ def full_pipeline(
         "prep3_report": s3.outputs.prep3_report,
         "fe_report": s4.outputs.fe_report,
         "dataset_processed": s4.outputs.dataset_out,
+        "dataset_train": s4.outputs.train_out,
+        "dataset_holdout": s2.outputs.raw_holdout_out,
         "baseline_pycaret_metrics": s5a.outputs.metrics_json,
         "baseline_flaml_metrics": s5b.outputs.metrics_json,
         "baseline_aggregate_report": s5z.outputs.aggregate_report,
@@ -197,6 +256,9 @@ def full_pipeline(
         "phaseb_all_results": s06.outputs.all_results_json,
         "phaseb_champion_manifest": s06.outputs.champion_manifest,
         "phaseb_champion_model": s06.outputs.champion_model,
+        "execution_manifest": s06.outputs.execution_manifest_out,
+        "split_manifest": s06.outputs.split_manifest_out,
+        "quality_decision": s06.outputs.quality_decision_out,
         "phasec_aggregate_report": s09.outputs.aggregate_report,
         "phasec_champion_model": s09.outputs.optimized_champion_model,
         "final_report": s10.outputs.final_report,
@@ -204,6 +266,8 @@ def full_pipeline(
         "registry_info": s12.outputs.registry_info,
         "drift_report": s13.outputs.drift_report,
         "drift_baseline": s13.outputs.drift_baseline,
+        "retrain_decision": s14.outputs.retrain_decision,
+        "decision_ledger_record": s14.outputs.decision_ledger_record,
     }
 
 
@@ -211,17 +275,21 @@ def full_pipeline(
 def full_pipeline_v2(
     config_name: str,
     dataset_folder: Input(type="uri_folder"),
-    variants_list: str,
+    execution_manifest: Input(type="uri_file"),
+    candidate_catalog: Input(type="uri_file"),
+    variants_list: str = "",
     engine_list: str = "pycaret,flaml",
     time_budget_per_variant: int = 300,
+    phaseb_time_budget_sec: int = 10800,
     # V3-Proposed Planner parameters
     planner_enabled: bool = False,
     round1_max_variants: int = 40,
-    round2_max_variants: int = 10,
+    round2_max_variants: int = 8,
     # Validated upstream by K2 (config_schema.py); pipeline_builder receives sanitized values
     proxy_prune_threshold: float = 0.50,
     cache_enabled: bool = True,
     drift_baseline_in: Input(type="uri_folder", optional=True) = None,
+    drift_baseline_uri: str = "",
 ):
     """V3 pipeline with intelligent variant recommendation (Phase 1).
     
@@ -238,7 +306,8 @@ def full_pipeline_v2(
     Args:
         config_name: Config YAML filename (from uploaded code/configs directory)
         dataset_folder: Datastore folder URI containing dataset
-        variants_list: Comma-separated list of variant paths (pre-scored by submission script)
+        candidate_catalog: Immutable complete recipe/candidate catalog artifact
+        variants_list: Bounded compatibility input for older direct callers
         engine_list: Comma-separated engines (e.g., "pycaret,flaml")
         time_budget_per_variant: Max time per variant training (seconds)
         planner_enabled: Enable V3-Proposed adaptive planner mode
@@ -250,6 +319,10 @@ def full_pipeline_v2(
     s1 = ingestion(config_name=config_name, dataset_in=dataset_folder)
     s2 = preparation(config_name=config_name, dataset_in=s1.outputs.dataset_out,
                      eda_report=s1.outputs.eda_report)
+    s2.outputs.train_out = Output(type="uri_file")
+    s2.outputs.raw_train_out = Output(type="uri_file")
+    s2.outputs.raw_holdout_out = Output(type="uri_file")
+    s2.outputs.split_manifest_out = Output(type="uri_file")
     
     # Use first recipe from variants for stage3/stage4 preprocessing baseline
     # NOTE: Stage 3/4 still use single recipe; variant-specific preprocessing happens in Phase B
@@ -257,21 +330,23 @@ def full_pipeline_v2(
     s4 = feature_eng(config_name=config_name, dataset_in=s3.outputs.dataset_out, recipe_name="recipe_baseline.yml")
     
     # Baseline training
-    s5a = pycaret_train(config_name=config_name, dataset_in=s4.outputs.dataset_out)
+    s5a = pycaret_train(
+        config_name=config_name,
+        dataset_in=s2.outputs.raw_train_out,
+        split_manifest=s2.outputs.split_manifest_out,
+    )
     s5a.outputs.metrics_json = Output(type="uri_file")
     s5a.outputs.manifest_json = Output(type="uri_file")
     s5a.outputs.best_model = Output(type="uri_folder")
     
-    s5b = flaml_train(config_name=config_name, dataset_in=s4.outputs.dataset_out)
+    s5b = flaml_train(
+        config_name=config_name,
+        dataset_in=s2.outputs.raw_train_out,
+        split_manifest=s2.outputs.split_manifest_out,
+    )
     s5b.outputs.metrics_json = Output(type="uri_file")
     s5b.outputs.manifest_json = Output(type="uri_file")
     s5b.outputs.best_model = Output(type="uri_folder")
-    
-    # Time-series forecasting (skips internally if not time-series)
-    s5t = timeseries_train(config_name=config_name, dataset_in=s4.outputs.dataset_out)
-    s5t.outputs.metrics_json = Output(type="uri_file")
-    s5t.outputs.manifest_json = Output(type="uri_file")
-    s5t.outputs.best_model = Output(type="uri_folder")
     
     s5z = agg_baseline(
         config_name=config_name,
@@ -279,11 +354,6 @@ def full_pipeline_v2(
         pycaret_model=s5a.outputs.best_model,
         flaml_manifest=s5b.outputs.manifest_json,
         flaml_model=s5b.outputs.best_model,
-        # K1: wire s5t (timeseries baseline) outputs so forecasting tasks can
-        # promote a timeseries champion. The TS step skips internally for
-        # non-time-series tasks; the aggregate step handles status="skipped".
-        ts_manifest=s5t.outputs.manifest_json,
-        ts_model=s5t.outputs.best_model,
     )
     
     # Phase B - NEW: Single-step batch variant runner
@@ -292,12 +362,13 @@ def full_pipeline_v2(
     # V3-Proposed: Planner mode enables adaptive search + preprocessing cache
     # C2 FIX: Wire to s2 (prepared data) so variant runner applies its OWN preprocessing recipes.
     # Using s4 (already preprocessed) would double-preprocess and defeat variant-specific recipes.
-    s06 = variant_runner(
+    s06_kwargs = dict(
         config_name=config_name,
-        variants_list=variants_list,  # Pass as string, not file
         engine_list=engine_list,
-        dataset_in=s2.outputs.dataset_out,
+        dataset_in=s2.outputs.raw_train_out,
+        split_manifest=s2.outputs.split_manifest_out,
         time_budget_per_variant=time_budget_per_variant,
+        phaseb_time_budget_sec=phaseb_time_budget_sec,
         # V3-Proposed Planner parameters
         planner_enabled=planner_enabled,
         round1_max_variants=round1_max_variants,
@@ -305,18 +376,25 @@ def full_pipeline_v2(
         proxy_prune_threshold=proxy_prune_threshold,
         cache_enabled=cache_enabled
     )
+    s06_kwargs["execution_manifest"] = execution_manifest
+    s06_kwargs["candidate_catalog"] = candidate_catalog
+    s06 = variant_runner(**s06_kwargs)
     # Force output type declaration
     s06.outputs.leaderboard_csv = Output(type="uri_file")
     s06.outputs.all_results_json = Output(type="uri_file")
     s06.outputs.champion_manifest = Output(type="uri_file")
     s06.outputs.champion_model = Output(type="uri_folder")
+    s06.outputs.execution_manifest_out = Output(type="uri_file")
+    s06.outputs.split_manifest_out = Output(type="uri_file")
+    s06.outputs.quality_decision_out = Output(type="uri_file")
     
     # Phase C - Optuna HPO (s08) and aggregate (s09)
     # 🔥 FIX (A1): Wire Phase B champion manifest so Phase C tunes the correct algorithm
-    # ARCHITECTURAL DECISION (2026-03-29): Phase C receives s4 data — see full_pipeline comment
+    # Phase C fits the complete champion recipe on the raw/prepared train-only data.
     s08 = phasec_hpo(
         config_name=config_name,
-        dataset_in=s4.outputs.dataset_out,
+        dataset_in=s2.outputs.raw_train_out,
+        execution_manifest=s06.outputs.execution_manifest_out,
         phaseb_manifest=s06.outputs.champion_manifest,
     )
     s08.outputs.hpo_metrics_json = Output(type="uri_file")
@@ -331,7 +409,10 @@ def full_pipeline_v2(
     # Final evaluation (s10) - select champion among baseline, phase B, phase C
     s10 = final_eval(
         config_name=config_name,
-        dataset_in=s4.outputs.dataset_out,
+        dataset_in=s2.outputs.raw_train_out,
+        holdout_in=s2.outputs.raw_holdout_out,
+        split_manifest_in=s2.outputs.split_manifest_out,
+        execution_manifest_in=s06.outputs.execution_manifest_out,
         baseline_champion=s5z.outputs.champion_model,
         phaseb_champion=s06.outputs.champion_model,  # From variant runner
         phasec_champion=s09.outputs.optimized_champion_model,
@@ -342,19 +423,35 @@ def full_pipeline_v2(
         config_name=config_name,
         champion_manifest=s10.outputs.final_report,
         champion_model=s10.outputs.final_champion_model,
+        execution_manifest=s06.outputs.execution_manifest_out,
     )
+    # Model registration uses the submitting user's delegated identity.
+    s12.identity = UserIdentityConfiguration()
     
     # s13 — Drift monitoring & cadence assessment (additive layer)
     # s13_kwargs: optional wiring for s13 (model registration); empty dict if upstream did not produce expected outputs
     s13_kwargs = dict(
         config_name=config_name,
-        dataset_in=s4.outputs.dataset_out,
+        # Drift reference evidence must exclude the locked final holdout.
+        dataset_in=s4.outputs.train_out,
         final_report=s10.outputs.final_report,
         registry_info=s12.outputs.registry_info,
     )
     if drift_baseline_in is not None:
         s13_kwargs["baseline_in"] = drift_baseline_in
+        s13_kwargs["baseline_uri"] = drift_baseline_uri
     s13 = drift_monitor(**s13_kwargs)
+
+    # s14 — Auto-retrain decision gate (artifact-only; no nested submissions)
+    s14 = retrain_decision(
+        config_name=config_name,
+        drift_report=s13.outputs.drift_report,
+        candidate_baseline=s13.outputs.drift_baseline,
+        final_report=s10.outputs.final_report,
+        registry_info=s12.outputs.registry_info,
+    )
+    s14.outputs.retrain_decision = Output(type="uri_file")
+    s14.outputs.decision_ledger_record = Output(type="uri_file")
     
     return {
         "eda_report": s1.outputs.eda_report,
@@ -362,6 +459,8 @@ def full_pipeline_v2(
         "prep3_report": s3.outputs.prep3_report,
         "fe_report": s4.outputs.fe_report,
         "dataset_processed": s4.outputs.dataset_out,
+        "dataset_train": s4.outputs.train_out,
+        "dataset_holdout": s2.outputs.raw_holdout_out,
         "baseline_pycaret_metrics": s5a.outputs.metrics_json,
         "baseline_flaml_metrics": s5b.outputs.metrics_json,
         "baseline_aggregate_report": s5z.outputs.aggregate_report,
@@ -370,6 +469,9 @@ def full_pipeline_v2(
         "phaseb_all_results": s06.outputs.all_results_json,
         "phaseb_champion_manifest": s06.outputs.champion_manifest,
         "phaseb_champion_model": s06.outputs.champion_model,
+        "execution_manifest": s06.outputs.execution_manifest_out,
+        "split_manifest": s06.outputs.split_manifest_out,
+        "quality_decision": s06.outputs.quality_decision_out,
         "phasec_aggregate_report": s09.outputs.aggregate_report,
         "phasec_champion_model": s09.outputs.optimized_champion_model,
         "final_report": s10.outputs.final_report,
@@ -377,4 +479,6 @@ def full_pipeline_v2(
         "registry_info": s12.outputs.registry_info,
         "drift_report": s13.outputs.drift_report,
         "drift_baseline": s13.outputs.drift_baseline,
+        "retrain_decision": s14.outputs.retrain_decision,
+        "decision_ledger_record": s14.outputs.decision_ledger_record,
     }

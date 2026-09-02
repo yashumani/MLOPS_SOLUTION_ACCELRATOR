@@ -4,20 +4,39 @@ import json
 import logging
 import os
 import signal
+import hashlib
+import subprocess
+import time
 import traceback
 import uuid
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import sys
 
 from azure.ai.ml import MLClient, Input
 from azure.ai.ml.entities import PipelineJob, Environment
+from azure.ai.ml._restclient.runhistory.models import QueryParams
+from azure.core.exceptions import (
+    ResourceNotFoundError,
+    ServiceRequestError,
+    ServiceResponseError,
+)
 from azure.identity import (
     ChainedTokenCredential,
     ManagedIdentityCredential,
     AzureCliCredential,
 )
 import yaml
+
+# Direct CLI execution puts ``pipelines/`` on sys.path, not the repository's
+# import roots. Bootstrap both before importing mixed ``src.*`` and historical
+# top-level ``orchestration``/``utils`` modules.
+_BOOTSTRAP_REPO_ROOT = Path(__file__).resolve().parents[1]
+_BOOTSTRAP_SRC_ROOT = _BOOTSTRAP_REPO_ROOT / "src"
+for _import_root in (_BOOTSTRAP_REPO_ROOT, _BOOTSTRAP_SRC_ROOT):
+    _import_root_text = str(_import_root)
+    if _import_root_text not in sys.path:
+        sys.path.insert(0, _import_root_text)
 
 # Module logger — used for non-fatal warnings instead of bare except: pass
 logger = logging.getLogger("submit_pipeline")
@@ -31,7 +50,6 @@ logger.setLevel(logging.INFO)
 # The K2 schema check is a security gate (catches missing target_column,
 # unknown task_type, etc.) and MUST run before any Azure work.
 try:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from src.orchestration.config_schema import validate_config as _validate_config  # type: ignore
 except Exception as _e:  # pragma: no cover - validator must be present in repo
     print(f"❌ K2: config validator unavailable ({_e}). Refusing to submit without schema gate.", file=sys.stderr)
@@ -54,6 +72,80 @@ _LOCK_MAX_AGE_SEC = 4 * 60 * 60                      # 4 hours hard ceiling — 
 
 # Audit trail for --force submissions (security-relevant; keep alongside lock file)
 _FORCE_AUDIT_FILE = _LOCK_DIR / ".force_submit_audit.jsonl"
+_CANONICAL_TAG_KEYS = {
+    "compiled_config_hash",
+    "config_name",
+    "dataset",
+    "environment",
+    "execution_id",
+    "parent_config_hash",
+    "parent_execution_id",
+    "parent_source_identity",
+    "pipeline_version",
+    "task",
+    "preset",
+    "recipe_catalog_hash",
+    "revision_reason",
+    "source_decision_id",
+    "source_identity",
+    "submission_revision_kind",
+}
+_SUBMISSION_REVISION_KINDS = {
+    "original",
+    "exact_replay",
+    "decision_retrain",
+    "new_revision",
+}
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """Check process liveness without sending a destructive Windows signal."""
+    if pid == os.getpid():
+        return True
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        process_query_limited_information = 0x1000
+        synchronize = 0x00100000
+        wait_timeout = 0x00000102
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [
+            wintypes.DWORD,
+            wintypes.BOOL,
+            wintypes.DWORD,
+        ]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+        handle = kernel32.OpenProcess(
+            process_query_limited_information | synchronize,
+            False,
+            int(pid),
+        )
+        if not handle:
+            error = ctypes.get_last_error()
+            return error == 5  # Access denied means the process exists.
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) == wait_timeout
+        finally:
+            kernel32.CloseHandle(handle)
+
+    try:
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError as exc:
+        logger.warning(
+            "Process liveness probe failed (%s); treating lock as live",
+            exc,
+        )
+        return True
 
 
 def _acquire_lock() -> bool:
@@ -80,17 +172,7 @@ def _acquire_lock() -> bool:
             past_age = age >= _LOCK_MAX_AGE_SEC
 
             if lock_pid and not past_ttl and not past_age:
-                try:
-                    os.kill(lock_pid, 0)          # 0-signal existence check
-                    return False                  # process alive (same uid) → genuine lock
-                except PermissionError:
-                    # Process exists but is owned by another user — lock is REAL.
-                    return False
-                except ProcessLookupError:
-                    pass                          # process truly gone → stale lock
-                except OSError as _exc:
-                    # Any other OS error: be conservative — treat as alive.
-                    logger.warning("os.kill probe failed (%s); treating lock as live", _exc)
+                if _pid_is_alive(int(lock_pid)):
                     return False
             # Lock is stale (expired by TTL/age, or process gone) – remove it
             _LOCK_FILE.unlink(missing_ok=True)
@@ -129,23 +211,181 @@ def _handle_submit_signal(signum, _frame):
 
 
 def _check_active_jobs(ml_client: MLClient, experiment_name: str) -> list:
-    """Return list of active (non-terminal) jobs in the experiment."""
-    active_statuses = {"Running", "Queued", "Preparing", "Starting", "NotStarted",
-                       "Provisioning", "CancelRequested"}
-    active = []
-    try:
-        for j in ml_client.jobs.list():
-            if getattr(j, "experiment_name", None) != experiment_name:
-                continue
-            if j.status in active_statuses:
-                active.append({
-                    "name": j.name,
-                    "status": j.status,
-                    "display_name": getattr(j, "display_name", ""),
-                })
-    except Exception as exc:
-        logger.warning("Could not query active jobs: %s", exc)
-    return active
+    """Return active jobs, failing closed if the control plane cannot be queried."""
+    terminal_statuses = {"completed", "failed", "canceled", "cancelled"}
+    active_status_filter = (
+        "Status ne 'Completed' and Status ne 'Failed' and Status ne 'Canceled'"
+    )
+    connection_timeout_seconds = 10
+    read_timeout_seconds = 30
+    page_size = 100
+    retryable_errors = (
+        ConnectionError,
+        TimeoutError,
+        ServiceRequestError,
+        ServiceResponseError,
+    )
+
+    def _field(value, name: str):
+        if isinstance(value, dict):
+            return value.get(name)
+        return getattr(value, name, None)
+
+    def _active_job_payload(job, *, experiment_scoped: bool):
+        properties = _field(job, "properties")
+        job_experiment = _field(properties, "experiment_name") or _field(
+            job,
+            "experiment_name",
+        )
+        if not experiment_scoped and job_experiment != experiment_name:
+            return None
+
+        job_status = _field(properties, "status") or _field(job, "status")
+        normalized_status = str(job_status or "Unknown")
+        if normalized_status.casefold() in terminal_statuses:
+            return None
+
+        return {
+            "name": _field(job, "name") or _field(job, "run_id") or "unknown",
+            "status": normalized_status,
+            "display_name": _field(properties, "display_name")
+            or _field(job, "display_name")
+            or "",
+        }
+
+    def _list_experiment_runs():
+        """Query only non-terminal runs for this experiment through Run History."""
+        job_operations = ml_client.jobs
+        run_history = getattr(job_operations, "_runs_operations", None)
+        runs_operation = getattr(run_history, "_operation", None)
+        operation_scope = getattr(job_operations, "_operation_scope", None)
+        subscription_id = getattr(job_operations, "_subscription_id", None)
+        workspace_name = getattr(job_operations, "_workspace_name", None)
+        resource_group_name = getattr(
+            operation_scope,
+            "resource_group_name",
+            None,
+        )
+        if not all(
+            (
+                runs_operation,
+                subscription_id,
+                resource_group_name,
+                workspace_name,
+            )
+        ):
+            return None
+
+        active = []
+        continuation_token = None
+        seen_tokens = set()
+        while True:
+            try:
+                response = runs_operation.get_by_query_by_experiment_name(
+                    subscription_id,
+                    resource_group_name,
+                    workspace_name,
+                    experiment_name,
+                    body=QueryParams(
+                        filter=active_status_filter,
+                        continuation_token=continuation_token,
+                        top=page_size,
+                    ),
+                    connection_timeout=connection_timeout_seconds,
+                    read_timeout=read_timeout_seconds,
+                )
+            except ResourceNotFoundError as exc:
+                message = str(exc).casefold()
+                missing_experiment = (
+                    f"experiment {experiment_name}".casefold() in message
+                    and "not found" in message
+                    and f"workspace {workspace_name}".casefold() in message
+                )
+                if missing_experiment:
+                    return []
+                raise
+            resources = getattr(response, "value", None)
+            if resources is None:
+                raise RuntimeError("Run History returned no run collection")
+            for job in resources:
+                payload = _active_job_payload(job, experiment_scoped=True)
+                if payload is not None:
+                    active.append(payload)
+
+            next_token = getattr(response, "continuation_token", None)
+            if not next_token:
+                return active
+            if next_token in seen_tokens:
+                raise RuntimeError(
+                    "Run History repeated a continuation token while checking "
+                    f"experiment {experiment_name!r}"
+                )
+            seen_tokens.add(next_token)
+            continuation_token = next_token
+
+    def _list_job_resources():
+        job_operations = ml_client.jobs
+        rest_client = getattr(
+            job_operations,
+            "service_client_01_2024_preview",
+            None,
+        )
+        operation_scope = getattr(job_operations, "_operation_scope", None)
+        workspace_name = getattr(job_operations, "_workspace_name", None)
+        if rest_client and operation_scope and workspace_name:
+            try:
+                return rest_client.jobs.list(
+                    operation_scope.resource_group_name,
+                    workspace_name,
+                    connection_timeout=connection_timeout_seconds,
+                    read_timeout=read_timeout_seconds,
+                )
+            except TypeError as exc:
+                if "unexpected keyword" not in str(exc):
+                    raise
+                return rest_client.jobs.list(
+                    operation_scope.resource_group_name,
+                    workspace_name,
+                )
+        return job_operations.list()
+
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            experiment_runs = _list_experiment_runs()
+            if experiment_runs is not None:
+                return experiment_runs
+
+            active = []
+            for job in _list_job_resources():
+                payload = _active_job_payload(job, experiment_scoped=False)
+                if payload is not None:
+                    active.append(payload)
+            return active
+        except Exception as exc:
+            last_error = exc
+            if not isinstance(exc, retryable_errors):
+                break
+            if attempt < 3:
+                time.sleep(2 * attempt)
+
+    raise RuntimeError(
+        f"Could not query active jobs for experiment {experiment_name!r}; "
+        "refusing submission because duplicate state is unknown."
+    ) from last_error
+
+
+def _write_submission_result(result_path: str | None, payload: dict) -> None:
+    """Atomically write the machine-readable result requested by API callers."""
+    if not result_path:
+        return
+    destination = Path(result_path).expanduser().resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(
+        f".{destination.name}.{os.getpid()}.tmp"
+    )
+    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    temporary.replace(destination)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +400,7 @@ MAX_LOCAL_CSV_BYTES = 500 * 1024 * 1024              # 500 MB hard cap
 PROFILE_NROWS = 50_000                               # rows used for profiling only
 
 # Variant safety caps — Azure ML pipeline parameter has a ~2 KB string limit
-MAX_VARIANTS_PER_RUN = 50
+MAX_CATALOG_RECIPES_PER_RUN = 1000
 MAX_VARIANT_LIST_CHARS = 1800
 
 
@@ -173,7 +413,11 @@ def _safe_join_data_path(blob_path: str) -> Path:
     if not blob_path or not isinstance(blob_path, str):
         raise ValueError("blob_path must be a non-empty string")
     candidate = Path(blob_path)
-    if candidate.is_absolute():
+    if (
+        candidate.is_absolute()
+        or PurePosixPath(blob_path).is_absolute()
+        or PureWindowsPath(blob_path).is_absolute()
+    ):
         raise ValueError(f"blob_path must be relative, got absolute path: {blob_path!r}")
     if any(part == ".." for part in candidate.parts):
         raise ValueError(f"blob_path traversal blocked (contains '..'): {blob_path!r}")
@@ -196,26 +440,44 @@ def _check_csv_size_within_cap(local_path: Path, max_bytes: int = MAX_LOCAL_CSV_
                 local_path.name, size / 1024 / 1024, max_bytes / 1024 / 1024)
 
 
-def _record_force_audit(args, user: str) -> None:
-    """Append a tamper-evident audit record when --force is used."""
+def _record_force_audit(args, user: str) -> str:
+    """Durably append the audit reservation required before ``--force``."""
+    reason = str(getattr(args, "force_reason", "") or "").strip()
+    if not reason:
+        raise ValueError("--force requires a non-empty --force_reason")
+    audit_id = str(uuid.uuid4())
     record = {
+        "audit_id": audit_id,
         "timestamp": datetime.now().isoformat(),
         "user": user,
         "pid": os.getpid(),
+        "reason": reason,
         "config": getattr(args, "config", None),
         "experiment_name": getattr(args, "experiment_name", None),
         "display_name": getattr(args, "display_name", None),
         "compute": getattr(args, "compute", None),
     }
-    try:
-        with open(_FORCE_AUDIT_FILE, "a") as af:
-            af.write(json.dumps(record) + "\n")
-    except OSError as _exc:
-        logger.warning("Could not write force-submit audit log %s: %s", _FORCE_AUDIT_FILE, _exc)
+    with open(_FORCE_AUDIT_FILE, "a", encoding="utf-8") as audit_file:
+        audit_file.write(json.dumps(record, sort_keys=True) + "\n")
+        audit_file.flush()
+        os.fsync(audit_file.fileno())
+    return audit_id
 
 
 # Recipe selector — sys.path was already prepared at module top for the K2 import.
-from src.utils.recipe_selector import select_recipes_for_tier
+from src.orchestration.contracts import (
+    CandidateRecord,
+    ExecutionManifest,
+    canonical_hash,
+)
+from src.orchestration.config_compiler import compile_config
+from src.utils.recipe_catalog import (
+    RecipeCatalog,
+    RecipeCatalogEntry,
+    catalog_evidence,
+    compile_recipe_catalog,
+    select_catalog_entries,
+)
 
 # Import variant selection components (Phase 1)
 try:
@@ -242,7 +504,436 @@ except ImportError:
 # Pipeline builder import — component YAMLs are loaded once at import time.
 # To pick up component-YAML edits, restart the process (do NOT importlib.reload
 # inside a long-lived submitter — it has historically masked stale-component bugs).
-from pipelines.pipeline_builder import full_pipeline, full_pipeline_v2
+from pipelines.pipeline_builder import (
+    _COMPONENT_MANIFEST,
+    full_pipeline,
+    full_pipeline_v2,
+)
+
+
+def _component_environment_identities() -> dict[str, str]:
+    """Read the exact pinned environment identity for every active component."""
+
+    identities: dict[str, str] = {}
+    for component_name, source in sorted(_COMPONENT_MANIFEST.items()):
+        payload = yaml.safe_load(Path(source).read_text(encoding="utf-8")) or {}
+        environment = payload.get("environment")
+        if not isinstance(environment, str) or not environment.strip():
+            raise RuntimeError(
+                f"Active component {component_name!r} has no immutable environment"
+            )
+        identities[component_name] = environment.strip()
+    if "variant_runner" not in identities:
+        raise RuntimeError("Active component manifest is missing variant_runner")
+    return identities
+
+
+def _normalize_azureml_environment(value: str) -> str:
+    normalized = str(value or "").strip()
+    return normalized[len("azureml:") :] if normalized.startswith("azureml:") else normalized
+
+
+def _compiled_round1_cap(phase_b_config: dict) -> int:
+    """Return the single effective recipe/runner cap from compiled policy."""
+
+    return min(
+        int(phase_b_config["max_variants"]),
+        int(phase_b_config["planner"]["round1_max_variants"]),
+    )
+
+
+def _configure_pipeline_job_settings(
+    job,
+    *,
+    default_compute: str,
+    default_datastore: str,
+    force_rerun: bool,
+) -> None:
+    """Bind shared pipeline settings before the job is submitted."""
+
+    if not str(default_datastore or "").strip():
+        raise ValueError("default_datastore must be non-empty")
+    job.settings.default_compute = default_compute
+    job.settings.default_datastore = default_datastore
+    if force_rerun:
+        job.settings.force_rerun = True
+
+
+def _production_data_identity_verified(cfg: dict) -> bool:
+    """Return whether a production config binds an expected content digest."""
+
+    if str(cfg.get("preset") or "production") != "production":
+        return True
+    digest = str((cfg.get("dataset") or {}).get("content_sha256") or "")
+    return len(digest) == 64
+
+
+def _compute_upload_source_manifest(
+    repo_root: Path = REPO_ROOT,
+) -> dict[str, object]:
+    """Hash exactly the files Azure ML's ``.amlignore`` upload will include."""
+
+    from azure.ai.ml._utils._asset_utils import get_ignore_file
+
+    root = Path(repo_root).resolve()
+    ignore = get_ignore_file(root)
+    files: list[dict[str, object]] = []
+    total_bytes = 0
+    for current_root, directory_names, file_names in os.walk(
+        root, topdown=True, followlinks=False
+    ):
+        current = Path(current_root)
+        for name in sorted(directory_names):
+            path = current / name
+            if path.is_symlink() and not ignore.is_file_excluded(str(path)):
+                raise RuntimeError(
+                    "Upload-eligible directory symlinks are unsupported: "
+                    f"{path.relative_to(root).as_posix()}"
+                )
+        directory_names[:] = sorted(
+            name
+            for name in directory_names
+            if not ignore.is_file_excluded(str(current / name))
+            and not (current / name).is_symlink()
+        )
+        for name in sorted(file_names):
+            path = current / name
+            if ignore.is_file_excluded(str(path)):
+                continue
+            if path.is_symlink():
+                raise RuntimeError(
+                    "Upload-eligible file symlinks are unsupported: "
+                    f"{path.relative_to(root).as_posix()}"
+                )
+            relative = path.relative_to(root).as_posix()
+            payload = path.read_bytes()
+            size = len(payload)
+            total_bytes += size
+            files.append(
+                {
+                    "path": relative,
+                    "size": size,
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                }
+            )
+    files.sort(key=lambda item: str(item["path"]))
+    source_sha = canonical_hash(
+        {
+            "schema_version": "1.0",
+            "files": files,
+        }
+    )
+    override = os.environ.get("MLOPS_SOURCE_SHA")
+    if override and override.strip() != source_sha:
+        raise RuntimeError(
+            "MLOPS_SOURCE_SHA does not match the .amlignore-filtered upload bytes"
+        )
+    return {
+        "schema_version": "1.0",
+        "ignore_file": (
+            ".amlignore" if (root / ".amlignore").is_file() else ".gitignore"
+        ),
+        "file_count": len(files),
+        "total_bytes": total_bytes,
+        "source_sha256": source_sha,
+        "files": files,
+    }
+
+
+def _compute_source_identity(repo_root: Path = REPO_ROOT) -> str:
+    """Compatibility wrapper returning the exact upload package digest."""
+
+    return str(_compute_upload_source_manifest(repo_root)["source_sha256"])
+
+
+def _validate_revision_cli_contract(args: argparse.Namespace) -> None:
+    """Validate explicit replay/new-revision arguments before resolving inputs."""
+
+    kind = str(args.submission_revision_kind or "original")
+    if kind not in _SUBMISSION_REVISION_KINDS:
+        raise ValueError(f"Unsupported submission revision kind: {kind!r}")
+
+    parent = {
+        "parent_execution_id": args.parent_execution_id,
+        "parent_config_hash": args.parent_config_hash,
+        "parent_source_identity": args.parent_source_identity,
+    }
+    expected = {
+        "expected_execution_id": args.expected_execution_id,
+        "expected_config_hash": args.expected_config_hash,
+        "expected_source_identity": args.expected_source_identity,
+    }
+    replay_values = {
+        **parent,
+        **expected,
+        "source_decision_id": args.source_decision_id,
+        "revision_reason": args.revision_reason,
+    }
+    if kind == "original":
+        unexpected = sorted(name for name, value in replay_values.items() if value)
+        if unexpected:
+            raise ValueError(
+                "Original submissions may not carry replay metadata: "
+                + ", ".join(unexpected)
+            )
+        return
+
+    missing_parent = sorted(name for name, value in parent.items() if not value)
+    if missing_parent:
+        raise ValueError(
+            f"{kind} requires immutable parent identity: "
+            + ", ".join(missing_parent)
+        )
+
+    if kind in {"exact_replay", "decision_retrain"}:
+        missing_expected = sorted(
+            name for name, value in expected.items() if not value
+        )
+        if missing_expected:
+            raise ValueError(
+                f"{kind} requires exact identity expectations: "
+                + ", ".join(missing_expected)
+            )
+        if args.revision_reason:
+            raise ValueError(f"revision_reason is not valid for {kind}")
+        if kind == "decision_retrain" and not args.source_decision_id:
+            raise ValueError("decision_retrain requires source_decision_id")
+        if kind == "exact_replay" and args.source_decision_id:
+            raise ValueError("source_decision_id is valid only for decision_retrain")
+        return
+
+    unexpected_expected = sorted(
+        name for name, value in expected.items() if value
+    )
+    if unexpected_expected:
+        raise ValueError(
+            "new_revision must not claim exact identity expectations: "
+            + ", ".join(unexpected_expected)
+        )
+    if args.source_decision_id:
+        raise ValueError(
+            "An existing retrain decision cannot authorize changed source/config; "
+            "produce a new S14 decision from the new revision"
+        )
+    reason = str(args.revision_reason or "").strip()
+    if not reason:
+        raise ValueError("new_revision requires a non-empty revision_reason")
+    if len(reason) > 256:
+        raise ValueError("revision_reason must be at most 256 characters")
+
+
+def _validate_submission_revision_identity(
+    *,
+    revision_kind: str,
+    execution_manifest: ExecutionManifest,
+    config_hash: str,
+    source_identity: str,
+    parent_execution_id: str | None,
+    parent_config_hash: str | None,
+    parent_source_identity: str | None,
+    expected_execution_id: str | None,
+    expected_config_hash: str | None,
+    expected_source_identity: str | None,
+) -> None:
+    """Fail closed when replay inputs do not represent the claimed revision."""
+
+    if revision_kind == "original":
+        return
+
+    current = {
+        "execution_id": execution_manifest.execution_id,
+        "config_hash": config_hash,
+        "source_identity": source_identity,
+    }
+    parent = {
+        "execution_id": str(parent_execution_id or ""),
+        "config_hash": str(parent_config_hash or ""),
+        "source_identity": str(parent_source_identity or ""),
+    }
+    if revision_kind in {"exact_replay", "decision_retrain"}:
+        expected = {
+            "execution_id": str(expected_execution_id or ""),
+            "config_hash": str(expected_config_hash or ""),
+            "source_identity": str(expected_source_identity or ""),
+        }
+        mismatches = sorted(
+            field for field, value in current.items() if value != expected[field]
+        )
+        parent_mismatches = sorted(
+            field for field, value in parent.items() if value != expected[field]
+        )
+        if parent_mismatches:
+            raise ValueError(
+                "Replay parent identity does not match its expected revision: "
+                + ", ".join(parent_mismatches)
+            )
+        if mismatches:
+            next_action = (
+                "produce a fresh S14 decision from the current revision"
+                if revision_kind == "decision_retrain"
+                else "resubmit explicitly with revision_mode='new_revision' and a reason"
+            )
+            raise ValueError(
+                f"{revision_kind} rejected because current immutable inputs changed: "
+                + ", ".join(mismatches)
+                + f"; {next_action}"
+            )
+        return
+
+    changed_fields = sorted(
+        field for field, value in current.items() if value != parent[field]
+    )
+    if not changed_fields:
+        raise ValueError(
+            "new_revision rejected because config, source, and execution identity are "
+            "unchanged; use exact_replay"
+        )
+
+
+def _build_execution_manifest(
+    cfg: dict,
+    selected_entries: tuple[RecipeCatalogEntry, ...],
+    catalog: RecipeCatalog,
+    *,
+    code_sha: str,
+    environment: str,
+    component_environments: dict[str, str] | None = None,
+    round1_max_variants: int | None = None,
+    round2_max_variants: int | None = None,
+    proxy_prune_threshold: float | None = None,
+) -> tuple[ExecutionManifest, tuple[CandidateRecord, ...]]:
+    """Bind compiled config, recipes, engines, budgets, code, and environment."""
+
+    task_type = cfg["task_type"]
+    phase_b = cfg["phases"]["phase_b"]
+    engines = tuple(phase_b["engines"])
+    split_id = canonical_hash(cfg["split"])
+    data_version = (
+        f"{cfg['dataset']['name']}@{cfg['dataset']['version']}:"
+        f"{cfg['dataset'].get('blob_path', '')}:"
+        f"{cfg['dataset'].get('content_sha256') or 'content-unverified'}"
+    )
+    resolved_environments = dict(component_environments or {})
+    training_environment = resolved_environments.get("variant_runner", environment)
+    if _normalize_azureml_environment(training_environment) != (
+        _normalize_azureml_environment(environment)
+    ):
+        raise ValueError(
+            "Configured training environment does not match the pinned "
+            f"variant-runner environment: {environment!r} != {training_environment!r}"
+        )
+    environment_hash = canonical_hash({"environment": training_environment})
+    environment_hashes = {
+        "training": environment_hash,
+        **{
+            f"component:{name}": canonical_hash({"environment": identity})
+            for name, identity in sorted(resolved_environments.items())
+        },
+    }
+    records = tuple(
+        CandidateRecord(
+            task_type=task_type,
+            recipe_id=entry.recipe_id,
+            recipe_hash=entry.semantic_hash,
+            engine=engine,
+            algorithm="engine_search",
+            parameters=entry.normalized_recipe,
+            split_id=split_id,
+            data_version=data_version,
+            code_sha=code_sha,
+            environment_hash=environment_hash,
+        )
+        for entry in selected_entries
+        for engine in engines
+    )
+    planner = phase_b["planner"]
+    manifest = ExecutionManifest(
+        config_hash=cfg["compiled_config_hash"],
+        task_type=task_type,
+        dataset=cfg["dataset"],
+        split_policy=cfg["split"],
+        engines=engines,
+        recipe_paths=tuple(entry.path for entry in selected_entries),
+        recipe_ids=tuple(entry.recipe_id for entry in selected_entries),
+        candidate_ids=tuple(record.candidate_id for record in records),
+        budgets={
+            "round1_max_variants": (
+                round1_max_variants
+                if round1_max_variants is not None
+                else planner["round1_max_variants"]
+            ),
+            "round2_max_variants": (
+                round2_max_variants
+                if round2_max_variants is not None
+                else planner["round2_max_variants"]
+            ),
+            "proxy_prune_threshold": (
+                proxy_prune_threshold
+                if proxy_prune_threshold is not None
+                else planner["proxy_prune_threshold"]
+            ),
+            "candidate_engine_timeout_seconds": phase_b[
+                "time_budget_per_variant"
+            ],
+            "phase_b_timeout_seconds": phase_b["phase_timeout_seconds"],
+            "hpo_trials": cfg["phases"]["phase_c_hpo"]["n_trials"],
+            "hpo_timeout_seconds": cfg["phases"]["phase_c_hpo"][
+                "timeout_seconds"
+            ],
+        },
+        code_sha=code_sha,
+        environment_hashes=environment_hashes,
+        recipe_catalog_hash=catalog.catalog_hash,
+    )
+    return manifest, records
+
+
+def _persist_execution_artifacts(
+    manifest: ExecutionManifest,
+    candidates: tuple[CandidateRecord, ...],
+    catalog: RecipeCatalog,
+    selected_entries: tuple[RecipeCatalogEntry, ...],
+    source_manifest: dict[str, object],
+) -> tuple[Path, Path, Path]:
+    """Atomically persist immutable submission inputs outside the repository."""
+
+    manifest_dir = _USER_STATE_DIR / "manifests"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = manifest_dir / f"{manifest.execution_id}.json"
+    catalog_path = manifest_dir / f"{manifest.execution_id}.recipe_catalog.json"
+    source_path = manifest_dir / f"{manifest.execution_id}.source_manifest.json"
+    manifest_payload = {
+        **manifest.to_dict(),
+        "candidate_records": [record.to_dict() for record in candidates],
+    }
+    candidate_catalog_payload = {
+        **catalog_evidence(catalog, selected_entries),
+        "execution_id": manifest.execution_id,
+        "recipe_catalog_hash": manifest.recipe_catalog_hash,
+        "recipe_paths": list(manifest.recipe_paths),
+        "recipe_ids": list(manifest.recipe_ids),
+        "candidate_ids": list(manifest.candidate_ids),
+        "candidate_records": [record.to_dict() for record in candidates],
+    }
+    for destination, payload in (
+        (manifest_path, manifest_payload),
+        (catalog_path, candidate_catalog_payload),
+        (source_path, source_manifest),
+    ):
+        temporary = destination.with_suffix(destination.suffix + ".tmp")
+        temporary.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        temporary.replace(destination)
+    return manifest_path, catalog_path, source_path
+
+
+def _sdk_local_input_path(path: Path) -> str:
+    """Return an SDK-safe absolute local path without an ``azureml:`` prefix."""
+
+    resolved = path.expanduser().resolve(strict=True)
+    return resolved.as_uri()
 
 
 def _azure_from_local_config(cfg):
@@ -324,7 +1015,15 @@ def filter_variants_by_imputation_preset(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Submit V3 pipeline with proper experiment/display naming")
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
+    parser = argparse.ArgumentParser(
+        description="Submit V3 pipeline with proper experiment/display naming",
+        allow_abbrev=False,
+    )
     parser.add_argument("--config", required=True, help="Config YAML path")
     parser.add_argument("--subscription_id", required=False, help="Azure subscription ID")
     parser.add_argument("--resource_group", required=False, help="Azure resource group")
@@ -347,14 +1046,43 @@ def main():
     parser.add_argument("--use_phase1", action="store_true", help="Use Phase 1 intelligent variant runner (NEW)")
     # V3-Proposed Planner flags
     parser.add_argument("--enable_planner", action="store_true", help="Enable V3-Proposed adaptive planner mode")
-    parser.add_argument("--round1_max_variants", type=int, default=40, help="Max variants for Round 1 proxy training")
-    parser.add_argument("--round2_max_variants", type=int, default=10, help="Max variants for Round 2 full training")
-    parser.add_argument("--proxy_prune_threshold", type=float, default=0.50, help="Proxy metric threshold for pruning")
+    parser.add_argument("--round1_max_variants", type=int, default=None, help="Optional lower Round 1 cap (schema maximum: 40)")
+    parser.add_argument("--round2_max_variants", type=int, default=None, help="Optional lower Round 2 cap (schema maximum: 8)")
+    parser.add_argument("--proxy_prune_threshold", type=float, default=None, help="Optional proxy threshold override")
     parser.add_argument("--disable_cache", action="store_true", help="Disable preprocessing cache")
     parser.add_argument("--bundles_dir", required=False, default=None,
                         help="Path to variant_bundles/<task> directory for AIM-Tournament bundle gating")
     parser.add_argument("--drift_baseline_in", required=False, default=None,
                         help="Optional previous s13 drift_baseline uri_folder for baseline comparison")
+    parser.add_argument(
+        "--force_rerun",
+        action="store_true",
+        help="Disable Azure ML component caching without bypassing submission guards",
+    )
+    parser.add_argument(
+        "--submission_revision_kind",
+        choices=sorted(_SUBMISSION_REVISION_KINDS),
+        default="original",
+        help="Immutable revision semantics for original, replay, or retrain submissions",
+    )
+    parser.add_argument("--parent_execution_id", default=None)
+    parser.add_argument("--parent_config_hash", default=None)
+    parser.add_argument("--parent_source_identity", default=None)
+    parser.add_argument("--expected_execution_id", default=None)
+    parser.add_argument("--expected_config_hash", default=None)
+    parser.add_argument("--expected_source_identity", default=None)
+    parser.add_argument("--source_decision_id", default=None)
+    parser.add_argument("--revision_reason", default=None)
+    parser.add_argument(
+        "--tags_json",
+        default=None,
+        help="Optional JSON object of additional string job tags",
+    )
+    parser.add_argument(
+        "--result_json",
+        default=None,
+        help="Optional path for a structured submission result used by API callers",
+    )
     parser.add_argument("--imputation_preset", required=False, default=None,
                         choices=["auto", "statistical", "ml_based", "removal",
                                  "pandas_native", "composite", "sampling", "advanced"],
@@ -362,6 +1090,11 @@ def main():
     parser.add_argument("--force", action="store_true",
                         help="Skip duplicate-submission guards (lock file + active-job check). "
                              "AUDITED: appends to ~/.mlops/locks/.force_submit_audit.jsonl")
+    parser.add_argument(
+        "--force_reason",
+        default=None,
+        help="Required operator reason when --force bypasses submission guards",
+    )
     parser.add_argument("--debug", action="store_true",
                         help="Enable verbose tracebacks and debug-only diagnostics (URIs, etc.)")
     parser.add_argument("--env_version", default=None,
@@ -369,6 +1102,20 @@ def main():
     parser.add_argument("--dry_run", action="store_true",
                         help="Build the pipeline job and print its YAML — do NOT submit to Azure ML")
     args = parser.parse_args()
+
+    if args.imputation_preset is not None:
+        parser.error(
+            "--imputation_preset is retired; recipe feasibility and diversity are "
+            "enforced inside the canonical S06 funnel"
+        )
+    if args.force and not str(args.force_reason or "").strip():
+        parser.error("--force requires a non-empty --force_reason")
+    if args.force_reason and not args.force:
+        parser.error("--force_reason is valid only together with --force")
+    try:
+        _validate_revision_cli_contract(args)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -391,12 +1138,49 @@ def main():
     # K2 schema gate — fail fast BEFORE any Azure work
     if _validate_config is not None:
         try:
-            _validate_config(cfg)
+            cfg = compile_config(
+                cfg,
+                source_name=Path(config_path).name,
+            )
             logger.info("K2: config schema validation passed for %s", config_path)
-            print(f"✅ K2: config schema validation passed for {config_path}")
+            print(
+                "✅ K2: schema-v2 compile passed for "
+                f"{config_path} (hash={cfg['compiled_config_hash'][:12]})"
+            )
         except Exception as _ve:
             print(f"❌ K2: config schema validation FAILED: {_ve}")
             raise SystemExit(2) from _ve
+
+    if not _production_data_identity_verified(cfg):
+        message = (
+            "Production submissions require dataset.content_sha256. "
+            "Generate the canonical dataframe fingerprint in Azure compute and "
+            "add it to the versioned dataset config."
+        )
+        if args.dry_run:
+            print(f"WARNING: {message}")
+        else:
+            print(f"Refusing submission: {message}", file=sys.stderr)
+            raise SystemExit(2)
+
+    extra_tags: dict[str, str] = {}
+    if args.tags_json:
+        try:
+            parsed_tags = json.loads(args.tags_json)
+        except json.JSONDecodeError as exc:
+            raise SystemExit("--tags_json must contain valid JSON") from exc
+        if not isinstance(parsed_tags, dict) or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in parsed_tags.items()
+        ):
+            raise SystemExit("--tags_json must be a JSON object of string values")
+        protected = sorted(_CANONICAL_TAG_KEYS.intersection(parsed_tags))
+        if protected:
+            raise SystemExit(
+                "--tags_json cannot override canonical tags: "
+                + ", ".join(protected)
+            )
+        extra_tags = parsed_tags
 
     # If CLI context missing, fall back to azureml block in cfg
     if not args.subscription_id or not args.resource_group or not args.workspace_name:
@@ -431,8 +1215,18 @@ def main():
     env_version = (
         args.env_version
         or (cfg.get("azureml") or cfg.get("azure_ml") or {}).get("environment")
-        or "mlops-v3-unified:20"
+        or "mlops-v3-unified:32"
     )
+    component_environments = _component_environment_identities()
+    pinned_training_environment = component_environments["variant_runner"]
+    if _normalize_azureml_environment(env_version) != (
+        _normalize_azureml_environment(pinned_training_environment)
+    ):
+        raise SystemExit(
+            "Configured/CLI environment does not match component YAMLs: "
+            f"{env_version!r} != {pinned_training_environment!r}. "
+            "Update and validate the component environment mapping as one revision."
+        )
 
     # Derive experiment name (reusable, generic)
     if not args.experiment_name:
@@ -449,6 +1243,9 @@ def main():
     print(f"🎯 Display name (unique):       {args.display_name}")
     print("="*80 + "\n")
     datastore_name = (cfg.get("dataset") or {}).get("datastore_name", "mlops_blob")
+    default_datastore = (cfg.get("azureml") or {}).get(
+        "default_datastore", datastore_name
+    )
 
     # Dataset folder URI (Azure ML will mount it). The full URI exposes the
     # subscription ID; only print it when --debug is set.
@@ -459,77 +1256,67 @@ def main():
         f"/datastores/{datastore_name}/paths/"
     )
     print(f"Using datastore: {datastore_name}")
+    print(f"Using pipeline output datastore: {default_datastore}")
     if args.debug:
         print(f"Dataset folder URI: {dataset_folder_uri}")
     else:
         logger.debug("Dataset folder URI: %s", dataset_folder_uri)
 
-    # Determine task-specific recipes based on task_type from config
-    # Dynamic recipe selection — ALL selected recipes will be passed to the variant runner
-    all_selected_recipes = []
-    task_type = cfg.get("task_type", "classification")
+    # Compile the complete task catalog before any Azure client or job is created.
+    # Invalid sources remain untouched but are quarantined in the evidence artifact;
+    # semantic duplicates cannot consume more than one shortlist slot.
+    task_type = cfg["task_type"]
+    phase_b_config = cfg["phases"]["phase_b"]
     try:
-        # Check for phase_b_recipes config. If omitted, use committed variant_search
-        # recipes through the selector rather than embedding recipe file names here.
-        phase_b_config = cfg.get("phases", {}).get("phase_b_recipes", {})
-        if not phase_b_config:
-            phase_b_config = {
-                "tier": "progressive",
-                "library": "variant_search",
-                "max_recipes": 2,
-                "runtime_budget_sec": 300,
-            }
-            print("⚠️ No phase_b_recipes config found; using variant_search selector defaults")
-        
-        # Use dynamic tier-based selection
-        tier = phase_b_config.get("tier", "balanced_performance")
-        library = phase_b_config.get("library", "variant_search")
-        max_recipes = phase_b_config.get("max_recipes", 8)
-        runtime_budget = phase_b_config.get("runtime_budget_sec", None)
-        
-        print(f"🎯 Task type: {task_type}")
-        print(f"📚 Using {library} recipe library, tier: {tier}, max_recipes: {max_recipes}")
-        
-        recipes_base_dir = Path(__file__).resolve().parents[1] / "configs" / "recipes"
-        all_selected_recipes = select_recipes_for_tier(
-            task_type=task_type,
-            tier=tier,
-            count=max_recipes,
-            library=library,
-            max_runtime_sec=runtime_budget,
-            recipes_base_dir=recipes_base_dir
+        recipes_base_dir = REPO_ROOT / "configs" / "recipes"
+        recipe_catalog = compile_recipe_catalog(recipes_base_dir, task_type)
+        selected_catalog_entries = select_catalog_entries(
+            recipe_catalog,
+            library=phase_b_config["library"],
+            tier=phase_b_config["tier"],
+            # Do not discard data-blind recipes here. S06 profiles every
+            # eligible semantic recipe before applying the <=40 Round 1 cap.
+            max_variants=None,
+            runtime_budget_sec=phase_b_config["runtime_budget_sec"],
         )
-        if not all_selected_recipes:
-            raise ValueError(f"No Phase B recipes selected for task_type={task_type}")
-        
-        print(f"✅ Selected {len(all_selected_recipes)} Phase B recipes:")
+        all_selected_recipes = [
+            entry.path for entry in selected_catalog_entries
+        ]
+        print(
+            "✅ Recipe catalog compiled before Azure: "
+            f"checked={recipe_catalog.checked_count}, "
+            f"valid={recipe_catalog.valid_count}, "
+            f"unique={recipe_catalog.unique_count}, "
+            f"quarantined={len(recipe_catalog.quarantined)}, "
+            f"selected={len(selected_catalog_entries)}"
+        )
         for i, r in enumerate(all_selected_recipes, 1):
             print(f"   [{i}] {r}")
-        print()
-    
     except Exception as e:
-        print(f"❌ Could not determine task_type/recipes from config: {e}")
+        print(f"❌ Recipe catalog compile/selection failed: {e}")
         raise SystemExit(2) from e
-    
-    # Build comma-separated variants list for the variant runner
+
     variants_list_str = ",".join(all_selected_recipes)
-    if len(all_selected_recipes) > MAX_VARIANTS_PER_RUN:
+    if len(all_selected_recipes) > MAX_CATALOG_RECIPES_PER_RUN:
         raise SystemExit(
             f"Refusing to submit: {len(all_selected_recipes)} variants exceed cap of "
-            f"{MAX_VARIANTS_PER_RUN}. Reduce phase_b_recipes.max_recipes in config."
+            f"{MAX_CATALOG_RECIPES_PER_RUN} catalog recipes."
         )
+    # Canonical schema-v2 transports the complete catalog as a uri_file.  Keep
+    # the string only as bounded compatibility for older direct callers.
     if len(variants_list_str) >= MAX_VARIANT_LIST_CHARS:
-        raise SystemExit(
-            f"Refusing to submit: variants_list string is {len(variants_list_str)} chars, "
-            f"exceeds Azure ML pipeline-parameter cap of {MAX_VARIANT_LIST_CHARS}."
-        )
+        variants_list_str = ""
 
-    # ============================================================================
-    # AIM-TOURNAMENT: BUNDLE GATING (data-driven variant selection)
-    # ============================================================================
+    # Legacy submit-host bundle gating is not a canonical selection path. Data
+    # profiling and ranking occur inside S06 against Azure-resolved training data.
     bundle_gated_variants = None  # Will be set if bundle gating succeeds
 
-    if args.bundles_dir and BUNDLES_AVAILABLE:
+    if args.bundles_dir:
+        raise SystemExit(
+            "--bundles_dir is incompatible with the canonical schema-v2 funnel; "
+            "compile the task recipe catalog instead"
+        )
+    if False and args.bundles_dir and BUNDLES_AVAILABLE:
         print("\n" + "="*80)
         print("AIM-TOURNAMENT: BUNDLE GATING")
         print("="*80)
@@ -571,9 +1358,11 @@ def main():
     # PHASE 1: INTELLIGENT VARIANT SELECTION (NEW ARCHITECTURE)
     # ============================================================================
     variants_json_path = None
-    use_phase1_pipeline = args.use_phase1 and PHASE1_AVAILABLE
+    # The schema-v2 compiled funnel is the only production graph.  --use_phase1
+    # remains accepted as a compatibility no-op for existing callers.
+    use_phase1_pipeline = True
     
-    if use_phase1_pipeline:
+    if False:  # Legacy submit-host profiling path intentionally retired.
         print("\n" + "="*80)
         print("PHASE 1: INTELLIGENT VARIANT RECOMMENDATION SYSTEM")
         print("="*80)
@@ -734,16 +1523,13 @@ def main():
             
             # Store as comma-separated string
             variants_list_str = ",".join(relative_paths)
-            if len(relative_paths) > MAX_VARIANTS_PER_RUN:
+            if len(relative_paths) > MAX_CATALOG_RECIPES_PER_RUN:
                 raise SystemExit(
                     f"Refusing to submit: Phase 1 selected {len(relative_paths)} variants "
-                    f"(cap {MAX_VARIANTS_PER_RUN}). Tighten max_variants/min_relevance_score."
+                    f"(cap {MAX_CATALOG_RECIPES_PER_RUN})."
                 )
             if len(variants_list_str) >= MAX_VARIANT_LIST_CHARS:
-                raise SystemExit(
-                    f"Refusing to submit: Phase 1 variants_list is {len(variants_list_str)} chars "
-                    f"(cap {MAX_VARIANT_LIST_CHARS})."
-                )
+                variants_list_str = ""
             
         except Exception as e:
             logger.error("Phase 1 variant selection failed: %s", e)
@@ -764,10 +1550,32 @@ def main():
         
         # V3-Proposed Planner settings (from CLI or config)
         planner_config = phase_b_config.get("planner", {})
-        planner_enabled = args.enable_planner or planner_config.get("enabled", False)
-        round1_max = args.round1_max_variants or planner_config.get("round1_max_variants", 40)
-        round2_max = args.round2_max_variants or planner_config.get("round2_max_variants", 10)
-        proxy_threshold = args.proxy_prune_threshold or planner_config.get("proxy_prune_threshold", 0.50)
+        planner_enabled = True
+        compiled_round1_cap = _compiled_round1_cap(phase_b_config)
+        round1_max = (
+            args.round1_max_variants
+            if args.round1_max_variants is not None
+            else compiled_round1_cap
+        )
+        round2_max = (
+            args.round2_max_variants
+            if args.round2_max_variants is not None
+            else planner_config["round2_max_variants"]
+        )
+        proxy_threshold = (
+            args.proxy_prune_threshold
+            if args.proxy_prune_threshold is not None
+            else planner_config["proxy_prune_threshold"]
+        )
+        if not 1 <= round1_max <= compiled_round1_cap:
+            raise SystemExit(
+                "--round1_max_variants may lower but not exceed the compiled "
+                f"effective cap ({compiled_round1_cap})"
+            )
+        if not 1 <= round2_max <= min(8, round1_max):
+            raise SystemExit(
+                "--round2_max_variants must be between 1 and min(8, Round 1)"
+            )
         cache_enabled = not args.disable_cache and planner_config.get("cache_enabled", True)
         
         if planner_enabled:
@@ -779,15 +1587,58 @@ def main():
             print(f"  Proxy prune threshold: {proxy_threshold}")
             print(f"  Preprocessing cache: {'ENABLED' if cache_enabled else 'DISABLED'}")
             print("="*80 + "\n")
-        
+
+        source_manifest = _compute_upload_source_manifest()
+        code_identity = str(source_manifest["source_sha256"])
+        execution_manifest, candidate_records = _build_execution_manifest(
+            cfg,
+            selected_catalog_entries,
+            recipe_catalog,
+            code_sha=code_identity,
+            environment=env_version,
+            component_environments=component_environments,
+            round1_max_variants=round1_max,
+            round2_max_variants=round2_max,
+            proxy_prune_threshold=proxy_threshold,
+        )
+        execution_manifest_path, catalog_evidence_path, source_manifest_path = (
+            _persist_execution_artifacts(
+                execution_manifest,
+                candidate_records,
+                recipe_catalog,
+                selected_catalog_entries,
+                source_manifest,
+            )
+        )
+        print(
+            "🔒 Execution manifest frozen: "
+            f"{execution_manifest.execution_id[:16]} "
+            f"(catalog={recipe_catalog.catalog_hash[:16]})"
+        )
+        logger.info("Execution manifest: %s", execution_manifest_path)
+        logger.info("Recipe catalog evidence: %s", catalog_evidence_path)
+        logger.info("Upload source manifest: %s", source_manifest_path)
+        execution_manifest_input = Input(
+            path=_sdk_local_input_path(execution_manifest_path),
+            type="uri_file",
+        )
+        candidate_catalog_input = Input(
+            path=_sdk_local_input_path(catalog_evidence_path),
+            type="uri_file",
+        )
+
         drift_baseline_input = Input(path=args.drift_baseline_in, type="uri_folder") if args.drift_baseline_in else None
         job = full_pipeline_v2(
             config_name=config_name,
             dataset_folder=Input(path=dataset_folder_uri, type="uri_folder"),
-            variants_list=variants_list_str,
+            execution_manifest=execution_manifest_input,
+            candidate_catalog=candidate_catalog_input,
+            variants_list="",
             engine_list=engine_list,
             time_budget_per_variant=time_budget_per_variant,
+            phaseb_time_budget_sec=phase_b_config["phase_timeout_seconds"],
             drift_baseline_in=drift_baseline_input,
+            drift_baseline_uri=args.drift_baseline_in or "",
             # V3-Proposed Planner parameters
             planner_enabled=planner_enabled,
             round1_max_variants=round1_max,
@@ -798,29 +1649,73 @@ def main():
     else:
         # DEFAULT: Use production pipeline with ALL selected variants
         # The variant runner processes every recipe in a single step
-        engine_list_str = "pycaret,flaml"
-        if task_type == "clustering":
-            engine_list_str = "pycaret"  # FLAML doesn't support clustering
+        engine_list_str = ",".join(phase_b_config["engines"])
         
         # Read time_budget_per_variant from config (fallback 600s)
         _pb_cfg = cfg.get("phases", {}).get("phase_b", {}) if 'cfg' in dir() else {}
         _time_budget = _pb_cfg.get("time_budget_per_variant", 600)
         print(f"🚀 Using production pipeline with {len(all_selected_recipes)} variants × engines={engine_list_str}, time_budget={_time_budget}s\n")
+        planner_config = phase_b_config["planner"]
+        round1_max = _compiled_round1_cap(phase_b_config)
+        round2_max = planner_config["round2_max_variants"]
+        proxy_threshold = planner_config["proxy_prune_threshold"]
+        source_manifest = _compute_upload_source_manifest()
+        code_identity = str(source_manifest["source_sha256"])
+        execution_manifest, candidate_records = _build_execution_manifest(
+            cfg,
+            selected_catalog_entries,
+            recipe_catalog,
+            code_sha=code_identity,
+            environment=env_version,
+            component_environments=component_environments,
+            round1_max_variants=round1_max,
+            round2_max_variants=round2_max,
+            proxy_prune_threshold=proxy_threshold,
+        )
+        (
+            execution_manifest_path,
+            catalog_evidence_path,
+            source_manifest_path,
+        ) = _persist_execution_artifacts(
+            execution_manifest,
+            candidate_records,
+            recipe_catalog,
+            selected_catalog_entries,
+            source_manifest,
+        )
+        execution_manifest_input = Input(
+            path=_sdk_local_input_path(execution_manifest_path),
+            type="uri_file",
+        )
+        candidate_catalog_input = Input(
+            path=_sdk_local_input_path(catalog_evidence_path),
+            type="uri_file",
+        )
         drift_baseline_input = Input(path=args.drift_baseline_in, type="uri_folder") if args.drift_baseline_in else None
         job = full_pipeline(
             config_name=config_name,
             dataset_folder=Input(path=dataset_folder_uri, type="uri_folder"),
-            variants_list=variants_list_str,
+            execution_manifest=execution_manifest_input,
+            candidate_catalog=candidate_catalog_input,
+            variants_list="",
             engine_list=engine_list_str,
             time_budget_per_variant=_time_budget,
+            phaseb_time_budget_sec=phase_b_config["phase_timeout_seconds"],
             drift_baseline_in=drift_baseline_input,
+            drift_baseline_uri=args.drift_baseline_in or "",
         )
     
+    _configure_pipeline_job_settings(
+        job,
+        default_compute=args.compute,
+        default_datastore=default_datastore,
+        force_rerun=args.force_rerun,
+    )
+
     # 🚀 Set display names for Phase B step (variant runner)
     if not use_phase1_pipeline:
         # Default pipeline: Set display name for variant runner step
         try:
-            job.settings.default_compute = args.compute
             if hasattr(job, 'jobs') and 's06' in job.jobs:
                 variant_count = len(all_selected_recipes)
                 job.jobs['s06'].display_name = f"s06_phaseb_variant_runner__{variant_count}_variants"
@@ -830,13 +1725,28 @@ def main():
     else:
         # Phase 1 pipeline: Set display name for variant runner step
         try:
-            job.settings.default_compute = args.compute
             if hasattr(job, 'jobs') and 's06' in job.jobs:
                 job.jobs['s06'].display_name = f"s06_phaseb_variant_runner__intelligent"
                 print(f"✅ Set display name for intelligent variant runner")
         except Exception as e:
             logger.warning("Could not set display name (non-critical): %s", e)
-    
+
+    try:
+        _validate_submission_revision_identity(
+            revision_kind=args.submission_revision_kind,
+            execution_manifest=execution_manifest,
+            config_hash=cfg["compiled_config_hash"],
+            source_identity=code_identity,
+            parent_execution_id=args.parent_execution_id,
+            parent_config_hash=args.parent_config_hash,
+            parent_source_identity=args.parent_source_identity,
+            expected_execution_id=args.expected_execution_id,
+            expected_config_hash=args.expected_config_hash,
+            expected_source_identity=args.expected_source_identity,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
     job.experiment_name = args.experiment_name
     job.display_name = args.display_name
 
@@ -845,15 +1755,38 @@ def main():
     task_tag = cfg.get('task_type') or 'unknown'
     preset_tag = cfg.get('preset') or 'unknown'
     job.tags = {
+        'config_name': config_name,
         'dataset': dataset_tag,
         'task': task_tag,
         'preset': preset_tag,
         'pipeline_version': 'v3',
         'environment': env_version,
+        'execution_id': execution_manifest.execution_id,
+        'compiled_config_hash': cfg['compiled_config_hash'],
+        'recipe_catalog_hash': recipe_catalog.catalog_hash,
+        'source_identity': code_identity,
+        'submission_revision_kind': args.submission_revision_kind,
     }
+    if args.submission_revision_kind != "original":
+        job.tags.update(
+            {
+                "parent_execution_id": args.parent_execution_id,
+                "parent_config_hash": args.parent_config_hash,
+                "parent_source_identity": args.parent_source_identity,
+            }
+        )
+    if args.source_decision_id:
+        job.tags["source_decision_id"] = args.source_decision_id
+    if args.revision_reason:
+        job.tags["revision_reason"] = str(args.revision_reason).strip()
+    job.tags.update(extra_tags)
     if args.force:
         job.tags['force_submit'] = 'true'
         job.tags['force_submitted_by'] = os.getenv('USER', 'unknown')
+
+    # Run the same SDK graph validation used by create_or_update even for dry
+    # runs, so optional/required binding errors cannot hide in YAML rendering.
+    job._validate(raise_error=True)
 
     # If Azure ML context provided, submit; else print YAML
     if args.dry_run:
@@ -885,15 +1818,19 @@ def main():
             signal.signal(signal.SIGTERM, _handle_submit_signal)
             signal.signal(signal.SIGINT, _handle_submit_signal)
         else:
-            _force_user = os.getenv('USER', 'unknown')
+            _force_user = os.getenv("USER") or os.getenv("USERNAME") or "unknown"
             print("\n" + "="*80)
             print(f"⚠️  SECURITY NOTICE: --force bypassed all submission guards")
             print(f"   user={_force_user}  pid={os.getpid()}  time={datetime.now().isoformat()}")
             print("="*80 + "\n")
-            _record_force_audit(args, _force_user)
+            force_audit_id = _record_force_audit(args, _force_user)
+            job.tags["force_audit_id"] = force_audit_id
 
         ml_client = MLClient(
-            ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential()),
+            ChainedTokenCredential(
+                ManagedIdentityCredential(),
+                AzureCliCredential(process_timeout=60),
+            ),
             subscription_id=args.subscription_id,
             resource_group_name=args.resource_group,
             workspace_name=args.workspace_name,
@@ -919,6 +1856,23 @@ def main():
 
         print("🚀 Submitting pipeline to Azure ML (this may take several minutes on NFS)...")
         submitted = ml_client.jobs.create_or_update(job)
+        studio_url = (
+            f"https://ml.azure.com/runs/{submitted.name}"
+            f"?wsid=/subscriptions/{args.subscription_id}"
+            f"/resourceGroups/{args.resource_group}"
+            "/providers/Microsoft.MachineLearningServices"
+            f"/workspaces/{args.workspace_name}"
+        )
+        _write_submission_result(
+            args.result_json,
+            {
+                "job_name": submitted.name,
+                "experiment_name": args.experiment_name,
+                "display_name": args.display_name,
+                "status": submitted.status or "Submitted",
+                "studio_url": studio_url,
+            },
+        )
         print(f"✅ Submitted job: {submitted.name}")
         # H2: do NOT leak subscription/rg/workspace IDs in the URL by default.
         if args.debug:
