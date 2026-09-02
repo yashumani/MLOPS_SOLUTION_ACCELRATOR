@@ -34,6 +34,9 @@ from utils.phasea_model_bundle import (
 import os
 
 
+CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS = 10_000
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -54,6 +57,63 @@ def _optimal_threshold_f1(y_true, y_proba, pos_label=1) -> tuple:
             best_f1 = f1
             best_t = t
     return round(best_t, 2), round(best_f1, 4)
+
+
+def train_clustering_baseline(
+    frame: pd.DataFrame,
+    *,
+    random_seed: int,
+):
+    """Select a PyCaret clusterer on a bounded sample, then refit all rows."""
+    from pycaret.clustering import create_model, pull, setup
+    from sklearn.metrics import davies_bouldin_score, silhouette_score
+
+    numeric_frame = frame.select_dtypes(include=[np.number]).astype(np.float64)
+    if numeric_frame.empty or numeric_frame.shape[1] == 0:
+        raise ValueError("Clustering baseline requires numeric features")
+
+    selection_rows = min(
+        len(numeric_frame), CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS
+    )
+    selection_frame = (
+        numeric_frame.sample(n=selection_rows, random_state=random_seed).sort_index()
+        if selection_rows < len(numeric_frame)
+        else numeric_frame
+    )
+    if selection_rows < len(numeric_frame):
+        print(
+            "   PyCaret clustering selection sample: "
+            f"{selection_rows:,}/{len(numeric_frame):,} rows"
+        )
+
+    setup(
+        data=selection_frame,
+        session_id=random_seed,
+        verbose=False,
+        log_experiment=False,
+        preprocess=False,
+        normalize=False,
+        transformation=False,
+    )
+    best = create_model("kmeans")
+    leaderboard = pull()
+    if selection_rows < len(numeric_frame):
+        best.fit(numeric_frame)
+
+    predictions = best.predict(numeric_frame)
+    silhouette = silhouette_score(
+        numeric_frame,
+        predictions,
+        sample_size=min(len(numeric_frame), 10_000),
+        random_state=random_seed,
+    )
+    davies_bouldin = davies_bouldin_score(numeric_frame, predictions)
+    return best, leaderboard, {
+        "silhouette_score": round(float(silhouette), 4),
+        "davies_bouldin_score": round(float(davies_bouldin), 4),
+        "pycaret_selection_rows": selection_rows,
+        "full_refit_rows": len(numeric_frame),
+    }
 
 
 def main():
@@ -269,34 +329,18 @@ def main():
                 metrics["mae"] = float(leaderboard.iloc[0]["MAE"]) if "MAE" in leaderboard.columns else None
 
         elif task_type == "clustering":
-            from pycaret.clustering import setup, create_model, pull, save_model
-            from sklearn.metrics import silhouette_score, davies_bouldin_score
+            from pycaret.clustering import save_model
 
             print(f"\nPyCaret Clustering Baseline")
-            # Cast numeric columns to float64 to prevent dtype mismatch errors
-            _numeric_cols = df.select_dtypes(include=[np.number]).columns
-            df[_numeric_cols] = df[_numeric_cols].astype(np.float64)
-            print(f"   Cast {len(_numeric_cols)} numeric cols to float64")
-            
-            # K5: preprocess=False prevents PyCaret from re-scaling clustering
-            # features. Stage 3 has already standardized them per the recipe.
-            setup(data=df, session_id=_seed, verbose=False, log_experiment=False,
-                  preprocess=False, normalize=False, transformation=False)
-            best = create_model("kmeans")
-            leaderboard = pull()
-
-            predictions = best.predict(df)
-            numeric_frame = df.select_dtypes(include=[np.number]).astype(np.float64)
-            sil = silhouette_score(
-                numeric_frame,
-                predictions,
-                sample_size=min(len(numeric_frame), 10_000),
-                random_state=_seed,
+            best, leaderboard, clustering_metrics = train_clustering_baseline(
+                df,
+                random_seed=_seed,
             )
-            db = davies_bouldin_score(numeric_frame, predictions)
-            metrics["silhouette_score"] = round(sil, 4)
-            metrics["davies_bouldin_score"] = round(db, 4)
-            print(f"   silhouette={sil:.4f}, davies_bouldin={db:.4f}")
+            metrics.update(clustering_metrics)
+            print(
+                f"   silhouette={metrics['silhouette_score']:.4f}, "
+                f"davies_bouldin={metrics['davies_bouldin_score']:.4f}"
+            )
         else:
             raise ValueError(f"Unknown task_type: {task_type}")
 

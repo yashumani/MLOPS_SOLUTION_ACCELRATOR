@@ -1,14 +1,21 @@
 from pathlib import Path
+import sys
+import types
 
 import numpy as np
 import pandas as pd
 import pytest
+import sklearn.metrics
 from sklearn.base import clone
 from sklearn.cluster import KMeans
 from sklearn.linear_model import LogisticRegression, Ridge
 
 from src.orchestration.contracts import SplitManifest, canonical_hash
 from src.steps.aggregate_baseline import select_champion
+from src.steps.stage5_pycaret_train import (
+    CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS,
+    train_clustering_baseline,
+)
 from src.utils.common_evaluator import EvaluationSpec, evaluate_candidate
 from src.utils.model_bundle import (
     BUNDLE_FILE_NAME,
@@ -27,6 +34,65 @@ from src.utils.phasea_model_bundle import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_phasea_clustering_selection_is_sampled_then_refit(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    class _Model:
+        def fit(self, data):
+            observed["full_refit_rows"] = len(data)
+            return self
+
+        def predict(self, data):
+            observed["prediction_rows"] = len(data)
+            return np.arange(len(data)) % 3
+
+    module = types.ModuleType("pycaret.clustering")
+
+    def _setup(*, data, **_kwargs):
+        observed["selection_rows"] = len(data)
+
+    module.setup = _setup
+    module.create_model = lambda *_args, **_kwargs: _Model()
+    module.pull = lambda: pd.DataFrame({"Silhouette": [0.42]})
+    monkeypatch.setitem(sys.modules, "pycaret.clustering", module)
+
+    def _silhouette(*_args, **kwargs):
+        observed["silhouette_sample_size"] = kwargs["sample_size"]
+        return 0.42
+
+    monkeypatch.setattr(
+        sklearn.metrics,
+        "silhouette_score",
+        _silhouette,
+    )
+    monkeypatch.setattr(
+        sklearn.metrics,
+        "davies_bouldin_score",
+        lambda *_args, **_kwargs: 0.73,
+    )
+
+    total_rows = CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS + 25
+    frame = pd.DataFrame(
+        {
+            "feature_a": np.arange(total_rows, dtype=float),
+            "feature_b": np.arange(total_rows, dtype=float) % 7,
+        }
+    )
+
+    model, _leaderboard, metrics = train_clustering_baseline(
+        frame,
+        random_seed=17,
+    )
+
+    assert model is not None
+    assert observed["selection_rows"] == CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS
+    assert observed["full_refit_rows"] == total_rows
+    assert observed["prediction_rows"] == total_rows
+    assert observed["silhouette_sample_size"] == 10_000
+    assert metrics["pycaret_selection_rows"] == CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS
+    assert metrics["full_refit_rows"] == total_rows
 
 
 def _raw_frame() -> pd.DataFrame:
@@ -365,6 +431,7 @@ def test_phasea_components_and_both_graphs_bind_stage2_contracts() -> None:
     for component in (pycaret_component, flaml_component):
         assert "split_manifest:" in component
         assert "--split_manifest ${{inputs.split_manifest}}" in component
+    assert "version: 8" in pycaret_component
     assert pipeline_source.count("dataset_in=s2.outputs.raw_train_out") >= 4
     assert pipeline_source.count("split_manifest=s2.outputs.split_manifest_out") >= 4
 
