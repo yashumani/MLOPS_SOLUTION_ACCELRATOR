@@ -149,6 +149,20 @@ def _collect_upstream_identity(final_report: dict, registry_info: dict) -> dict:
     return identity
 
 
+def _drift_alert_feature_names(drifted_features: list[object]) -> list[str]:
+    """Normalize structured drift evidence for human-readable alerts."""
+
+    names = []
+    for item in drifted_features:
+        if isinstance(item, dict):
+            name = item.get("feature")
+            if name not in (None, ""):
+                names.append(str(name))
+        elif item not in (None, ""):
+            names.append(str(item))
+    return names
+
+
 def _load_config(config_name: str) -> dict:
     """Load config YAML from configs/ directory."""
     config_dir = Path(__file__).resolve().parent.parent.parent / "configs"
@@ -801,7 +815,7 @@ def run_drift_monitor(args):
                 job_name=os.environ.get("AZUREML_RUN_ID") or os.environ.get("MLFLOW_RUN_ID"),
                 self_check_status=smoke_test_status,
                 overall_psi=overall_psi,
-                drifted_features=drifted_features,
+                drifted_features=_drift_alert_feature_names(drifted_features),
                 cadence=cadence_name,
                 extra_facts=extra or None,
             )

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from steps.s13_drift_monitor import _collect_upstream_identity
+from steps.s13_drift_monitor import (
+    _collect_upstream_identity,
+    _drift_alert_feature_names,
+)
 
 
 S13_SOURCE = (
@@ -61,6 +64,16 @@ def test_s13_preserves_upstream_identity_without_synthesizing_values(
         "model_version": "12",
         "source_sha": "source-sha",
     }
+
+
+def test_s13_normalizes_structured_drift_features_for_alerting() -> None:
+    assert _drift_alert_feature_names(
+        [
+            {"feature": "age", "psi": 0.12, "severity": "yellow"},
+            {"feature": "income", "psi": 0.28, "severity": "red"},
+            "legacy_feature",
+        ]
+    ) == ["age", "income", "legacy_feature"]
 
 
 def test_s13_keeps_azureml_tracking_uri_unchanged() -> None:
