@@ -76,6 +76,7 @@ def _build_config(
         dataset["excluded_columns"] = excluded_columns
 
     engines = ["pycaret"] if task_type == "clustering" else ["pycaret", "flaml"]
+    round2_max_variants = 3 if task_type == "clustering" else 2
     split_strategy = "stratified" if task_type == "classification" else "random"
     candidate_timeout_seconds = _candidate_timeout_seconds(profile)
     config: dict[str, Any] = {
@@ -137,7 +138,7 @@ def _build_config(
                 "planner": {
                     "enabled": True,
                     "round1_max_variants": 4,
-                    "round2_max_variants": 2,
+                    "round2_max_variants": round2_max_variants,
                     "proxy_prune_threshold": 0.0,
                     "diversity_min_hamming_distance": 2,
                     "cache_enabled": True,

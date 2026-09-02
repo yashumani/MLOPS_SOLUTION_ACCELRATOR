@@ -62,7 +62,7 @@ phases:
     planner:
       enabled: true
       round1_max_variants: 4
-      round2_max_variants: 2
+      round2_max_variants: 3
       proxy_prune_threshold: 0.0
       diversity_min_hamming_distance: 2
       cache_enabled: true
