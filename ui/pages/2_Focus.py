@@ -131,9 +131,9 @@ def _focus_header() -> None:
 
     h1, h2, h3 = st.columns([5, 2, 3])
     with h1:
+        header_display_name = display_name.replace("`", "'")
         st.markdown(
-            f"### `{display_name}`  &nbsp;{status_badge(live_status)}",
-            unsafe_allow_html=True,
+            f"### `{header_display_name}`  {status_badge(live_status)}",
         )
         st.caption(
             f"Job ID `{job_name}` · experiment `"

@@ -91,10 +91,12 @@ def _render_connection_badge() -> None:
             unsafe_allow_html=True,
         )
     elif status == "error":
-        err = st.session_state.get("connection_error", "Connection failed")
+        err = escape(
+            str(st.session_state.get("connection_error", "Connection failed"))[:50]
+        )
         st.markdown(
             f'<div class="svm-conn svm-conn-err">'
-            f'<span class="svm-conn-dot"></span>{err[:50]}</div>',
+            f'<span class="svm-conn-dot"></span>{err}</div>',
             unsafe_allow_html=True,
         )
     else:

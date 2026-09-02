@@ -204,7 +204,6 @@ if step_choice != "(parent job)":
     if target_step:
         st.markdown(
             f"Step status: {status_badge(target_step.get('status', 'Unknown'))}",
-            unsafe_allow_html=True,
         )
 
 _live_log_panel()

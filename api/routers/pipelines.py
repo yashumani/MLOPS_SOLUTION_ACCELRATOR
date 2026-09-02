@@ -1,11 +1,13 @@
 """Pipeline submission, monitoring, cancel, and output endpoints."""
 
 import asyncio
+import logging
 import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from api.core.security import verify_api_key
 from api.schemas.pipeline import (
@@ -39,6 +41,16 @@ router = APIRouter(
     tags=["pipelines"],
     dependencies=[Depends(verify_api_key)],
 )
+logger = logging.getLogger(__name__)
+
+
+def _cleanup_download_artifacts(tmp: Path, archive: Path | None = None) -> None:
+    shutil.rmtree(tmp, ignore_errors=True)
+    if archive is not None:
+        try:
+            archive.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("failed to remove temporary output archive %s", archive)
 
 
 # ── Submit ────────────────────────────────────────────────────
@@ -274,8 +286,9 @@ def download_output(job_name: str, output_name: str):
     """Download a specific output artifact from a pipeline job."""
     try:
         tmp = pipeline_service.download_output(job_name, output_name)
-    except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"Output not available: {exc}")
+    except Exception:
+        logger.exception("output download failed for job=%s output=%s", job_name, output_name)
+        raise HTTPException(status_code=404, detail="Output not available")
 
     # Return first file found, or zip the directory
     files = list(tmp.rglob("*"))
@@ -285,15 +298,24 @@ def download_output(job_name: str, output_name: str):
         raise HTTPException(status_code=404, detail="No files in output")
 
     if len(files) == 1:
-        return FileResponse(path=str(files[0]), filename=files[0].name)
+        return FileResponse(
+            path=str(files[0]),
+            filename=files[0].name,
+            background=BackgroundTask(_cleanup_download_artifacts, tmp),
+        )
 
     # Multiple files → zip
-    zip_path = Path(f"{tmp}.zip")
-    shutil.make_archive(str(tmp), "zip", str(tmp))
+    try:
+        zip_path = Path(shutil.make_archive(str(tmp), "zip", str(tmp)))
+    except Exception:
+        _cleanup_download_artifacts(tmp)
+        logger.exception("output archive creation failed for job=%s output=%s", job_name, output_name)
+        raise HTTPException(status_code=500, detail="Output archive could not be created")
     return FileResponse(
         path=str(zip_path),
         filename=f"{job_name}_{output_name}.zip",
         media_type="application/zip",
+        background=BackgroundTask(_cleanup_download_artifacts, tmp, zip_path),
     )
 
 

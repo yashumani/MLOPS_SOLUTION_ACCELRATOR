@@ -1,5 +1,6 @@
 """Pipeline submission, monitoring, and output retrieval service."""
 
+import io
 import json
 import logging
 import os
@@ -881,8 +882,16 @@ def list_outputs(job_name: str) -> OutputListResponse:
 def download_output(job_name: str, output_name: str) -> Path:
     """Download a specific job output to a temp directory and return the path."""
     ml_client = get_ml_client()
-    tmp = Path(tempfile.mkdtemp(prefix=f"mlops_output_{job_name}_"))
-    ml_client.jobs.download(job_name, download_path=str(tmp), output_name=output_name)
+    tmp = Path(tempfile.mkdtemp(prefix="mlops_output_"))
+    try:
+        ml_client.jobs.download(
+            job_name,
+            download_path=str(tmp),
+            output_name=output_name,
+        )
+    except Exception:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
     return tmp
 
 
@@ -899,6 +908,21 @@ _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
 
 _TEXT_PREVIEW_BYTES = 200_000  # ~200KB cap
 _CSV_PREVIEW_ROWS = 200
+
+
+def _read_preview_bytes(path: Path) -> tuple[bytes, bool]:
+    """Read at most the configured preview limit from an artifact."""
+    with path.open("rb") as fh:
+        raw = fh.read(_TEXT_PREVIEW_BYTES + 1)
+    return raw[:_TEXT_PREVIEW_BYTES], len(raw) > _TEXT_PREVIEW_BYTES
+
+
+def _complete_preview_lines(raw: bytes, truncated: bool) -> list[str]:
+    text = raw.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    if truncated and raw and not raw.endswith((b"\n", b"\r")):
+        lines = lines[:-1]
+    return lines
 
 
 def _classify_file(path: Path) -> str:
@@ -947,7 +971,7 @@ def get_output_content(job_name: str, output_name: str) -> OutputContentResponse
     import json
 
     ml_client = get_ml_client()
-    tmp = Path(tempfile.mkdtemp(prefix=f"mlops_preview_{job_name}_"))
+    tmp = Path(tempfile.mkdtemp(prefix="mlops_preview_"))
     files_info: list[OutputFileInfo] = []
     json_content: Any | None = None
     text_preview: str | None = None
@@ -997,39 +1021,43 @@ def get_output_content(job_name: str, output_name: str) -> OutputContentResponse
             kind = _classify_file(primary)
             try:
                 if kind == "json":
+                    raw, byte_truncated = _read_preview_bytes(primary)
                     if primary.suffix.lower() == ".jsonl":
                         rows = []
-                        with open(primary) as fh:
-                            for i, line in enumerate(fh):
-                                if i >= _CSV_PREVIEW_ROWS:
-                                    truncated = True
-                                    break
-                                line = line.strip()
-                                if line:
-                                    try:
-                                        rows.append(json.loads(line))
-                                    except json.JSONDecodeError:
-                                        pass
-                        json_content = rows
-                    else:
-                        with open(primary) as fh:
-                            json_content = json.load(fh)
-                elif kind == "csv":
-                    delim = "\t" if primary.suffix.lower() == ".tsv" else ","
-                    rows: list[dict] = []
-                    with open(primary, newline="") as fh:
-                        reader = csv.DictReader(fh, delimiter=delim)
-                        for i, row in enumerate(reader):
+                        lines = _complete_preview_lines(raw, byte_truncated)
+                        for i, line in enumerate(lines):
                             if i >= _CSV_PREVIEW_ROWS:
                                 truncated = True
                                 break
-                            rows.append(row)
+                            line = line.strip()
+                            if line:
+                                try:
+                                    rows.append(json.loads(line))
+                                except json.JSONDecodeError:
+                                    pass
+                        truncated = truncated or byte_truncated
+                        json_content = rows
+                    elif byte_truncated:
+                        text_preview = raw.decode("utf-8", errors="replace")
+                        truncated = True
+                    else:
+                        json_content = json.loads(raw.decode("utf-8"))
+                elif kind == "csv":
+                    delim = "\t" if primary.suffix.lower() == ".tsv" else ","
+                    rows: list[dict] = []
+                    raw, byte_truncated = _read_preview_bytes(primary)
+                    lines = _complete_preview_lines(raw, byte_truncated)
+                    reader = csv.DictReader(io.StringIO("\n".join(lines)), delimiter=delim)
+                    for i, row in enumerate(reader):
+                        if i >= _CSV_PREVIEW_ROWS:
+                            truncated = True
+                            break
+                        rows.append(row)
+                    truncated = truncated or byte_truncated
                     csv_preview = rows
                 elif kind in ("text", "yaml", "markdown", "html"):
-                    raw = primary.read_bytes()
-                    if len(raw) > _TEXT_PREVIEW_BYTES:
-                        raw = raw[:_TEXT_PREVIEW_BYTES]
-                        truncated = True
+                    raw, byte_truncated = _read_preview_bytes(primary)
+                    truncated = truncated or byte_truncated
                     text_preview = raw.decode("utf-8", errors="replace")
             except Exception:  # noqa: BLE001 — preview is best-effort
                 pass

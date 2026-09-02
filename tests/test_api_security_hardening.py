@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -95,6 +96,25 @@ def test_root_endpoint_derives_azureml_dashboard_url(monkeypatch):
     )
 
 
+def test_root_endpoint_does_not_redirect_to_untrusted_host(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.core.config import settings
+    from api.main import app
+
+    monkeypatch.setattr(settings, "ui_base_url", "")
+    client = TestClient(app, base_url="https://attacker.example")
+
+    response = client.get(
+        "/",
+        headers={"Accept": "text/html"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/docs"
+
+
 def test_healthz_liveness_probe_returns_ok():
     from fastapi.testclient import TestClient
 
@@ -144,6 +164,122 @@ def test_list_local_outputs_is_read_only_and_bounded(tmp_path, monkeypatch):
     assert "batch" in paths
     assert "batch/report.json" in paths
     assert result.truncated is False
+
+
+def test_download_output_temp_directory_is_removed_after_response(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.core.config import settings
+    from api.main import app
+    from api.routers import pipelines
+
+    artifact_dir = tmp_path / "artifact"
+    artifact_dir.mkdir()
+    (artifact_dir / "report.json").write_text('{"ok": true}')
+    monkeypatch.setattr(settings, "api_key", "test-key")
+    monkeypatch.setattr(
+        pipelines.pipeline_service,
+        "download_output",
+        lambda *_args, **_kwargs: artifact_dir,
+    )
+
+    response = TestClient(app).get(
+        "/api/v1/pipelines/jobs/job-1/outputs/report/download",
+        headers={"X-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.content == b'{"ok": true}'
+    assert not artifact_dir.exists()
+
+
+def test_download_output_zip_and_temp_directory_are_removed(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.core.config import settings
+    from api.main import app
+    from api.routers import pipelines
+
+    artifact_dir = tmp_path / "artifact-multi"
+    artifact_dir.mkdir()
+    (artifact_dir / "one.txt").write_text("one")
+    (artifact_dir / "two.txt").write_text("two")
+    archive_path = Path(f"{artifact_dir}.zip")
+    monkeypatch.setattr(settings, "api_key", "test-key")
+    monkeypatch.setattr(
+        pipelines.pipeline_service,
+        "download_output",
+        lambda *_args, **_kwargs: artifact_dir,
+    )
+
+    response = TestClient(app).get(
+        "/api/v1/pipelines/jobs/job-1/outputs/report/download",
+        headers={"X-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(__import__("io").BytesIO(response.content)) as archive:
+        assert set(archive.namelist()) == {"one.txt", "two.txt"}
+    assert not artifact_dir.exists()
+    assert not archive_path.exists()
+
+
+def test_download_output_cleans_temp_directory_when_azure_download_fails(
+    tmp_path, monkeypatch
+):
+    from api.services import pipeline_service
+
+    artifact_dir = tmp_path / "failed-download"
+
+    class _Jobs:
+        def download(self, *_args, **_kwargs):
+            raise RuntimeError("download failed")
+
+    class _Client:
+        jobs = _Jobs()
+
+    def _make_temp_dir(*_args, **_kwargs):
+        artifact_dir.mkdir()
+        return str(artifact_dir)
+
+    monkeypatch.setattr(pipeline_service, "get_ml_client", lambda: _Client())
+    monkeypatch.setattr(pipeline_service.tempfile, "mkdtemp", _make_temp_dir)
+
+    with pytest.raises(RuntimeError, match="download failed"):
+        pipeline_service.download_output("job-1", "report")
+    assert not artifact_dir.exists()
+
+
+def test_large_json_preview_is_bounded(tmp_path, monkeypatch):
+    from api.services import pipeline_service
+
+    artifact_dir = tmp_path / "preview"
+
+    class _Jobs:
+        def download(self, *_args, **kwargs):
+            path = Path(kwargs["download_path"])
+            path.mkdir(parents=True, exist_ok=True)
+            (path / "large.json").write_text(
+                json.dumps({"payload": "x" * (pipeline_service._TEXT_PREVIEW_BYTES + 50)})
+            )
+
+    class _Client:
+        jobs = _Jobs()
+
+    def _make_temp_dir(*_args, **_kwargs):
+        artifact_dir.mkdir()
+        return str(artifact_dir)
+
+    monkeypatch.setattr(pipeline_service, "get_ml_client", lambda: _Client())
+    monkeypatch.setattr(pipeline_service.tempfile, "mkdtemp", _make_temp_dir)
+
+    result = pipeline_service.get_output_content("job-1", "report")
+
+    assert result.truncated is True
+    assert result.json_content is None
+    assert result.text_preview is not None
+    assert len(result.text_preview.encode("utf-8")) <= pipeline_service._TEXT_PREVIEW_BYTES
+    assert not artifact_dir.exists()
 
 
 def test_s12_skips_registration_when_quality_gate_failed(tmp_path, monkeypatch):

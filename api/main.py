@@ -106,7 +106,9 @@ def _dashboard_url(request: Request) -> str:
     if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
         return f"http://{host}:{settings.ui_port}/"
 
-    return f"{scheme}://{host}:{settings.ui_port}/"
+    # Unknown external hosts must not control a browser redirect. Deployments
+    # outside Azure ML must set UI_BASE_URL explicitly.
+    return "/docs"
 
 
 def _wants_html(request: Request) -> bool:

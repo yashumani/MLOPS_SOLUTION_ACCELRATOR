@@ -195,7 +195,8 @@ def render_step_timeline(steps: list[dict]):
         with st.expander(f"Unmapped Azure child steps ({len(extras)})", expanded=False):
             for step in extras:
                 label = step.get("display_name") or step.get("name") or "unknown"
+                safe_label = str(label).replace("`", "'")
                 st.markdown(
-                    f"{status_badge(step.get('status', 'Unknown'))} `{label}`",
-                    unsafe_allow_html=True,
+                    f"{status_badge(step.get('status', 'Unknown'))} "
+                    f"`{safe_label}`",
                 )
