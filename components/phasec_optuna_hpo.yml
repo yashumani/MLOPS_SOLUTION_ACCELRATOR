@@ -1,6 +1,7 @@
 name: v3_phasec_optuna_hpo
-version: 9
+version: 12
 display_name: s08 - V3 Phase C - Optuna HPO
+description: Same-family HPO only; maximum 50 trials and 3600 seconds.
 type: command
 is_deterministic: false
 inputs:
@@ -8,6 +9,9 @@ inputs:
     type: string
   dataset_in:
     type: uri_file
+  execution_manifest:
+    type: uri_file
+    description: Validated immutable execution identity from Phase B
   phaseb_manifest:
     type: uri_file
     optional: true
@@ -24,10 +28,11 @@ command: >-
   python src/steps/phasec_optuna_hpo.py
   --config configs/${{inputs.config_name}}
   --dataset_in ${{inputs.dataset_in}}
+  --execution_manifest ${{inputs.execution_manifest}}
   --metrics_out ${{outputs.hpo_metrics_json}}
   --study_out ${{outputs.hpo_study}}
   --model_out ${{outputs.optimized_model}}
   $[[--phaseb_manifest ${{inputs.phaseb_manifest}}]]
-environment: azureml:mlops-v3-unified:23
+environment: azureml:mlops-v3-unified:32
 history:
   enableMLflowTracking: true

@@ -12,6 +12,11 @@ from utils.stage_signals import StageSignal, write_stage_signal
 from utils.candidate_ledger import (
     make_row, normalize_metrics, write_stage_table,
 )
+from utils.common_evaluator import select_best_evidence
+from utils.phasea_model_bundle import (
+    PhaseABundleError,
+    validate_phasea_bundle_artifact,
+)
 
 # Module-level logger for diagnostic/debug messages.
 logger = logging.getLogger(__name__)
@@ -77,13 +82,136 @@ def load_json(path: str):
         return None
 
 
-def select_champion(pycaret_manifest, flaml_manifest, task: str = "classification", ts_manifest=None):
+def has_exact_model_bundle(
+    path: Path,
+    candidate_manifest: dict | None = None,
+) -> bool:
+    files_present = (
+        path.is_dir()
+        and (path / "model_bundle.pkl").is_file()
+        and (path / "model_bundle.pkl").stat().st_size > 0
+        and (path / "model_bundle_manifest.json").is_file()
+        and (path / "model_bundle_manifest.json").stat().st_size > 0
+    )
+    if not files_present:
+        return False
+    if candidate_manifest is None:
+        return True
+    try:
+        validate_phasea_bundle_artifact(path, candidate_manifest)
+    except PhaseABundleError as error:
+        logger.warning("Rejecting invalid Phase A ModelBundle at %s: %s", path, error)
+        return False
+    return True
+
+
+def resolve_selected_model_source(
+    selected_source: str | None,
+    source_paths: dict[str, Path],
+    source_manifests: dict[str, dict | None] | None = None,
+) -> Path | None:
+    """Return only the selected candidate's exact artifact."""
+    selected_path = source_paths.get(str(selected_source))
+    selected_manifest = (source_manifests or {}).get(str(selected_source))
+    if selected_path is None or not has_exact_model_bundle(
+        selected_path,
+        selected_manifest,
+    ):
+        return None
+    return selected_path
+
+
+def select_champion(
+    pycaret_manifest,
+    flaml_manifest,
+    task: str = "classification",
+    ts_manifest=None,
+    source_paths: dict[str, Path] | None = None,
+):
     """Select best model from pycaret, flaml, and (optionally) timeseries baselines.
     
     Returns: {"source": "pycaret"|"flaml"|"timeseries"|None, "score": float|None, "reason": str}
     """
     best = {"source": None, "score": None, "reason": ""}
     primary_metric = get_primary_metric(task)
+
+    # Schema-v2 candidates are selectable only from complete common-evaluator
+    # evidence. This rejects engine-native holdout/training scores and verifies
+    # that both engines used the same deterministic fold assignment.
+    v2_candidates = []
+    schema_v2_present = False
+    for source, candidate in (
+        ("pycaret", pycaret_manifest),
+        ("flaml", flaml_manifest),
+    ):
+        if not isinstance(candidate, dict):
+            continue
+        try:
+            schema_v2_present = schema_v2_present or (
+                int(str(candidate.get("schema_version", "0")).split(".")[0])
+                >= 2
+            )
+        except (TypeError, ValueError):
+            pass
+        if candidate.get("raw_input_bundle_eligible") is not True:
+            logger.warning(
+                "Excluding %s baseline: no complete raw-input bundle",
+                source,
+            )
+            continue
+        if not isinstance(candidate.get("model_bundle"), dict):
+            logger.warning(
+                "Excluding %s baseline: ModelBundle manifest is missing",
+                source,
+            )
+            continue
+        if source_paths is not None:
+            source_path = source_paths.get(source)
+            if source_path is None or not has_exact_model_bundle(
+                source_path,
+                candidate,
+            ):
+                logger.warning(
+                    "Excluding %s baseline: on-disk ModelBundle validation failed",
+                    source,
+                )
+                continue
+        evidence = candidate.get("evaluation")
+        if isinstance(evidence, dict):
+            row = dict(evidence)
+            row["source"] = source
+            v2_candidates.append(row)
+    if v2_candidates:
+        selected = select_best_evidence(v2_candidates)
+        if selected is None:
+            return {
+                "source": None,
+                "score": None,
+                "reason": "No complete common-evaluator evidence",
+            }
+        selected_manifest = (
+            pycaret_manifest
+            if selected["source"] == "pycaret"
+            else flaml_manifest
+        )
+        return {
+            "source": selected["source"],
+            "score": float(selected["selection_score"]),
+            "reason": (
+                f"common_cv:{selected.get('primary_metric')} "
+                f"split={selected.get('split_fingerprint')}"
+            ),
+            "candidate_id": selected.get("candidate_id"),
+            "evaluation": dict(selected),
+            "bundle_id": selected_manifest["model_bundle"].get("bundle_id"),
+            "split_id": selected_manifest.get("split_id"),
+        }
+    if schema_v2_present:
+        return {
+            "source": None,
+            "score": None,
+            "reason": "No eligible schema-v2 raw-input baseline bundle",
+        }
     
     def extract_score(m, engine_name):
         """Extract best score from manifest, return (score, reason) or (None, reason)"""
@@ -246,63 +374,57 @@ def main():
     # K1: load timeseries manifest if provided (optional)
     tman = load_json(args.ts_manifest) if args.ts_manifest else None
 
-    champion = select_champion(pman, fman, task=task_type, ts_manifest=tman)
-    print(f"🏆 Aggregate Baseline: Selected {champion['source']} | Score: {champion['score']} | Reason: {champion.get('reason', 'N/A')}")
-    
-    # Choose model accordingly (both are folders containing model files)
-    model_src = None
     flaml_path = Path(args.flaml_model)
     pycaret_path = Path(args.pycaret_model)
-    
-    # Check if model folders exist and contain files (are not empty)
-    def is_valid_model_folder(p):
-        if not p.exists():
-            print(f"    Model path does not exist: {p}")
-            return False
-        if p.is_file():  # Single file model
-            sz = p.stat().st_size
-            valid = sz > 0
-            print(f"    Model file exists: {p} (size: {sz} bytes) {'✅' if valid else '❌'}")
-            return valid
-        if p.is_dir():  # Folder with model files
-            contents = list(p.iterdir())
-            valid = len(contents) > 0
-            print(f"    Model folder exists: {p} (files: {len(contents)}) {'✅' if valid else '❌'}")
-            if contents:
-                for item in contents[:3]:
-                    print(f"        - {item.name}")
-                if len(contents) > 3:
-                    print(f"        ... and {len(contents)-3} more")
-            return valid
-        return False
-    
-    if champion["source"] == "flaml" and is_valid_model_folder(flaml_path):
-        model_src = flaml_path
-        print(f"  ✅ Using FLAML model from {model_src}")
-    elif champion["source"] == "pycaret" and is_valid_model_folder(pycaret_path):
-        model_src = pycaret_path
-        print(f"  ✅ Using PyCaret model from {model_src}")
-    elif champion["source"] == "timeseries" and args.ts_model and is_valid_model_folder(Path(args.ts_model)):
-        # K1: timeseries champion
-        model_src = Path(args.ts_model)
-        print(f"  ✅ Using Timeseries model from {model_src}")
+    source_paths = {
+        "pycaret": pycaret_path,
+        "flaml": flaml_path,
+    }
+    if args.ts_model:
+        source_paths["timeseries"] = Path(args.ts_model)
+    source_manifests = {
+        "pycaret": pman,
+        "flaml": fman,
+        "timeseries": tman,
+    }
+    champion = select_champion(
+        pman,
+        fman,
+        task=task_type,
+        ts_manifest=tman,
+        source_paths=source_paths,
+    )
+    print(f"🏆 Aggregate Baseline: Selected {champion['source']} | Score: {champion['score']} | Reason: {champion.get('reason', 'N/A')}")
+
+    # Choose only the exact bundle validated during candidate selection.
+    model_src = resolve_selected_model_source(
+        champion.get("source"),
+        source_paths,
+        source_manifests,
+    )
+    if model_src is not None:
+        print(
+            f"  ✅ Using exact {champion['source']} ModelBundle "
+            f"from {model_src}"
+        )
     else:
-        # fallback: prefer pycaret model
-        if is_valid_model_folder(pycaret_path):
-            model_src = pycaret_path
-            print(f"  ⚠️  Fallback to PyCaret model from {model_src}")
-        elif is_valid_model_folder(flaml_path):
-            model_src = flaml_path
-            print(f"  ⚠️  Fallback to FLAML model from {model_src}")
-        else:
-            print(f"  ❌ No valid model found! PyCaret: {pycaret_path.exists()}, FLAML: {flaml_path.exists()}")
+        selected_source = champion.get("source")
+        champion["reason"] = (
+            f"Selected {selected_source!r} candidate has no exact ModelBundle"
+        )
+        champion["source"] = None
+        champion["score"] = None
+        print(f"  ❌ {champion['reason']}; refusing identity substitution")
 
     report = {
         "task": task_type,
         "selection": {
             "source": champion["source"],
             "score": champion["score"],
-            "reason": champion.get("reason", "N/A")
+            "reason": champion.get("reason", "N/A"),
+            "candidate_id": champion.get("candidate_id"),
+            "bundle_id": champion.get("bundle_id"),
+            "split_id": champion.get("split_id"),
         },
         "pycaret_manifest_present": pman is not None,
         "flaml_manifest_present": fman is not None,
@@ -345,6 +467,24 @@ def main():
             
             report["model_copied"] = True
             report["files_copied"] = copied_count
+            (champion_path / "selection_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2,
+                        "status": "success",
+                        "phase": "baseline",
+                        "candidate_id": champion.get("candidate_id"),
+                        "bundle_id": champion.get("bundle_id"),
+                        "split_id": champion.get("split_id"),
+                        "selection_score": champion["score"],
+                        "metric_name": get_primary_metric(task_type),
+                        "evaluation": champion.get("evaluation"),
+                    },
+                    indent=2,
+                    default=str,
+                ),
+                encoding="utf-8",
+            )
             
             # Validate outputs immediately after copying
             print("\n🔍 Validating champion model output...")
@@ -363,10 +503,18 @@ def main():
             traceback.print_exc()
             report["model_copy_error"] = str(e)
     else:
-        # Create empty output folder if no model selected
         champion_path = Path(args.champion_out).resolve()
         champion_path.mkdir(parents=True, exist_ok=True)
-        print(f"  ℹ️  Created empty champion folder (no model found): {champion_path}")
+        (champion_path / ".no_champion").write_text(
+            json.dumps(
+                {
+                    "reason": champion.get("reason"),
+                    "raw_input_bundle_required": True,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
     
     # Update report with final status (absolute path)
     with open(report_path, "w") as f:

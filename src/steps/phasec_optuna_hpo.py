@@ -1,16 +1,20 @@
 import argparse
+import hashlib
 import json
 import logging
+import multiprocessing
 import time as _time_mod
 from pathlib import Path
 import sys
 import os
+import tempfile
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, r2_score, make_scorer
+from sklearn.base import clone
+from sklearn.pipeline import Pipeline
 import mlflow
+from mlflow.tracking import MlflowClient
 
 # Add src to path for imports (single canonical insertion at front of sys.path)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -19,10 +23,97 @@ from utils.stage_signals import StageSignal, write_stage_signal
 from utils.candidate_ledger import (
     make_row, normalize_metrics, write_stage_table,
 )
+from utils.model_bundle import ModelBundle, capture_input_schema, save_model_bundle
+from utils.fitted_variant_preprocessor import FittedVariantPreprocessor
+from utils.common_evaluator import (
+    EvaluationSpec,
+    build_training_resampler,
+    evaluate_candidate,
+)
+from orchestration.config_compiler import compile_config
+from orchestration.execution_identity import validate_execution_manifest_binding
 
 # Module-level logger for diagnostic/debug messages (does not shadow the
 # per-run MetricsLogger created inside main()/cluster paths).
 logger = logging.getLogger(__name__)
+
+
+def _final_fit_worker(
+    result_path: str,
+    error_path: str,
+    model: object,
+    X: object,
+    y: object,
+    resampler: object | None,
+) -> None:
+    """Fit and serialize in an isolated process so the parent can kill hangs."""
+    try:
+        import joblib
+
+        X_fit, y_fit = X, y
+        if resampler is not None:
+            X_fit, y_fit = resampler.fit_resample(X_fit, y_fit)
+        if y_fit is None:
+            model.fit(X_fit)
+        else:
+            model.fit(X_fit, y_fit)
+        joblib.dump(model, result_path)
+    except BaseException as error:
+        Path(error_path).write_text(
+            f"{type(error).__name__}: {error}",
+            encoding="utf-8",
+        )
+
+
+def fit_final_model_with_hard_timeout(
+    model: object,
+    X: object,
+    y: object,
+    *,
+    resampler: object | None,
+    timeout_seconds: float,
+) -> object:
+    """Return a fitted model or terminate the worker at the Phase C deadline."""
+    if timeout_seconds <= 0:
+        raise TimeoutError("Phase C final-fit budget is exhausted")
+    if multiprocessing.current_process().daemon:
+        raise RuntimeError(
+            "Phase C final fit requires a non-daemon process boundary"
+        )
+    with tempfile.TemporaryDirectory(prefix="mlops-phasec-final-fit-") as temp:
+        result_path = str(Path(temp) / "fitted_model.joblib")
+        error_path = str(Path(temp) / "fit_error.txt")
+        context = multiprocessing.get_context("spawn")
+        process = context.Process(
+            target=_final_fit_worker,
+            args=(
+                result_path,
+                error_path,
+                model,
+                X,
+                y,
+                resampler,
+            ),
+            name="phasec-final-fit",
+        )
+        process.start()
+        process.join(timeout=float(timeout_seconds))
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5.0)
+            if process.is_alive() and hasattr(process, "kill"):
+                process.kill()
+                process.join(timeout=5.0)
+            raise TimeoutError("Phase C final fit exceeded its hard deadline")
+        if Path(error_path).is_file():
+            raise RuntimeError(Path(error_path).read_text(encoding="utf-8"))
+        if process.exitcode != 0 or not Path(result_path).is_file():
+            raise RuntimeError(
+                "Phase C final-fit worker exited without a fitted model"
+            )
+        import joblib
+
+        return joblib.load(result_path)
 
 
 def _safe_disable_autolog():
@@ -38,14 +129,7 @@ def _safe_disable_autolog():
         mlflow.autolog(disable=True)
     except Exception as e:
         logger.debug(f"MLflow autolog disable suppression (Azure ML tracking URI incompatibility): {e}")
-    # Fix: Convert azureml:// to https:// to avoid model registry errors
-    import os as _os
-    _mlflow_uri = _os.getenv("MLFLOW_TRACKING_URI", "")
-    if _mlflow_uri.startswith("azureml://"):
-        mlflow.set_tracking_uri(_mlflow_uri.replace("azureml://", "https://"))
-    # M6 fix: do NOT redirect registry URI to /tmp -- Azure ML's registry is
-    # configured by the workspace; overriding to a local file:// breaks
-    # downstream s12 model registration. We rely solely on the HTTPS conversion.
+    # Preserve the workspace-provided azureml:// tracking URI unchanged.
 
 
 # T18: NumpyEncoder for safe JSON serialization of numpy types
@@ -63,11 +147,325 @@ class NumpyEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
+def _phase_c_config(cfg: dict) -> dict:
+    return (cfg.get("phases") or {}).get("phase_c_hpo") or {}
+
+
+_ALGORITHM_ALIASES = {
+    "xgboost": ("xgb", "xgboost", "extreme gradient boosting"),
+    "lightgbm": ("lgb", "lightgbm", "light gradient boosting"),
+    "catboost": ("catboost",),
+    "randomforest": ("randomforest", "random forest", "rf"),
+    "logisticregression": ("logisticregression", "logistic regression", "lr"),
+    "ridge": ("ridge",),
+    "kmeans": ("kmeans", "k-means"),
+    "dbscan": ("dbscan",),
+}
+
+
+def normalize_phaseb_algorithm(value: str | None) -> str | None:
+    """Resolve only families that Phase C can tune without substitution."""
+    normalized = str(value or "").strip().lower()
+    for family, aliases in _ALGORITHM_ALIASES.items():
+        if normalized in aliases or any(alias in normalized for alias in aliases):
+            return family
+    return None
+
+
+def phasec_candidate_id(
+    phaseb_candidate_id: str,
+    algorithm: str,
+    best_params: dict,
+) -> str:
+    """Create a distinct immutable identity for the tuned candidate."""
+    parameter_hash = hashlib.sha256(
+        json.dumps(
+            best_params,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    return (
+        f"phasec:{phaseb_candidate_id}:{algorithm}:tuned:{parameter_hash}"
+    )
+
+
+def seeded_optuna_sampler(random_seed: int):
+    """Return the deterministic sampler shared by both Phase C branches."""
+    import optuna as optuna_lib
+
+    return optuna_lib.samplers.TPESampler(seed=int(random_seed))
+
+
+def final_estimator_params(
+    algorithm: str,
+    best_params: dict,
+    random_seed: int,
+) -> dict:
+    """Re-apply family seeds that are fixed outside Optuna's trial parameters."""
+    params = dict(best_params)
+    if algorithm in {"xgboost", "lightgbm", "randomforest", "logisticregression"}:
+        params.setdefault("random_state", int(random_seed))
+    elif algorithm == "catboost":
+        params.setdefault("random_seed", int(random_seed))
+    return params
+
+
+def create_phasec_candidate_run(
+    *,
+    candidate_id: str,
+    execution_id: str,
+) -> tuple[MlflowClient, str | None, str]:
+    """Create the exact MLflow child run referenced by Phase C artifacts."""
+    if not str(execution_id).strip():
+        raise ValueError("Phase C execution_id is required for MLflow lineage")
+    client = MlflowClient()
+    active = mlflow.active_run()
+    parent_run_id = (
+        active.info.run_id
+        if active is not None
+        else (os.getenv("AZUREML_RUN_ID") or "").strip() or None
+    )
+    if parent_run_id is not None:
+        experiment_id = client.get_run(parent_run_id).info.experiment_id
+    else:
+        default_experiment = mlflow.get_experiment_by_name("Default")
+        experiment_id = (
+            default_experiment.experiment_id
+            if default_experiment is not None
+            else "0"
+        )
+    tags = {
+        "execution_id": str(execution_id),
+        "candidate_id": str(candidate_id),
+        "pipeline_stage": "phase_c_hpo",
+    }
+    if parent_run_id is not None:
+        tags["mlflow.parentRunId"] = parent_run_id
+    child = client.create_run(
+        experiment_id=experiment_id,
+        run_name=f"phasec_candidate_{candidate_id[-24:]}",
+        tags=tags,
+    )
+    return client, parent_run_id, child.info.run_id
+
+
+def finish_phasec_candidate_run(
+    client: MlflowClient,
+    run_id: str,
+    *,
+    status: str,
+) -> None:
+    client.set_terminated(run_id, status=status)
+
+
+def complete_phaseb_recipe(manifest: dict) -> dict | None:
+    """Return only an explicit complete recipe mapping."""
+    recipe = manifest.get("full_recipe")
+    if recipe is None and isinstance(manifest.get("recipe"), dict):
+        recipe = manifest["recipe"]
+    if not isinstance(recipe, dict) or not recipe:
+        return None
+    stage3 = recipe.get("stage3_preprocessing")
+    stage4 = recipe.get("stage4_feature_engineering")
+    if not isinstance(stage3, dict) or not isinstance(stage4, dict):
+        return None
+    for field in (
+        "imputation",
+        "encoding",
+        "scaling",
+        "imbalance_handling",
+    ):
+        if not isinstance(stage3.get(field), dict) or not stage3[field]:
+            return None
+    feature_selection = stage4.get("feature_selection")
+    if not isinstance(feature_selection, dict) or not feature_selection:
+        return None
+    if not stage3["imputation"].get("method"):
+        return None
+    if not (
+        stage3["encoding"].get("categorical_method")
+        or stage3["encoding"].get("method")
+    ):
+        return None
+    if not stage3["scaling"].get("method"):
+        return None
+    if not stage3["imbalance_handling"].get("method"):
+        return None
+    if not feature_selection.get("method"):
+        return None
+    return json.loads(json.dumps(recipe, sort_keys=True, default=str))
+
+
+def _write_skipped_unsupported(args, reason: str, phaseb: dict | None = None) -> None:
+    payload = {
+        "schema_version": 2,
+        "status": "skipped_unsupported",
+        "reason": str(reason),
+        "preserve_phaseb": True,
+        "phaseb_candidate_id": (phaseb or {}).get("candidate_id")
+        or (phaseb or {}).get("variant_id"),
+        "phaseb_algorithm": (phaseb or {}).get("algorithm"),
+        "n_trials_completed": 0,
+        "execution_id": getattr(args, "execution_id", None),
+        "config_hash": getattr(args, "config_hash", None),
+    }
+    metrics_path = Path(args.metrics_out)
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    for output in (Path(args.study_out), Path(args.model_out)):
+        output.mkdir(parents=True, exist_ok=True)
+        (output / ".skipped_unsupported").write_text(
+            str(reason),
+            encoding="utf-8",
+        )
+
+
+def _compute_hpo_cost(study, started_at: float, compute_rate_usd_per_hour: float) -> dict:
+    trial_time_sec = 0.0
+    for trial in getattr(study, "trials", []) or []:
+        if getattr(trial, "datetime_start", None) and getattr(trial, "datetime_complete", None):
+            trial_time_sec += max(0.0, (trial.datetime_complete - trial.datetime_start).total_seconds())
+    elapsed_wall_clock_sec = max(0.0, _time_mod.time() - started_at)
+    basis_sec = trial_time_sec if trial_time_sec > 0 else elapsed_wall_clock_sec
+    trial_time_hours = basis_sec / 3600.0
+    return {
+        "compute_rate_usd_per_hour": float(compute_rate_usd_per_hour),
+        "trial_time_hours": round(trial_time_hours, 6),
+        "trial_time_sec": round(basis_sec, 2),
+        "elapsed_wall_clock_sec": round(elapsed_wall_clock_sec, 2),
+        "estimated_cost_usd": round(trial_time_hours * float(compute_rate_usd_per_hour), 4),
+        "estimation_basis": "sum_trial_durations" if trial_time_sec > 0 else "wall_clock_elapsed",
+    }
+
+
+def _write_trial_score_plot(study, outputs_dir: Path) -> str | None:
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        trials = [trial for trial in getattr(study, "trials", []) or [] if trial.value is not None]
+        if not trials:
+            return None
+        numbers = [trial.number for trial in trials]
+        scores = [float(trial.value) for trial in trials]
+        plt.figure(figsize=(10, 5))
+        plt.plot(numbers, scores, marker="o", linewidth=1.5)
+        plt.xlabel("Trial")
+        plt.ylabel("Score")
+        plt.title("Phase C HPO Trial Scores")
+        plt.grid(alpha=0.25)
+        plt.tight_layout()
+        plot_path = outputs_dir / "phasec_trial_scores.png"
+        plt.savefig(plot_path, dpi=120)
+        plt.close()
+        return str(plot_path)
+    except Exception as exc:  # noqa: BLE001 - visualization must not fail HPO
+        print(f"⚠️  Trial score PNG generation failed: {exc}")
+        return None
+
+
+def build_phasec_preprocessor(
+    training_features: pd.DataFrame,
+    encoding: str,
+    scaling: str,
+    random_seed: int,
+):
+    """Build the fitted-contract transformer used by Phase C and its model."""
+    from sklearn.compose import ColumnTransformer
+    from sklearn.impute import SimpleImputer
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import (
+        MinMaxScaler,
+        OneHotEncoder,
+        OrdinalEncoder,
+        PowerTransformer,
+        QuantileTransformer,
+        RobustScaler,
+        StandardScaler,
+    )
+
+    encoding = str(encoding or "none").strip().lower()
+    scaling = str(scaling or "none").strip().lower()
+    categorical_columns = training_features.select_dtypes(
+        include=["object", "category"],
+    ).columns.tolist()
+
+    transformers = []
+    if categorical_columns:
+        if encoding == "label":
+            categorical_encoder = OrdinalEncoder(
+                handle_unknown="use_encoded_value",
+                unknown_value=-1,
+                encoded_missing_value=-1,
+            )
+        elif encoding == "onehot":
+            categorical_encoder = OneHotEncoder(
+                drop="first",
+                handle_unknown="ignore",
+                sparse_output=False,
+            )
+        elif encoding == "target":
+            from category_encoders import TargetEncoder
+
+            categorical_encoder = TargetEncoder(
+                cols=categorical_columns,
+                handle_missing="value",
+                handle_unknown="value",
+                return_df=False,
+            )
+        elif encoding in {"none", "unknown"}:
+            raise ValueError(
+                "Phase C received categorical features but the champion recipe "
+                "does not define an encoding contract"
+            )
+        else:
+            raise ValueError(f"Unsupported Phase C encoding method: {encoding}")
+        transformers.append(
+            ("categorical", categorical_encoder, categorical_columns)
+        )
+
+    column_transformer = ColumnTransformer(
+        transformers=transformers,
+        remainder="passthrough",
+        sparse_threshold=0.0,
+    )
+    steps = [
+        ("columns", column_transformer),
+        ("imputer", SimpleImputer(strategy="median")),
+    ]
+
+    scaler = None
+    if scaling == "standard":
+        scaler = StandardScaler()
+    elif scaling == "robust":
+        scaler = RobustScaler()
+    elif scaling == "minmax":
+        scaler = MinMaxScaler()
+    elif scaling == "yeo_johnson":
+        scaler = PowerTransformer(method="yeo-johnson", standardize=True)
+    elif scaling == "quantile":
+        scaler = QuantileTransformer(
+            n_quantiles=min(1000, max(1, len(training_features))),
+            output_distribution="normal",
+            random_state=random_seed,
+        )
+    elif scaling not in {"none", "unknown"}:
+        raise ValueError(f"Unsupported Phase C scaling method: {scaling}")
+
+    if scaler is not None:
+        steps.append(("scaler", scaler))
+    return Pipeline(steps)
+
+
 def main():
     _t0 = _time_mod.time()
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--dataset_in", required=True)
+    parser.add_argument("--execution_manifest", required=True)
     parser.add_argument("--metrics_out", required=True)
     parser.add_argument("--study_out", required=True)
     parser.add_argument("--model_out", required=True)
@@ -84,20 +482,36 @@ def main():
 
     import yaml
     with open(args.config, "r") as f:
-        cfg = yaml.safe_load(f)
+        raw_cfg = yaml.safe_load(f) or {}
+    cfg = compile_config(raw_cfg, source_name=Path(args.config).name)
+    execution_manifest = validate_execution_manifest_binding(
+        args.execution_manifest,
+        cfg,
+    )
+    args.execution_id = execution_manifest.execution_id
+    args.config_hash = execution_manifest.config_hash
+    model_output = Path(args.model_out)
+    model_output.mkdir(parents=True, exist_ok=True)
+    (model_output / "execution_manifest.json").write_text(
+        execution_manifest.to_json(indent=2),
+        encoding="utf-8",
+    )
     task_type = cfg.get("task_type") or cfg.get("dataset", {}).get("task_type") or "classification"
     target_col = cfg.get("dataset", {}).get("target_column")
     delimiter = cfg.get("dataset", {}).get("delimiter", ",")  # 🔥 CRITICAL FIX
-    n_trials = cfg.get("phases", {}).get("phase_c_hpo", {}).get("n_trials", 50)
+    phase_c_cfg = _phase_c_config(cfg)
+    n_trials = min(50, max(1, int(phase_c_cfg.get("n_trials", 50))))
+    compute_rate_usd_per_hour = float(phase_c_cfg.get("compute_rate_usd_per_hour", 1.50) or 0.0)
     # K9 fix: respect phase_c_hpo.timeout (seconds) -- previously ignored.
-    hpo_timeout = cfg.get("phases", {}).get("phase_c_hpo", {}).get("timeout")
+    hpo_timeout = phase_c_cfg.get("timeout_seconds", phase_c_cfg.get("timeout"))
     try:
-        hpo_timeout = float(hpo_timeout) if hpo_timeout is not None else None
+        hpo_timeout = min(
+            3600.0,
+            float(hpo_timeout) if hpo_timeout is not None else 3600.0,
+        )
     except (TypeError, ValueError):
-        hpo_timeout = None
+        hpo_timeout = 3600.0
     random_seed = cfg.get("random_seed", 42)
-    test_size = cfg.get("stages", {}).get("stage4_feature_engineering", {}).get("train_test_splits", [0.8])[0]
-    test_size = 1 - float(test_size)
 
     # 🔍 DEBUG: Check dataset file before loading
     dataset_path = Path(args.dataset_in)
@@ -139,6 +553,107 @@ def main():
     outputs_dir = Path("outputs")
     outputs_dir.mkdir(parents=True, exist_ok=True)
     print(f"📊 Optuna HPO outputs will be saved to: {outputs_dir.resolve()}")
+
+    if not getattr(args, "phaseb_manifest", None):
+        _write_skipped_unsupported(
+            args,
+            "phaseb_manifest_required_for_same_family_hpo",
+        )
+        return
+    manifest_path = Path(args.phaseb_manifest)
+    if not manifest_path.is_file():
+        _write_skipped_unsupported(args, "phaseb_manifest_not_found")
+        return
+    try:
+        champion_metadata = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError) as error:
+        _write_skipped_unsupported(args, f"invalid_phaseb_manifest: {error}")
+        return
+    champion_engine = str(champion_metadata.get("engine", "")).lower()
+    champion_algorithm = normalize_phaseb_algorithm(
+        champion_metadata.get("algorithm")
+        or champion_metadata.get("best_model_name")
+    )
+    if task_type == "clustering" and champion_engine != "pycaret":
+        _write_skipped_unsupported(
+            args,
+            "clustering_hpo_requires_pycaret_phaseb_candidate",
+            champion_metadata,
+        )
+        return
+    if champion_algorithm is None:
+        _write_skipped_unsupported(
+            args,
+            "unsupported_phaseb_algorithm_family",
+            champion_metadata,
+        )
+        return
+    full_phaseb_recipe = complete_phaseb_recipe(champion_metadata)
+    if full_phaseb_recipe is None:
+        _write_skipped_unsupported(
+            args,
+            "complete_phaseb_recipe_required_for_deployable_bundle",
+            champion_metadata,
+        )
+        return
+    phaseb_candidate_id = str(
+        champion_metadata.get("candidate_id")
+        or champion_metadata.get("variant_id")
+        or ""
+    ).strip()
+    if not phaseb_candidate_id:
+        _write_skipped_unsupported(
+            args,
+            "phaseb_candidate_identity_required",
+            champion_metadata,
+        )
+        return
+    execution_id = str(champion_metadata.get("execution_id") or "").strip()
+    if execution_id != execution_manifest.execution_id:
+        raise RuntimeError(
+            "Phase B champion execution_id does not match ExecutionManifest: "
+            f"{execution_id!r} != {execution_manifest.execution_id!r}"
+        )
+
+    preproc_cfg = champion_metadata.get("preprocessing_config") or {}
+    recipe_preprocessing = (
+        full_phaseb_recipe.get("stage3_preprocessing")
+        or full_phaseb_recipe.get("preprocessing")
+        or {}
+    )
+    if not isinstance(recipe_preprocessing, dict):
+        recipe_preprocessing = {}
+    recipe_encoding_config = recipe_preprocessing.get("encoding") or {}
+    recipe_scaling_config = recipe_preprocessing.get("scaling") or {}
+    recipe_encoding = preproc_cfg.get(
+        "encoding",
+        recipe_encoding_config.get(
+            "categorical_method",
+            recipe_encoding_config.get(
+                "method",
+                full_phaseb_recipe.get("encoding", "none"),
+            ),
+        )
+    )
+    recipe_scaling = preproc_cfg.get(
+        "scaling",
+        recipe_scaling_config.get(
+            "method",
+            full_phaseb_recipe.get("scaling", "none"),
+        )
+    )
+    try:
+        training_resampler = build_training_resampler(
+            full_phaseb_recipe,
+            random_seed,
+        )
+    except (ImportError, ValueError) as error:
+        _write_skipped_unsupported(
+            args,
+            f"phaseb_resampling_contract_unavailable: {error}",
+            champion_metadata,
+        )
+        return
     
     import optuna
     optuna.logging.set_verbosity(optuna.logging.INFO)
@@ -148,26 +663,43 @@ def main():
     if task_type == "clustering":
         print("ℹ️ Phase C HPO: Clustering task detected; using sklearn clustering + Optuna")
         from sklearn.cluster import KMeans, DBSCAN
-        from sklearn.metrics import silhouette_score
         import gc
         
-        # For clustering, use all data (no train/test split, no target)
-        # Extract only numeric columns for sklearn clustering compatibility
-        X_data = df.select_dtypes(include=['number']).copy()
-        
-        # Validate that numeric data exists for clustering
-        if X_data.shape[1] == 0:
-            raise ValueError("No numeric columns found in dataset for clustering. Clustering requires numeric features.")
+        # Clustering uses training rows only. Persist the fitted raw-input
+        # transformer instead of silently dropping categorical columns.
+        raw_clustering_data = df.copy()
+        if str(recipe_encoding).lower() == "target":
+            _write_skipped_unsupported(
+                args,
+                "target_encoding_is_not_valid_for_clustering",
+                champion_metadata,
+            )
+            return
+        if training_resampler is not None:
+            _write_skipped_unsupported(
+                args,
+                "imbalance_resampling_is_not_valid_for_clustering",
+                champion_metadata,
+            )
+            return
         
         # OOM guard: DBSCAN computes O(n²) pairwise distances and KMeans on
         # very large datasets (>500K rows) across 50 trials blows 16 GB RAM.
         # Cap the dataset used for ALL HPO operations (fitting + scoring).
         _HPO_DATA_CAP = 15_000
-        _full_rows = len(X_data)
+        _full_rows = len(raw_clustering_data)
         if _full_rows > _HPO_DATA_CAP:
-            X_data = X_data.sample(n=_HPO_DATA_CAP, random_state=random_seed).reset_index(drop=True)
+            raw_clustering_data = raw_clustering_data.sample(
+                n=_HPO_DATA_CAP,
+                random_state=random_seed,
+            ).reset_index(drop=True)
             print(f"⚠️  Sampled dataset from {_full_rows:,} → {_HPO_DATA_CAP:,} rows for HPO (OOM guard)")
 
+        phasec_preprocessor = FittedVariantPreprocessor(
+            full_phaseb_recipe,
+            random_seed=random_seed,
+        )
+        X_data = phasec_preprocessor.fit_transform(raw_clustering_data)
         _SILHOUETTE_SAMPLE_CAP = 5_000
         _sil_sample = min(_SILHOUETTE_SAMPLE_CAP, len(X_data))
         print(f"📊 Clustering HPO data: {len(X_data)} rows × {X_data.shape[1]} cols, "
@@ -179,75 +711,109 @@ def main():
 
         # Ensure valid upper bound for KMeans n_clusters
         _max_k = max(2, min(10, len(X_data) // 5))
+        clustering_hpo_deadline = _time_mod.monotonic() + float(hpo_timeout)
 
         def objective(trial: optuna.Trial):
-            algo = trial.suggest_categorical("algorithm", ["kmeans", "dbscan"])
+            algo = champion_algorithm
             print(f"  🔄 Trial {trial.number}/{n_trials}: algo={algo}", end="", flush=True)
             if algo == "kmeans":
                 n_clusters = trial.suggest_int("n_clusters", 2, _max_k)
                 model = KMeans(n_clusters=n_clusters, random_state=random_seed, n_init=10)
-                model.fit(X_data)
-                unique_labels = set(model.labels_)
-                if len(unique_labels) < 2:
-                    print(f" → score=-1.0 (single cluster)", flush=True)
-                    return -1.0  # Degenerate: all samples in one cluster
-                try:
-                    score = silhouette_score(
-                        X_data, model.labels_,
-                        sample_size=_sil_sample, random_state=random_seed
-                    )
-                except ValueError:
-                    print(f" → score=-1.0 (subsample label error)", flush=True)
-                    return -1.0  # Subsample had < 2 labels
-                print(f", k={n_clusters} → score={score:.4f}", flush=True)
-                gc.collect()
-                return score
             elif algo == "dbscan":
                 eps = trial.suggest_float("eps", 0.1, 1.0)
                 min_samples = trial.suggest_int("min_samples", 2, 10)
                 model = DBSCAN(eps=eps, min_samples=min_samples)
-                labels = model.fit_predict(X_data)
-                # Filter out noise points (label == -1) before scoring
-                mask = labels != -1
-                n_clustered = mask.sum()
-                unique_labels = set(labels[mask])
-                if len(unique_labels) > 1 and n_clustered >= 2:
-                    try:
-                        score = silhouette_score(
-                            X_data[mask], labels[mask],
-                            sample_size=min(_sil_sample, n_clustered),
-                            random_state=random_seed,
-                        )
-                    except ValueError:
-                        print(f" → score=-1.0 (subsample label error)", flush=True)
-                        return -1.0  # Subsample had < 2 labels
-                    # Penalise proportionally to noise fraction
-                    noise_frac = 1.0 - (n_clustered / len(labels))
-                    adj_score = score * (1.0 - noise_frac)
-                    print(f", eps={eps:.2f}, min_s={min_samples}, clusters={len(unique_labels)}, noise={noise_frac:.1%} → score={adj_score:.4f}", flush=True)
-                    gc.collect()
-                    return adj_score
-                else:
-                    print(f" → score=-1.0 (all noise or single cluster)", flush=True)
-                    return -1.0  # All noise or single cluster
+            else:
+                raise RuntimeError(
+                    f"Unsupported same-family clustering HPO: {algo}"
+                )
+            trial_pipeline = Pipeline(
+                [
+                    (
+                        "preprocessor",
+                        FittedVariantPreprocessor(
+                            full_phaseb_recipe,
+                            random_seed=random_seed,
+                        ),
+                    ),
+                    ("estimator", model),
+                ]
+            )
+            remaining_hpo_seconds = (
+                clustering_hpo_deadline - _time_mod.monotonic()
+            )
+            if remaining_hpo_seconds <= 0:
+                raise optuna.TrialPruned("HPO wall-clock budget exhausted")
+            evidence = evaluate_candidate(
+                trial_pipeline,
+                raw_clustering_data,
+                None,
+                candidate_id=phasec_candidate_id(
+                    phaseb_candidate_id,
+                    algo,
+                    trial.params,
+                ),
+                engine="pycaret",
+                spec=EvaluationSpec(
+                    task_type="clustering",
+                    seed=int(random_seed),
+                    timeout_seconds=float(remaining_hpo_seconds),
+                    execution_id=execution_id,
+                ),
+            )
+            if evidence.status == "timeout":
+                raise optuna.TrialPruned("HPO wall-clock budget exhausted")
+            if not evidence.selectable:
+                raise RuntimeError(
+                    "Common clustering HPO evaluation failed: "
+                    f"{evidence.failure_reason or evidence.status}"
+                )
+            score = float(evidence.selection_score)
+            trial.set_user_attr(
+                "clustered_fraction",
+                evidence.metrics.get("clustered_fraction"),
+            )
+            trial.set_user_attr(
+                "split_fingerprint",
+                evidence.split_fingerprint,
+            )
+            trial.set_user_attr("total_folds", evidence.total_folds)
+            print(f" → score={score:.4f}", flush=True)
+            gc.collect()
+            return score
         
         print(f"\n🔬 Starting Optuna clustering study ({n_trials} trials"
               + (f", timeout={hpo_timeout}s" if hpo_timeout else "") + "):", flush=True)
-        study = optuna.create_study(direction="maximize")
+        study = optuna.create_study(
+            direction="maximize",
+            sampler=seeded_optuna_sampler(random_seed),
+        )
         study.optimize(objective, n_trials=n_trials, timeout=hpo_timeout,
                        catch=(Exception,))
         print(f"✅ Optuna study complete. Best value: {study.best_value:.4f}", flush=True)
         
         best_params = study.best_params
         best_value = study.best_value
-        best_algo = best_params.get("algorithm", "unknown")
+        best_algo = champion_algorithm
+        best_split_fingerprint = study.best_trial.user_attrs.get(
+            "split_fingerprint"
+        )
+        best_total_folds = study.best_trial.user_attrs.get("total_folds")
         
         # Train final model with best params
         if best_algo == "kmeans":
             final_model = KMeans(n_clusters=best_params.get("n_clusters", 3), random_state=random_seed, n_init=10)
         else:
             final_model = DBSCAN(eps=best_params.get("eps", 0.5), min_samples=best_params.get("min_samples", 5))
-        final_model.fit(X_data)
+        final_model = fit_final_model_with_hard_timeout(
+            final_model,
+            X_data,
+            None,
+            resampler=None,
+            timeout_seconds=(
+                clustering_hpo_deadline - _time_mod.monotonic()
+            ),
+        )
         
         print(f"✅ Clustering HPO: Selected {best_algo} | silhouette_score={best_value:.4f} | params={best_params}")
         
@@ -256,8 +822,93 @@ def main():
             import joblib
             model_dir = Path(args.model_out).resolve()
             model_dir.mkdir(parents=True, exist_ok=True)
-            model_path = model_dir / "model.pkl"
-            joblib.dump(final_model, model_path)
+            tuned_candidate_id = phasec_candidate_id(
+                phaseb_candidate_id,
+                best_algo,
+                best_params,
+            )
+            (
+                lineage_client,
+                parent_run_id,
+                candidate_run_id,
+            ) = create_phasec_candidate_run(
+                candidate_id=tuned_candidate_id,
+                execution_id=execution_id,
+            )
+            phasec_bundle = ModelBundle(
+                estimator=final_model,
+                preprocessing=phasec_preprocessor,
+                task_type=task_type,
+                candidate_id=tuned_candidate_id,
+                input_schema=capture_input_schema(raw_clustering_data),
+                recipe={
+                    **full_phaseb_recipe,
+                    "phasec_hpo": {
+                        "algorithm_family": best_algo,
+                        "best_params": best_params,
+                    },
+                },
+                selection_metrics={
+                    "primary_metric": "silhouette_score",
+                    "selection_score": best_value,
+                    "n_trials": len(study.trials),
+                    "split_fingerprint": best_split_fingerprint,
+                    "total_folds": best_total_folds,
+                },
+                environment={
+                    "component": "phasec_optuna_hpo",
+                    "environment_name": os.getenv("AZUREML_ENVIRONMENT_NAME"),
+                    "environment_version": os.getenv(
+                        "AZUREML_ENVIRONMENT_VERSION"
+                    ),
+                },
+                lineage={
+                    "execution_id": execution_id,
+                    "parent_run_id": parent_run_id,
+                    "candidate_run_id": candidate_run_id,
+                    "phaseb_candidate_id": phaseb_candidate_id,
+                },
+                dependencies=("optuna", "scikit-learn", "pandas"),
+                signature={
+                    "inputs": list(
+                        capture_input_schema(raw_clustering_data)[
+                            "column_order"
+                        ]
+                    ),
+                    "outputs": ["cluster"],
+                },
+                input_example=raw_clustering_data.head(1).to_dict(
+                    orient="records"
+                ),
+            )
+            try:
+                bundle_manifest = save_model_bundle(phasec_bundle, model_dir)
+                lineage_client.log_metric(
+                    candidate_run_id,
+                    "silhouette_score",
+                    float(best_value),
+                )
+                for artifact_name in (
+                    "model_bundle.pkl",
+                    "model_bundle_manifest.json",
+                ):
+                    lineage_client.log_artifact(
+                        candidate_run_id,
+                        str(model_dir / artifact_name),
+                        artifact_path="model_bundle",
+                    )
+                finish_phasec_candidate_run(
+                    lineage_client,
+                    candidate_run_id,
+                    status="FINISHED",
+                )
+            except Exception:
+                finish_phasec_candidate_run(
+                    lineage_client,
+                    candidate_run_id,
+                    status="FAILED",
+                )
+                raise
             study_dir = Path(args.study_out).resolve()
             study_dir.mkdir(parents=True, exist_ok=True)
             study_path = study_dir / "study.pkl"
@@ -302,7 +953,31 @@ def main():
             study_dir.mkdir(parents=True, exist_ok=True)
             (study_dir / ".error").write_text(str(e))
         
-        metrics = {"algorithm": best_algo, "best_params": best_params, "best_score": best_value}
+        cost_summary = _compute_hpo_cost(study, _t0, compute_rate_usd_per_hour)
+        trial_plot_path = _write_trial_score_plot(study, outputs_dir)
+        metrics = {
+            "schema_version": 2,
+            "status": "success",
+            "candidate_id": tuned_candidate_id,
+            "algorithm": best_algo,
+            "phaseb_algorithm": best_algo,
+            "same_family": True,
+            "best_params": best_params,
+            "best_score": best_value,
+            "selection_metric": "silhouette_score",
+            "selection_evidence": "training_only_clustering",
+            "split_fingerprint": best_split_fingerprint,
+            "total_folds": best_total_folds,
+            "model_bundle": bundle_manifest,
+            "execution_id": phasec_bundle.lineage.get("execution_id"),
+            "mlflow_parent_run_id": phasec_bundle.lineage.get("parent_run_id"),
+            "mlflow_child_run_id": phasec_bundle.lineage.get(
+                "candidate_run_id"
+            ),
+            **cost_summary,
+        }
+        if trial_plot_path:
+            metrics["trial_score_plot"] = trial_plot_path
         Path(args.metrics_out).parent.mkdir(parents=True, exist_ok=True)
         with open(args.metrics_out, "w") as f:
             json.dump(metrics, f, cls=NumpyEncoder)
@@ -322,6 +997,8 @@ def main():
             logger.log_param("n_trials", n_trials)
             _bv = float(best_value) if np.isfinite(float(best_value)) else -999.0
             logger.log_metric("best_score", _bv)
+            logger.log_metric("estimated_cost_usd", float(metrics.get("estimated_cost_usd", 0.0)))
+            logger.log_metric("hpo_trial_time_hours", float(metrics.get("trial_time_hours", 0.0)))
             logger.log_metric("dataset_rows", int(df.shape[0]))
             logger.log_metric("dataset_cols", int(df.shape[1]))
             logger.log_dict(metrics, "optuna_clustering_hpo_metrics.json")
@@ -361,212 +1038,53 @@ def main():
             y_encoded = label_encoder.fit_transform(y)
             print(f"✅ Encoded target labels: {dict(zip(label_encoder.classes_, label_encoder.transform(label_encoder.classes_)))}")
             
-            # Split with encoded labels
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y_encoded, test_size=test_size, random_state=random_seed, stratify=y_encoded
-            )
+            y_train = y_encoded
         else:
-            # Already numeric
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=random_seed, stratify=y
-            )
+            y_train = y
     else:
-        # Regression - no encoding needed
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_seed
-        )
+        y_train = y
     
-    # Classification/Regression: use XGBoost + Optuna
-    # 🔥 FIX (A1): Load Phase B champion metadata from wired pipeline input
-    champion_algorithm = "xgboost"  # Default fallback
-    champion_engine = "pycaret"
+    # Same-family HPO uses only the explicit Phase B manifest loaded above.
+    print(f"✅ Phase B manifest received via pipeline input: {manifest_path}")
+    print(f"\n🏆 PHASE C: Tuning Phase B Champion:")
+    print(f"  Algorithm family: {champion_algorithm}")
+    print(f"  Engine: {champion_engine}")
+    phaseb_recipe = champion_metadata.get(
+        "variant_path",
+        champion_metadata.get("recipe", "unknown"),
+    )
+    phaseb_variant = champion_metadata.get(
+        "variant_id",
+        champion_metadata.get("variant", "unknown"),
+    )
 
-    # Determine manifest path: prefer explicit pipeline input, then legacy path
-    manifest_path = None
-    if getattr(args, "phaseb_manifest", None) and Path(args.phaseb_manifest).exists():
-        manifest_path = Path(args.phaseb_manifest)
-        print(f"✅ Phase B manifest received via pipeline input: {manifest_path}")
-    else:
-        legacy_path = Path("outputs") / "phaseb_champion_manifest.json"
-        if legacy_path.exists():
-            manifest_path = legacy_path
-            print(f"⚠️  Phase B manifest found at legacy path: {legacy_path}")
-        else:
-            print(f"⚠️  No Phase B manifest found — defaulting to {champion_algorithm}")
-
-    if manifest_path is not None:
-        with open(manifest_path, 'r') as f:
-            champion_metadata = json.load(f)
-        champion_algorithm_raw = champion_metadata.get("algorithm", "xgboost").lower()
-        champion_engine = champion_metadata.get("engine", "pycaret")
-        
-        print(f"\n🏆 PHASE C: Tuning Phase B Champion:")
-        print(f"  Algorithm: {champion_metadata.get('algorithm')}")
-        print(f"  Recipe: {champion_metadata.get('variant_path', champion_metadata.get('recipe', 'unknown'))}")
-        print(f"  Engine: {champion_engine}")
-        print(f"  Score: {champion_metadata.get('primary_metric_value', champion_metadata.get('champion_score'))}")
-        
-        # 🔥 FIX (A2): Log Phase B preprocessing context for transparency
-        # Phase C receives Stage 4 (baseline-preprocessed) data, NOT Phase B's
-        # variant-preprocessed data. Phase B applied recipe-specific transforms
-        # (encoding, scaling, imputation) internally. For tree-based models this
-        # difference is negligible; for linear models it matters more.
-        phaseb_recipe = champion_metadata.get("variant_path", champion_metadata.get("recipe", "unknown"))
-        phaseb_variant = champion_metadata.get("variant_id", champion_metadata.get("variant", "unknown"))
-        preproc_cfg = champion_metadata.get("preprocessing_config", {})
-        recipe_encoding = preproc_cfg.get("encoding", "none")
-        recipe_scaling = preproc_cfg.get("scaling", "none")
-        print(f"\n📋 PHASE C DATA CONTEXT (A2 transparency):")
-        print(f"  ℹ️  Phase B champion was trained on variant: {phaseb_variant}")
-        print(f"  ℹ️  Phase B recipe: {phaseb_recipe}")
-        print(f"  ℹ️  Recipe encoding: {recipe_encoding}, scaling: {recipe_scaling}")
-        print(f"  ✅  Phase C will replicate recipe transforms on Stage 4 data")
-        
-        # Map PyCaret/FLAML model names to sklearn/xgb/lgb/cat equivalents
-        # K10 fix: expanded coverage; raise (not silent fallback) for truly unknown
-        # algorithms so misconfigured Phase B champions are surfaced loudly.
-        if "xgb" in champion_algorithm_raw or "xgboost" in champion_algorithm_raw or "Extreme Gradient Boosting" in champion_algorithm_raw.lower():
-            champion_algorithm = "xgboost"
-        elif "lgb" in champion_algorithm_raw or "lightgbm" in champion_algorithm_raw or "light gradient boosting" in champion_algorithm_raw.lower():
-            champion_algorithm = "lightgbm"
-        elif "cat" in champion_algorithm_raw or "catboost" in champion_algorithm_raw:
-            champion_algorithm = "catboost"
-        elif "extra" in champion_algorithm_raw or "et" == champion_algorithm_raw.strip():
-            champion_algorithm = "extratrees"
-        elif "gradient" in champion_algorithm_raw or "gbc" in champion_algorithm_raw or "gbr" in champion_algorithm_raw:
-            champion_algorithm = "gradientboosting"
-        elif "rf" in champion_algorithm_raw or "randomforest" in champion_algorithm_raw or "random forest" in champion_algorithm_raw.lower():
-            champion_algorithm = "randomforest"
-        elif "logistic" in champion_algorithm_raw or champion_algorithm_raw.strip() == "lr":
-            champion_algorithm = "logisticregression"
-        elif "ridge" in champion_algorithm_raw:
-            champion_algorithm = "ridge"
-        elif "lasso" in champion_algorithm_raw:
-            champion_algorithm = "lasso"
-        elif "linear" in champion_algorithm_raw or champion_algorithm_raw.strip() in ("lreg", "linreg"):
-            champion_algorithm = "linearregression"
-        elif "knn" in champion_algorithm_raw or "k neighbors" in champion_algorithm_raw.lower():
-            champion_algorithm = "knn"
-        elif "dt" == champion_algorithm_raw.strip() or "decision tree" in champion_algorithm_raw.lower() or "decisiontree" in champion_algorithm_raw:
-            champion_algorithm = "decisiontree"
-        elif "ada" in champion_algorithm_raw:
-            champion_algorithm = "adaboost"
-        elif "svm" in champion_algorithm_raw or "svc" in champion_algorithm_raw or "support vector" in champion_algorithm_raw.lower():
-            champion_algorithm = "svm"
-        elif "naive" in champion_algorithm_raw.lower() or champion_algorithm_raw.strip() == "nb":
-            champion_algorithm = "naivebayes"
-        else:
-            # K10: surface unknown rather than silently mis-tune XGBoost.
-            # Use a documented marker so downstream code falls through to the
-            # XGBoost search-space block but the discrepancy is visible in logs.
-            print(f"  ❌ K10: Unknown Phase B algorithm '{champion_algorithm_raw}'.")
-            print(f"      Falling back to XGBoost search space; ALGO_MAP needs an entry.")
-            champion_algorithm = "xgboost"
-        
-        # 🔥 FIX (Item 10): Recipe-aware preprocessing for Phase C
-        # Replicate Phase B's recipe transforms (encoding + scaling) so the HPO
-        # model trains on data consistent with what won Phase B.
-        cat_cols = X_train.select_dtypes(include=["object", "category"]).columns.tolist()
-        if cat_cols and recipe_encoding not in ("none", "unknown"):
-            if recipe_encoding == "label":
-                for col in cat_cols:
-                    X_train[col] = X_train[col].astype("category").cat.codes
-                    X_test[col] = X_test[col].astype("category").cat.codes
-                print(f"  ✅ Label-encoded {len(cat_cols)} categorical columns")
-            elif recipe_encoding == "onehot":
-                X_train = pd.get_dummies(X_train, columns=cat_cols, drop_first=True)
-                X_test = pd.get_dummies(X_test, columns=cat_cols, drop_first=True)
-                X_train, X_test = X_train.align(X_test, join="left", axis=1, fill_value=0)
-                print(f"  ✅ One-hot encoded {len(cat_cols)} columns → {len(X_train.columns)} features")
-            elif recipe_encoding == "target":
-                try:
-                    from category_encoders import TargetEncoder
-                    te = TargetEncoder(cols=cat_cols)
-                    X_train = te.fit_transform(X_train, y_train)
-                    X_test = te.transform(X_test)
-                    print(f"  ✅ Target-encoded {len(cat_cols)} categorical columns")
-                except ImportError:
-                    for col in cat_cols:
-                        X_train[col] = X_train[col].astype("category").cat.codes
-                        X_test[col] = X_test[col].astype("category").cat.codes
-                    print(f"  ⚠️  category_encoders unavailable, fell back to label encoding")
-
-        numeric_cols = X_train.select_dtypes(include=["number"]).columns.tolist()
-        if numeric_cols and recipe_scaling not in ("none", "unknown"):
-            if recipe_scaling == "standard":
-                from sklearn.preprocessing import StandardScaler
-                _scaler = StandardScaler()
-            elif recipe_scaling == "robust":
-                from sklearn.preprocessing import RobustScaler
-                _scaler = RobustScaler()
-            elif recipe_scaling == "minmax":
-                from sklearn.preprocessing import MinMaxScaler
-                _scaler = MinMaxScaler()
-            elif recipe_scaling == "yeo_johnson":
-                from sklearn.preprocessing import PowerTransformer
-                _scaler = PowerTransformer(method='yeo-johnson', standardize=True)
-            elif recipe_scaling == "quantile":
-                from sklearn.preprocessing import QuantileTransformer
-                _scaler = QuantileTransformer(output_distribution='normal', random_state=random_seed)
-            else:
-                _scaler = None
-                print(f"  ⚠️  Unknown scaling '{recipe_scaling}', skipping")
-            if _scaler is not None:
-                X_train[numeric_cols] = _scaler.fit_transform(X_train[numeric_cols])
-                X_test[numeric_cols] = _scaler.transform(X_test[numeric_cols])
-                print(f"  ✅ Applied {recipe_scaling} scaling to {len(numeric_cols)} columns")
-    else:
-        print(f"\n⚠️  Phase B champion manifest not found")
-        print(f"  Defaulting to XGBoost for HPO")
-    
-    # 🔥 FIX: Sanitize feature names to prevent LightGBM/XGBoost special char crashes
-    #     LightGBM rejects [, ], <, >, {, }, etc. in feature names.
-    #     XGBoost rejects [, ], < in feature names.
-    #     pd.get_dummies() and one-hot encoding can create these from categorical values.
-    import re as _re
-    def _sanitize_columns(frame):
-        _orig = list(frame.columns)
-        _cmap = {}
-        for _c in _orig:
-            _s = _re.sub(r'[\[\]<>{},:"\'\\\\ ]', '_', str(_c))
-            _s = _re.sub(r'_+', '_', _s).strip('_')
-            _cmap[_c] = _s
-        _seen = {}
-        for _o, _s in list(_cmap.items()):
-            if _s in _seen:
-                _seen[_s] += 1
-                _cmap[_o] = f"{_s}_{_seen[_s]}"
-            else:
-                _seen[_s] = 0
-        frame.columns = [_cmap[c] for c in frame.columns]
-        return sum(1 for o, s in _cmap.items() if o != s)
-    
-    _n1 = _sanitize_columns(X_train)
-    _n2 = _sanitize_columns(X_test)
-    if _n1 > 0:
-        print(f"  🔧 Sanitized {_n1} feature names in X_train (removed special chars for LightGBM/XGBoost)")
-    if _n2 > 0:
-        print(f"  🔧 Sanitized {_n2} feature names in X_test")
-    
-    # 🔥 FIX: Handle any remaining NaN values before model training
-    if X_train.isnull().any().any():
-        _nan_cols = X_train.columns[X_train.isnull().any()].tolist()
-        print(f"  ⚠️  Found NaN in {len(_nan_cols)} columns, imputing with median before HPO")
-        for _nc in _nan_cols:
-            _med = X_train[_nc].median()
-            X_train[_nc] = X_train[_nc].fillna(_med)
-            X_test[_nc] = X_test[_nc].fillna(_med)
+    # Preserve the raw feature space for the persisted sklearn Pipeline. The
+    # fitted transformer is reused for HPO and bundled with the final estimator,
+    # so final evaluation and registered-model inference apply the same contract.
+    # S02 already removed the one locked final-test partition. HPO selection
+    # uses fold-local CV across every remaining training row; no second
+    # pseudo-test split is created or evaluated.
+    X_train_raw = X.copy()
+    phasec_preprocessor = FittedVariantPreprocessor(
+        full_phaseb_recipe,
+        random_seed=random_seed,
+    )
+    X_train = phasec_preprocessor.fit_transform(X_train_raw, y_train)
+    print(
+        "  ✅ Fitted Phase C preprocessing on training rows only: "
+        f"encoding={recipe_encoding}, scaling={recipe_scaling}, "
+        f"features={X_train.shape[1]}"
+    )
     
     print(f"\n🎯 Phase C HPO Target: {champion_algorithm}")
     
     # 🔥 NEW: Configure cross-validation for robust hyperparameter evaluation
-    use_cv = cfg.get("phases", {}).get("phase_c_hpo", {}).get("use_cross_validation", True)
-    cv_folds = cfg.get("phases", {}).get("phase_c_hpo", {}).get("cv_folds", 5)
-    
-    if use_cv:
-        print(f"✅ Using {cv_folds}-fold cross-validation for hyperparameter evaluation")
-    else:
-        print(f"⚠️  Using single train/test split (no cross-validation)")
+    cv_folds = int(cfg["split"]["cv_folds"])
+    print(
+        f"✅ Using compiled {cv_folds}-fold cross-validation contract "
+        "for hyperparameter evaluation"
+    )
+    hpo_deadline = _time_mod.monotonic() + float(hpo_timeout)
     
     # Import the champion algorithm
     try:
@@ -583,14 +1101,19 @@ def main():
         elif champion_algorithm == "ridge":
             from sklearn.linear_model import Ridge
         else:
-            # Fallback to XGBoost
-            import xgboost as xgb
-            champion_algorithm = "xgboost"
+            _write_skipped_unsupported(
+                args,
+                f"unsupported_phaseb_algorithm_family: {champion_algorithm}",
+                champion_metadata,
+            )
+            return
     except ImportError as import_err:
-        print(f"⚠️  Failed to import {champion_algorithm}: {import_err}")
-        print(f"  Falling back to XGBoost")
-        import xgboost as xgb
-        champion_algorithm = "xgboost"
+        _write_skipped_unsupported(
+            args,
+            f"phaseb_algorithm_dependency_unavailable: {import_err}",
+            champion_metadata,
+        )
+        return
 
     def objective(trial: optuna.Trial):
         # Validate data before each trial
@@ -672,50 +1195,77 @@ def main():
                 model = Ridge(alpha=1.0/params["C"], random_state=random_seed)
         
         else:
-            # Fallback to XGBoost params
-            params = {
-                "n_estimators": trial.suggest_int("n_estimators", 50, 300),
-                "max_depth": trial.suggest_int("max_depth", 3, 10),
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2),
-                "random_state": random_seed
-            }
-            if task_type == "classification":
-                model = xgb.XGBClassifier(**params)
-            else:
-                model = xgb.XGBRegressor(**params)
+            raise optuna.TrialPruned(
+                f"unsupported same-family HPO: {champion_algorithm}"
+            )
         
-        # 🔥 NEW: Use cross-validation for more robust evaluation
-        if use_cv and len(X_train) >= 50:  # Only use CV if enough data
-            # Cross-validation on training set
-            # Use balanced_accuracy for classification to handle class imbalance
-            if task_type == "classification":
-                scorer = make_scorer(balanced_accuracy_score)
-            else:
-                scorer = make_scorer(r2_score)
-            
-            # Perform cross-validation
-            cv_scores = cross_val_score(model, X_train, y_train, cv=cv_folds, scoring=scorer, n_jobs=-1)
-            score = cv_scores.mean()  # Use mean CV score
-            
-            # Log CV std dev for trial analysis
-            trial.set_user_attr("cv_std", cv_scores.std())
-            trial.set_user_attr("cv_scores", cv_scores.tolist())
+        fold_steps = [
+            (
+                "preprocessor",
+                FittedVariantPreprocessor(
+                    full_phaseb_recipe,
+                    random_seed=random_seed,
+                ),
+            ),
+        ]
+        if training_resampler is not None:
+            from imblearn.pipeline import Pipeline as ImbalancedPipeline
+
+            fold_steps.append(("resampler", clone(training_resampler)))
+            pipeline_type = ImbalancedPipeline
         else:
-            # Fallback to single train/test split
-            model.fit(X_train, y_train)
-            preds = model.predict(X_test)
-            
-            # Use balanced_accuracy for classification to handle class imbalance
-            if task_type == "classification":
-                score = balanced_accuracy_score(y_test, preds)
-            else:
-                score = r2_score(y_test, preds)
+            pipeline_type = Pipeline
+        fold_steps.append(("estimator", model))
+        fold_pipeline = pipeline_type(fold_steps)
+        remaining_hpo_seconds = hpo_deadline - _time_mod.monotonic()
+        if remaining_hpo_seconds <= 0:
+            raise optuna.TrialPruned("HPO wall-clock budget exhausted")
+        evidence = evaluate_candidate(
+            fold_pipeline,
+            X_train_raw,
+            y_train,
+            candidate_id=phasec_candidate_id(
+                phaseb_candidate_id,
+                champion_algorithm,
+                params,
+            ),
+            engine=champion_engine,
+            spec=EvaluationSpec(
+                task_type=task_type,
+                seed=int(random_seed),
+                folds=int(cv_folds),
+                timeout_seconds=float(remaining_hpo_seconds),
+                execution_id=execution_id,
+            ),
+        )
+        if evidence.status == "timeout":
+            raise optuna.TrialPruned("HPO wall-clock budget exhausted")
+        if not evidence.selectable:
+            raise RuntimeError(
+                "Common HPO evaluation failed: "
+                f"{evidence.failure_reason or evidence.status}"
+            )
+        score = float(evidence.selection_score)
+        metric_name = evidence.primary_metric
+        trial.set_user_attr(
+            "cv_std",
+            evidence.metrics.get(f"{metric_name}_std"),
+        )
+        trial.set_user_attr("cv_scores", [
+            row.get(metric_name) for row in evidence.fold_metrics
+        ])
+        trial.set_user_attr(
+            "split_fingerprint",
+            evidence.split_fingerprint,
+        )
+        trial.set_user_attr("total_folds", evidence.total_folds)
         
         print(f"  🔄 Trial {trial.number}/{n_trials}: {champion_algorithm} → score={score:.4f}", flush=True)
         return score
 
     study = optuna.create_study(
         direction="maximize",
+        sampler=seeded_optuna_sampler(random_seed),
         pruner=optuna.pruners.MedianPruner(
             n_startup_trials=10,  # No pruning for first 10 trials
             n_warmup_steps=5,     # Start pruning after 5 CV folds if using CV
@@ -725,7 +1275,6 @@ def main():
     print(f"\n🔬 Starting Optuna study ({n_trials} trials"
           + (f", timeout={hpo_timeout}s" if hpo_timeout else "")
           + ", MedianPruner enabled):", flush=True)
-    # T5: Wrap study in fallback guard — if HPO fails entirely, use default XGBoost
     _hpo_fallback = False
     try:
         # K8 fix: catch=(Exception,) so a single bad trial does not abort the
@@ -736,12 +1285,18 @@ def main():
             raise RuntimeError("Optuna study finished with zero successful trials")
         best_params = study.best_params
         best_value = study.best_value
+        best_split_fingerprint = study.best_trial.user_attrs.get(
+            "split_fingerprint"
+        )
+        best_total_folds = study.best_trial.user_attrs.get("total_folds")
     except Exception as _hpo_err:
         print(f"\n⚠️  HPO FAILED — no valid trials completed: {_hpo_err}")
-        print(f"  🔄 T5: Falling back to default XGBoost parameters")
-        _hpo_fallback = True
-        best_params = {}
-        best_value = 0.0
+        _write_skipped_unsupported(
+            args,
+            f"same_family_hpo_failed: {_hpo_err}",
+            champion_metadata,
+        )
+        return
     
     # 📊 EXPORT ALL OPTUNA TRIALS TO CSV
     if not _hpo_fallback:
@@ -774,109 +1329,196 @@ def main():
             print(f"  ✅ Parameter importance: {importance_path} ({importance_path.stat().st_size:,} bytes)")
         except Exception as plot_err:
             print(f"  ⚠️  Could not generate Optuna plots: {plot_err}")
+        trial_plot_path = _write_trial_score_plot(study, outputs_dir)
+        if trial_plot_path:
+            print(f"  ✅ Trial score PNG: {trial_plot_path}")
 
-    # Train final model with best params
-    # T5: If HPO failed, train fallback XGBoost with default params
-    if _hpo_fallback:
-        print(f"\n🏆 T5 FALLBACK: Training default XGBoost (HPO failed):")
-        import xgboost as xgb
-        if task_type == "classification":
-            final_model = xgb.XGBClassifier(random_state=random_seed, n_jobs=-1)
-        else:
-            final_model = xgb.XGBRegressor(random_state=random_seed, n_jobs=-1)
-        final_model.fit(X_train, y_train)
-        preds = final_model.predict(X_test)
-        if task_type == "classification":
-            best_value = float(balanced_accuracy_score(y_test, preds))
-        else:
-            best_value = float(r2_score(y_test, preds))
-        champion_algorithm = "xgboost_fallback"
-        print(f"  ✅ Fallback model trained: score={best_value:.4f}")
-    else:
-        print(f"\n🏆 Training final model with best hyperparameters:")
-        print(f"  Algorithm: {champion_algorithm}")
-        print(f"  Best params: {best_params}")
-        print(f"  Best score: {best_value:.4f}")
+    print(f"\n🏆 Training final model with best hyperparameters:")
+    print(f"  Algorithm: {champion_algorithm}")
+    print(f"  Best params: {best_params}")
+    print(f"  Best score: {best_value:.4f}")
+    seeded_best_params = final_estimator_params(
+        champion_algorithm,
+        best_params,
+        random_seed,
+    )
     
     # 🔥 NEW: Train final model using champion algorithm (not hardcoded XGBoost)
-    if _hpo_fallback:
-        pass  # final_model already trained in fallback branch above
-    elif champion_algorithm == "xgboost":
+    if champion_algorithm == "xgboost":
         import xgboost as xgb
         if task_type == "classification":
-            final_model = xgb.XGBClassifier(**best_params, objective="binary:logistic")
+            final_model = xgb.XGBClassifier(
+                **seeded_best_params,
+                objective="binary:logistic",
+            )
         else:
-            final_model = xgb.XGBRegressor(**best_params, objective="reg:squarederror")
+            final_model = xgb.XGBRegressor(
+                **seeded_best_params,
+                objective="reg:squarederror",
+            )
     
     elif champion_algorithm == "lightgbm":
         import lightgbm as lgb
         if task_type == "classification":
-            final_model = lgb.LGBMClassifier(**best_params)
+            final_model = lgb.LGBMClassifier(**seeded_best_params)
         else:
-            final_model = lgb.LGBMRegressor(**best_params)
+            final_model = lgb.LGBMRegressor(**seeded_best_params)
     
     elif champion_algorithm == "catboost":
         from catboost import CatBoostClassifier, CatBoostRegressor
         if task_type == "classification":
-            final_model = CatBoostClassifier(**best_params)
+            final_model = CatBoostClassifier(**seeded_best_params)
         else:
-            final_model = CatBoostRegressor(**best_params)
+            final_model = CatBoostRegressor(**seeded_best_params)
     
     elif champion_algorithm == "randomforest":
         from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
         if task_type == "classification":
-            final_model = RandomForestClassifier(**best_params)
+            final_model = RandomForestClassifier(**seeded_best_params)
         else:
-            final_model = RandomForestRegressor(**best_params)
+            final_model = RandomForestRegressor(**seeded_best_params)
     
     elif champion_algorithm in ["logisticregression", "ridge"]:
         from sklearn.linear_model import LogisticRegression, Ridge
         if task_type == "classification":
-            final_model = LogisticRegression(**best_params)
+            final_model = LogisticRegression(**seeded_best_params)
         else:
             # Ridge uses alpha instead of C
             final_model = Ridge(alpha=1.0/best_params["C"], random_state=random_seed)
     
     else:
-        # Fallback to XGBoost
-        import xgboost as xgb
-        if task_type == "classification":
-            final_model = xgb.XGBClassifier(**best_params)
-        else:
-            final_model = xgb.XGBRegressor(**best_params)
+        _write_skipped_unsupported(
+            args,
+            f"unsupported_same_family_final_fit: {champion_algorithm}",
+            champion_metadata,
+        )
+        return
     
     if not _hpo_fallback:
-        final_model.fit(X_train, y_train)
+        final_model = fit_final_model_with_hard_timeout(
+            final_model,
+            X_train,
+            y_train,
+            resampler=(
+                clone(training_resampler)
+                if training_resampler is not None
+                else None
+            ),
+            timeout_seconds=hpo_deadline - _time_mod.monotonic(),
+        )
 
-    # T18: HPO quality safeguard — score final model on test set and compare to Phase B
-    _hpo_preds = final_model.predict(X_test)
-    if task_type == "classification":
-        _hpo_test_score = float(balanced_accuracy_score(y_test, _hpo_preds))
-    else:
-        _hpo_test_score = float(r2_score(y_test, _hpo_preds))
-    print(f"\n📊 T18: HPO final model test score: {_hpo_test_score:.4f} (Optuna best_value: {best_value:.4f})")
-    best_value = _hpo_test_score  # Use actual test score, not Optuna internal CV score
+    # best_value is CV selection evidence. The locked test is evaluated only by
+    # S10 after the champion is frozen.
 
-    _phaseb_score = None
-    if manifest_path is not None:
-        _phaseb_score = champion_metadata.get("primary_metric_value",
-                            champion_metadata.get("champion_score"))
-        if _phaseb_score is not None:
-            _phaseb_score = float(_phaseb_score)
-    if _phaseb_score is not None and np.isfinite(_phaseb_score):
-        if _hpo_test_score < _phaseb_score:
-            print(f"  ⚠️  T18 SAFEGUARD: HPO score ({_hpo_test_score:.4f}) < Phase B score ({_phaseb_score:.4f})")
-            print(f"  ⚠️  HPO degraded model quality. s10 final_evaluation will pick the best phase.")
-        else:
-            print(f"  ✅ T18: HPO improved over Phase B ({_phaseb_score:.4f} → {_hpo_test_score:.4f})")
-
-    # Save model, study, and label encoder
+    # Save the fitted preprocessing contract together with the estimator.
     try:
         import joblib
+
         model_dir = Path(args.model_out)
         model_dir.mkdir(parents=True, exist_ok=True)
-        model_path = model_dir / "model.pkl"
-        joblib.dump(final_model, model_path)
+        tuned_candidate_id = phasec_candidate_id(
+            phaseb_candidate_id,
+            champion_algorithm,
+            best_params,
+        )
+        (
+            lineage_client,
+            parent_run_id,
+            candidate_run_id,
+        ) = create_phasec_candidate_run(
+            candidate_id=tuned_candidate_id,
+            execution_id=execution_id,
+        )
+        contract_input = X_train_raw.head(min(5, len(X_train_raw)))
+        contract_predictions = final_model.predict(
+            phasec_preprocessor.transform(contract_input)
+        )
+        if len(contract_predictions) != len(contract_input):
+            raise RuntimeError(
+                "Persisted Phase C model contract returned an invalid row count"
+            )
+        phasec_bundle = ModelBundle(
+            estimator=final_model,
+            preprocessing=phasec_preprocessor,
+            target_decoder=label_encoder,
+            task_type=task_type,
+            candidate_id=tuned_candidate_id,
+            input_schema=capture_input_schema(X_train_raw),
+            recipe={
+                **full_phaseb_recipe,
+                "phasec_hpo": {
+                    "algorithm_family": champion_algorithm,
+                    "best_params": best_params,
+                },
+            },
+            selection_metrics={
+                "primary_metric": (
+                    "balanced_accuracy"
+                    if task_type == "classification"
+                    else "r2"
+                ),
+                "selection_score": best_value,
+                "n_trials": len(study.trials),
+                "split_fingerprint": best_split_fingerprint,
+                "total_folds": best_total_folds,
+            },
+            environment={
+                "component": "phasec_optuna_hpo",
+                "environment_name": os.getenv("AZUREML_ENVIRONMENT_NAME"),
+                "environment_version": os.getenv("AZUREML_ENVIRONMENT_VERSION"),
+            },
+            lineage={
+                "execution_id": execution_id,
+                "parent_run_id": parent_run_id,
+                "candidate_run_id": candidate_run_id,
+                "phaseb_candidate_id": phaseb_candidate_id,
+            },
+            dependencies=("optuna", "scikit-learn", "pandas"),
+            labels=(
+                tuple(label_encoder.classes_)
+                if label_encoder is not None
+                else tuple()
+            ),
+            signature={
+                "inputs": list(
+                    capture_input_schema(X_train_raw)["column_order"]
+                ),
+                "outputs": ["prediction"],
+            },
+            input_example=X_train_raw.head(1).to_dict(orient="records"),
+        )
+        try:
+            bundle_manifest = save_model_bundle(phasec_bundle, model_dir)
+            lineage_client.log_metric(
+                candidate_run_id,
+                (
+                    "balanced_accuracy"
+                    if task_type == "classification"
+                    else "r2"
+                ),
+                float(best_value),
+            )
+            for artifact_name in (
+                "model_bundle.pkl",
+                "model_bundle_manifest.json",
+            ):
+                lineage_client.log_artifact(
+                    candidate_run_id,
+                    str(model_dir / artifact_name),
+                    artifact_path="model_bundle",
+                )
+            finish_phasec_candidate_run(
+                lineage_client,
+                candidate_run_id,
+                status="FINISHED",
+            )
+        except Exception:
+            finish_phasec_candidate_run(
+                lineage_client,
+                candidate_run_id,
+                status="FAILED",
+            )
+            raise
         
         # Save label encoder for classification (needed for prediction decoding)
         if label_encoder is not None:
@@ -889,30 +1531,43 @@ def main():
         study_path = study_dir / "study.pkl"
         joblib.dump(study, study_path)
     except Exception as e:
-        # T5: Try fallback model save instead of just writing .error
         print(f"  ⚠️  Primary model save failed: {e}")
-        model_dir = Path(args.model_out)
-        model_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            import xgboost as xgb
-            import joblib as _jl
-            print(f"  🔄 Training emergency fallback XGBoost...")
-            if task_type == "classification":
-                _fb = xgb.XGBClassifier(random_state=random_seed, n_jobs=-1)
-            else:
-                _fb = xgb.XGBRegressor(random_state=random_seed, n_jobs=-1)
-            _fb.fit(X_train, y_train)
-            _jl.dump(_fb, model_dir / "model.pkl")
-            champion_algorithm = "xgboost_fallback"
-            print(f"  ✅ Emergency fallback model saved")
-        except Exception as _fb_err:
-            print(f"  ❌ Emergency fallback also failed: {_fb_err}")
-            (model_dir / ".error").write_text(f"Primary: {e}\nFallback: {_fb_err}")
-        study_dir = Path(args.study_out)
-        study_dir.mkdir(parents=True, exist_ok=True)
-        (study_dir / ".error").write_text(str(e))
+        _write_skipped_unsupported(
+            args,
+            f"same_family_model_bundle_failed: {e}",
+            champion_metadata,
+        )
+        return
 
-    metrics = {"algorithm": champion_algorithm, "best_params": best_params, "best_score": best_value}
+    cost_summary = _compute_hpo_cost(study, _t0, compute_rate_usd_per_hour)
+    metrics = {
+        "schema_version": 2,
+        "status": "success",
+        "candidate_id": tuned_candidate_id,
+        "algorithm": champion_algorithm,
+        "phaseb_algorithm": champion_algorithm,
+        "same_family": True,
+        "best_params": best_params,
+        "best_score": best_value,
+        "selection_metric": (
+            "balanced_accuracy" if task_type == "classification" else "r2"
+        ),
+        "selection_evidence": "cross_validation",
+        "split_fingerprint": best_split_fingerprint,
+        "total_folds": best_total_folds,
+        "n_trials_requested": n_trials,
+        "n_trials_completed": len(
+            [trial for trial in study.trials if trial.state.name == "COMPLETE"]
+        ),
+        "timeout_seconds": hpo_timeout,
+        "model_bundle": bundle_manifest,
+        "execution_id": phasec_bundle.lineage.get("execution_id"),
+        "mlflow_parent_run_id": phasec_bundle.lineage.get("parent_run_id"),
+        "mlflow_child_run_id": phasec_bundle.lineage.get("candidate_run_id"),
+        **cost_summary,
+    }
+    if 'trial_plot_path' in locals() and trial_plot_path:
+        metrics["trial_score_plot"] = trial_plot_path
     Path(args.metrics_out).parent.mkdir(parents=True, exist_ok=True)
     with open(args.metrics_out, "w") as f:
         json.dump(metrics, f, cls=NumpyEncoder)
@@ -921,7 +1576,12 @@ def main():
     # Create dual logger for MLflow and Azure ML
     logger = create_metrics_logger(
         run_name="s08_phasec_hpo",
-        tags={"pipeline": "v3_mlops", "phase": "phasec", "step": "s08"}
+        tags={
+            "pipeline": "v3_mlops",
+            "phase": "phasec",
+            "step": "s08",
+            "execution_id": execution_id,
+        }
     )
 
     # Log metrics to MLflow for Azure ML Studio tracking (wrap in try-except to make non-fatal)
@@ -934,6 +1594,8 @@ def main():
         logger.log_param("n_trials", n_trials)
         _bv = float(best_value) if np.isfinite(float(best_value)) else -999.0  # T13: clamp
         logger.log_metric("best_score", _bv)
+        logger.log_metric("estimated_cost_usd", float(metrics.get("estimated_cost_usd", 0.0)))
+        logger.log_metric("hpo_trial_time_hours", float(metrics.get("trial_time_hours", 0.0)))
         logger.log_metric("dataset_rows", int(df.shape[0]))
         logger.log_metric("dataset_cols", int(df.shape[1]))
         logger.log_dict(metrics, "optuna_hpo_metrics.json")

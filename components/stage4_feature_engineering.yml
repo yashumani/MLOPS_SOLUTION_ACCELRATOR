@@ -1,5 +1,5 @@
 name: stage4_feature_engineering
-version: 6
+version: 9
 display_name: V3 Stage 4 - Engineering
 type: command
 is_deterministic: false
@@ -16,6 +16,12 @@ outputs:
     type: uri_folder
   dataset_out:
     type: uri_file
+  train_out:
+    type: uri_file
+    description: Model-ready training rows with internal identity columns removed
+  holdout_out:
+    type: uri_file
+    description: Model-ready holdout rows with canonical row identity for evaluation
 code: ../
 command: >-
   python src/steps/stage4_feature_engineering.py
@@ -24,6 +30,8 @@ command: >-
   $[[--recipe_name "${{inputs.recipe_name}}"]]
   --report_dir ${{outputs.fe_report}}
   --dataset_out ${{outputs.dataset_out}}
-environment: azureml:mlops-v3-unified:23
+  --train_out ${{outputs.train_out}}
+  --holdout_out ${{outputs.holdout_out}}
+environment: azureml:mlops-v3-unified:32
 history:
   enableMLflowTracking: true

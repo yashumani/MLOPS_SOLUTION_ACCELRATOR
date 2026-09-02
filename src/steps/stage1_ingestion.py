@@ -21,6 +21,13 @@ sns.set_style('whitegrid')
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.azureml_metrics_logger import create_metrics_logger
+from utils.data_identity import canonical_dataframe_sha256
+from utils.holdout_partition import (
+    ROW_ID_COLUMN,
+    SPLIT_COLUMN,
+    TRAIN_PARTITION,
+    ensure_holdout_partition,
+)
 
 
 def load_config(path: str) -> Dict[str, Any]:
@@ -961,6 +968,17 @@ def main():
         attempted = "; ".join([f"{lbl} ({p})" for p, lbl in read_attempts])
         raise RuntimeError(f"Could not load dataset from any source. Tried: {attempted}")
 
+    expected_content_sha256 = str(
+        (cfg.get("dataset") or {}).get("content_sha256") or ""
+    ).strip().lower()
+    actual_content_sha256 = canonical_dataframe_sha256(df)
+    if expected_content_sha256 and actual_content_sha256 != expected_content_sha256:
+        raise RuntimeError(
+            "Dataset content identity mismatch: "
+            f"expected={expected_content_sha256}, actual={actual_content_sha256}"
+        )
+    print(f"Dataset content SHA-256: {actual_content_sha256}")
+
     # Optional: enable async logging if environment variable is set
     try:
         if os.environ.get("MLFLOW_ENABLE_ASYNC_LOGGING", "").lower() in ("1", "true", "yes"):
@@ -984,6 +1002,23 @@ def main():
             raise ValueError(f"Target column '{target}' not found. Available: {df.columns.tolist()}")
         print(f"✅ Target column '{target}' found")
 
+    df = ensure_holdout_partition(
+        df,
+        target_col=target,
+        task_type=task_type,
+        holdout_fraction=float(cfg.get("holdout_fraction", 0.2)),
+        random_seed=int(cfg.get("random_seed", 42)),
+        split_strategy=str(cfg.get("holdout_split_strategy", "random")),
+        time_column=cfg.get("holdout_time_column"),
+    )
+    training_df = df.loc[df[SPLIT_COLUMN].eq(TRAIN_PARTITION)].drop(
+        columns=[SPLIT_COLUMN, ROW_ID_COLUMN]
+    )
+    print(
+        "🔒 Canonical split assigned before data-driven recommendations: "
+        f"train={len(training_df):,}, holdout={len(df) - len(training_df):,}"
+    )
+
     # Create dual logger for MLflow and Azure ML
     logger = create_metrics_logger(
         run_name="s01_ingestion",
@@ -991,11 +1026,16 @@ def main():
     )
 
     # Generate comprehensive EDA
-    eda = generate_comprehensive_eda(df, target, task_type)
+    eda = generate_comprehensive_eda(training_df, target, task_type)
+    eda["partition_scope"] = {
+        "recommendations_and_eda": "training_only",
+        "n_train": int(len(training_df)),
+        "n_holdout": int(len(df) - len(training_df)),
+    }
     
     # V4 Enhancement: Decision gate validation
     print("\n🔍 Running data quality validation (decision gates)...")
-    validation_issues = validate_data_quality(df, cfg, task_type, target)
+    validation_issues = validate_data_quality(training_df, cfg, task_type, target)
     decision_gate_status = calculate_decision_gate_status(validation_issues)
     
     print(f"\n📋 Data Quality Decision Gate: {decision_gate_status}")
@@ -1017,10 +1057,16 @@ def main():
     logger.log_metric("decision_gate_issue_count", len(validation_issues))
     
     # 🤖 Intelligent Recipe Recommendations (Data-Adaptive)
-    recipe_recommendations = generate_intelligent_recipe_recommendations(df, eda, cfg, task_type, target)
+    recipe_recommendations = generate_intelligent_recipe_recommendations(
+        training_df,
+        eda,
+        cfg,
+        task_type,
+        target,
+    )
     
     # 🕐 AUTO-DETECT TIME-SERIES DATA
-    ts_detection = detect_time_series(df, target, task_type)
+    ts_detection = detect_time_series(training_df, target, task_type)
     recipe_recommendations["is_time_series"] = ts_detection["is_time_series"]
     recipe_recommendations["time_series_detection"] = ts_detection
     if ts_detection["is_time_series"]:
@@ -1044,12 +1090,24 @@ def main():
     job_outputs_dir.mkdir(parents=True, exist_ok=True)
     
     # 🎯 NEW: Generate advanced EDA visualizations (missing heatmap, outliers, target distribution)
-    col_types = analyze_column_types(df)
-    advanced_viz = generate_advanced_eda_visualizations(df, target, task_type, job_outputs_dir, col_types)
+    col_types = analyze_column_types(training_df)
+    advanced_viz = generate_advanced_eda_visualizations(
+        training_df,
+        target,
+        task_type,
+        job_outputs_dir,
+        col_types,
+    )
     print(f"✅ Advanced EDA visualizations generated: {len(advanced_viz)} plots")
     
     # V4 Enhancement: Generate HTML profile report with sweetviz (if enabled)
-    sweetviz_generated = generate_html_profile_report(df, target, task_type, job_outputs_dir, cfg)
+    sweetviz_generated = generate_html_profile_report(
+        training_df,
+        target,
+        task_type,
+        job_outputs_dir,
+        cfg,
+    )
     
     # Save dataset (write to component output parameter for inter-step passing)
     # V4 Enhancement: Preserve original delimiter (critical fix for semicolon-delimited datasets)

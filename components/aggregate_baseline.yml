@@ -1,6 +1,7 @@
 name: v3_aggregate_baseline
-version: 5
+version: 7
 display_name: V3 Stage 5z - Aggregate Baseline
+description: Selects only complete comparable common-CV candidate evidence.
 type: command
 is_deterministic: false
 inputs:
@@ -37,6 +38,6 @@ command: >-
   $[[--ts_model ${{inputs.ts_model}}]]
   --report_out ${{outputs.aggregate_report}}
   --champion_out ${{outputs.champion_model}}
-environment: azureml:mlops-v3-unified:23
+environment: azureml:mlops-v3-unified:32
 history:
   enableMLflowTracking: true

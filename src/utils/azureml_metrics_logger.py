@@ -5,11 +5,11 @@ Provides MLflow-based logging for Azure ML SDK v2 component jobs.
 Azure ML automatically captures MLflow metrics in component runs.
 
 KEY DESIGN PRINCIPLES:
-1. Convert azureml:// tracking URIs to https:// before MLflow operations
+1. Preserve the workspace-provided MLflow tracking URI exactly
 2. ALWAYS write artifacts to outputs/ first (source of truth for Azure ML Studio)
 3. NEVER let logging failures crash the pipeline step
 4. Start nested runs if an active run already exists
-5. MLflow artifacts are best-effort only (azureml:// scheme unsupported)
+5. MLflow artifacts are best-effort only when the active repository supports them
 
 Usage:
     from utils.azureml_metrics_logger import create_metrics_logger
@@ -42,13 +42,10 @@ _SUPPORTED_ARTIFACT_SCHEMES = {"", "file", "http", "https", "databricks",
 
 
 def normalize_mlflow_tracking_uri() -> None:
-    """Normalize Azure ML tracking URIs for MLflow client compatibility."""
+    """Apply the configured URI without rewriting Azure ML workspace identity."""
     uri = os.getenv("MLFLOW_TRACKING_URI", "")
-    if uri.startswith("azureml://"):
-        https_uri = uri.replace("azureml://", "https://", 1)
-        os.environ["MLFLOW_TRACKING_URI"] = https_uri
-        mlflow.set_tracking_uri(https_uri)
-        print("🔗 MLflow tracking URI converted to HTTPS")
+    if uri:
+        mlflow.set_tracking_uri(uri)
 
 
 def _artifact_logging_supported() -> bool:

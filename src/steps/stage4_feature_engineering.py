@@ -13,11 +13,33 @@ import mlflow
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.azureml_metrics_logger import create_metrics_logger, ensure_outputs_dir, safe_write_json
 from utils.eda_generator import generate_correlation_heatmap, generate_sweetviz_report, load_config
+from utils.holdout_partition import (
+    HOLDOUT_PARTITION,
+    ROW_ID_COLUMN,
+    SPLIT_COLUMN,
+    TRAIN_PARTITION,
+    ensure_holdout_partition,
+)
 
 
 def load_csv(path: str, delimiter: str = ",") -> pd.DataFrame:
     """Load CSV with specified delimiter (critical for semicolon-delimited datasets)."""
     return pd.read_csv(path, sep=delimiter)
+
+
+def resolve_recipe_path(root: Path, recipe_name: str, task_type: str) -> Path | None:
+    recipes_dir = root / "configs" / "recipes"
+    candidates = [
+        recipes_dir / recipe_name,
+        recipes_dir / task_type / recipe_name,
+    ]
+    if recipe_name in {"recipe_baseline.yml", "baseline_recipe.yml"}:
+        candidates.append(recipes_dir / task_type / "baseline_recipe.yml")
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def detect_imbalance(y: pd.Series, task_type: str) -> dict:
@@ -62,6 +84,23 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
     
     if feature_selection_config is None:
         feature_selection_config = {}
+
+    df = ensure_holdout_partition(
+        df,
+        target_col=target_col,
+        task_type=task_type,
+        holdout_fraction=float(cfg.get("holdout_fraction", 0.2)),
+        random_seed=int(cfg.get("random_seed", 42)),
+        split_strategy=str(cfg.get("holdout_split_strategy", "random")),
+        time_column=cfg.get("holdout_time_column"),
+    )
+    split_assignment = df.pop(SPLIT_COLUMN)
+    row_identity = df.pop(ROW_ID_COLUMN)
+    train_rows = split_assignment.eq(TRAIN_PARTITION)
+    print(
+        "   Fitting learned feature transformations on training rows only: "
+        f"{int(train_rows.sum()):,}/{len(train_rows):,}"
+    )
     
     # 1. Separate target
     y = None
@@ -82,14 +121,15 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
     import re
     _ID_NAME_PATTERN = re.compile(r'(^id$|_id$|^row_?id|^customer_?id|^transaction_?id|^user_?id|^index$)', re.IGNORECASE)
     id_cols_detected = []
+    X_train = X.loc[train_rows]
     for col in X.columns:
         # Name-based detection
         if _ID_NAME_PATTERN.search(col):
             id_cols_detected.append((col, "name_pattern"))
             continue
         # Cardinality-based detection (numeric cols with >95% unique values)
-        if X[col].dtype in ("int64", "float64", "int32", "float32"):
-            cardinality_ratio = X[col].nunique() / max(len(X), 1)
+        if X_train[col].dtype in ("int64", "float64", "int32", "float32"):
+            cardinality_ratio = X_train[col].nunique() / max(len(X_train), 1)
             if cardinality_ratio > 0.95:
                 id_cols_detected.append((col, f"high_cardinality({cardinality_ratio:.3f})"))
     
@@ -109,7 +149,7 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
         print(f"   ⚠️  Found {_nan_total} NaN values across {len(_nan_cols)} columns — imputing before feature selection")
 
         # Step 1: Drop columns that are 100% NaN (zero information, median=NaN)
-        _all_nan_cols = [c for c in _nan_cols if X[c].isnull().all()]
+        _all_nan_cols = [c for c in _nan_cols if X.loc[train_rows, c].isnull().all()]
         if _all_nan_cols:
             X = X.drop(columns=_all_nan_cols)
             print(f"   🗑️  Dropped {len(_all_nan_cols)} columns that are 100% NaN: {_all_nan_cols[:10]}{'...' if len(_all_nan_cols) > 10 else ''}")
@@ -119,10 +159,10 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
         # Step 2: Impute remaining partially-NaN columns
         for _nc in _nan_cols:
             if X[_nc].dtype in ('float64', 'float32', 'int64', 'int32'):
-                _med = X[_nc].median()
+                _med = X.loc[train_rows, _nc].median()
                 X[_nc] = X[_nc].fillna(_med if _med == _med else 0)  # NaN != NaN
             else:
-                _mode = X[_nc].mode()
+                _mode = X.loc[train_rows, _nc].mode()
                 X[_nc] = X[_nc].fillna(_mode.iloc[0] if len(_mode) > 0 else 0)
 
         # Step 3: Final safety — if ANY NaN still remain, fill with 0
@@ -143,7 +183,7 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
         print(f"      ✓ No feature selection (recipe specifies 'none')")
         kept_cols = X.columns.tolist()
     
-    elif selection_method == "boruta" and y is not None and len(X) > 50:
+    elif selection_method == "boruta" and y is not None and int(train_rows.sum()) > 50:
         # 🔥 BORUTA Feature Selection (Recipe or Stakeholder Requirement)
         print(f"   🎯 Running Boruta feature selection...")
         
@@ -160,10 +200,11 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
             # 🔥 SUBSAMPLE for large datasets — Boruta is O(n * max_iter * n_estimators)
             # Running on 243K rows with 100 iterations is extremely slow / may fail
             BORUTA_MAX_ROWS = 50_000
-            X_boruta, y_boruta = X, y
-            if len(X) > BORUTA_MAX_ROWS:
-                print(f"      ℹ️  Subsampling {BORUTA_MAX_ROWS:,} / {len(X):,} rows for Boruta (performance)")
-                sample_idx = X.sample(n=BORUTA_MAX_ROWS, random_state=42).index
+            X_boruta = X.loc[train_rows]
+            y_boruta = y.loc[train_rows]
+            if len(X_boruta) > BORUTA_MAX_ROWS:
+                print(f"      ℹ️  Subsampling {BORUTA_MAX_ROWS:,} / {len(X_boruta):,} rows for Boruta (performance)")
+                sample_idx = X_boruta.sample(n=BORUTA_MAX_ROWS, random_state=42).index
                 X_boruta = X.loc[sample_idx]
                 y_boruta = y.loc[sample_idx]
             
@@ -234,9 +275,10 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
         
         score_func = mutual_info_classif if task_type == "classification" else mutual_info_regression
         selector = SelectKBest(score_func=score_func, k=k)
-        X_sel = selector.fit_transform(X, y)
+        selector.fit(X.loc[train_rows], y.loc[train_rows])
+        X_sel = selector.transform(X)
         kept_cols = X.columns[selector.get_support(indices=True)].tolist()
-        X = pd.DataFrame(X_sel, columns=kept_cols)
+        X = pd.DataFrame(X_sel, columns=kept_cols, index=X.index)
         print(f"      ✓ Selected top {len(kept_cols)} features by mutual information")
     
     if selection_method == "variance" or (selection_method == "boruta" and y is None):
@@ -245,7 +287,8 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
         print(f"   📏 Using variance threshold ({threshold_val})...")
         
         selector = VarianceThreshold(threshold=threshold_val)
-        X_sel = selector.fit_transform(X)
+        selector.fit(X.loc[train_rows])
+        X_sel = selector.transform(X)
         kept_cols = X.columns[selector.get_support(indices=True)].tolist()
         
         # 🔥 VALIDATION: Prevent zero features
@@ -253,7 +296,7 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
             print(f"      ⚠️  Variance threshold removed ALL features! Keeping all original features")
             kept_cols = X.columns.tolist()
         else:
-            X = pd.DataFrame(X_sel, columns=kept_cols)
+            X = pd.DataFrame(X_sel, columns=kept_cols, index=X.index)
             print(f"      ✓ Kept {len(kept_cols)}/{initial_features} features (variance > {threshold_val})")
     
     # 3. PCA for High Dimensionality (Stakeholder Requirement)
@@ -267,20 +310,24 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
         
         pca_variance = cfg.get("stage4", {}).get("pca_variance_retained", 0.95)
         pca = PCA(n_components=pca_variance, random_state=42)
-        X_pca = pca.fit_transform(X)
+        pca.fit(X.loc[train_rows])
+        X_pca = pca.transform(X)
         
         pca_components = X_pca.shape[1]
         pca_applied = True
         
         # Create PCA feature names
         pca_cols = [f"PC{i+1}" for i in range(pca_components)]
-        X = pd.DataFrame(X_pca, columns=pca_cols)
+        X = pd.DataFrame(X_pca, columns=pca_cols, index=X.index)
         kept_cols = pca_cols
         
         print(f"      ✓ PCA reduced {initial_features} → {pca_components} components ({pca_variance*100}% variance)")
     
     # 4. Imbalance Detection (for training scripts)
-    imbalance_metadata = detect_imbalance(y, task_type)
+    imbalance_metadata = detect_imbalance(
+        y.loc[train_rows] if y is not None else None,
+        task_type,
+    )
     
     # 🔥 FINAL VALIDATION: Ensure we have features before reattaching target
     if X.shape[1] == 0:
@@ -295,8 +342,10 @@ def feature_engineer(df: pd.DataFrame, target_col: str | None, task_type: str, c
     if y is not None:
         df_out[target_col] = y.values
         print(f"   ✅ Target reattached")
+    df_out[SPLIT_COLUMN] = split_assignment.values
+    df_out[ROW_ID_COLUMN] = row_identity.values
     
-    print(f"   🎯 Final output: {df_out.shape[1]} columns (target + {X.shape[1]} features)")
+    print(f"   🎯 Final output: {X.shape[1]} model features plus target")
     
     pca_metadata = {"applied": pca_applied, "n_components": pca_components}
     
@@ -312,72 +361,135 @@ def generate_report(kept_cols: list, pca_metadata: dict, imbalance_metadata: dic
     }
 
 
-def save_outputs(df: pd.DataFrame, report: dict, report_dir: str, dataset_out: str,
-                 delimiter: str = ",", task_type: str = "classification",
-                 target_col: str = None, cfg: dict = None):
+def save_outputs(
+    df: pd.DataFrame,
+    report: dict,
+    report_dir: str,
+    dataset_out: str,
+    train_out: str | None = None,
+    holdout_out: str | None = None,
+    delimiter: str = ",",
+    task_type: str = "classification",
+    target_col: str = None,
+    cfg: dict = None,
+):
     """Save outputs with preserved delimiter (critical for inter-step consistency).
 
-    Agent 1 (holdout leakage fix): in addition to writing the combined dataset to
-    ``dataset_out`` (kept for backward compatibility with immutable component YAMLs),
-    also emit ``train.csv`` and ``holdout.csv`` as siblings of ``dataset_out``.
-    Downstream training stages prefer the sibling ``train.csv``; final_evaluation
-    prefers the sibling ``holdout.csv``. Split is stratified for classification.
+    The split is assigned before learned Stage 3 transformations and carried in
+    an internal metadata column. This function removes that column from every
+    persisted artifact and emits declared train/holdout files. A deterministic
+    fallback split remains for direct legacy callers.
     """
     Path(report_dir).mkdir(parents=True, exist_ok=True)
-    with open(Path(report_dir) / "feature_engineering_report.json", "w") as f:
-        json.dump(report, f, indent=2)
-
-    # Save imbalance metadata separately for training scripts to consume
-    with open(Path(report_dir) / "imbalance_metadata.json", "w") as f:
-        json.dump(report["imbalance_metadata"], f, indent=2)
-
     out_path = Path(dataset_out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_path, sep=delimiter, index=False)
-
-    # ── Agent 1: emit honest train/holdout siblings ─────────────────────
     cfg = cfg or {}
     seed = int(cfg.get("random_seed", 42))
     holdout_fraction = float(cfg.get("holdout_fraction", 0.2))
-    sibling_dir = out_path.parent
-    train_path = sibling_dir / "train.csv"
-    holdout_path = sibling_dir / "holdout.csv"
-    manifest_path = sibling_dir / "holdout_manifest.json"
+    if SPLIT_COLUMN not in df.columns or ROW_ID_COLUMN not in df.columns:
+        df = ensure_holdout_partition(
+            df,
+            target_col=target_col,
+            task_type=task_type,
+            holdout_fraction=holdout_fraction,
+            random_seed=seed,
+            split_strategy=str(cfg.get("holdout_split_strategy", "random")),
+            time_column=cfg.get("holdout_time_column"),
+        )
+    split_assignment = (
+        df[SPLIT_COLUMN].copy() if SPLIT_COLUMN in df.columns else None
+    )
+    row_identity = (
+        df[ROW_ID_COLUMN].copy() if ROW_ID_COLUMN in df.columns else None
+    )
+    persisted_df = df.drop(
+        columns=[SPLIT_COLUMN, ROW_ID_COLUMN],
+        errors="ignore",
+    )
 
-    try:
-        from sklearn.model_selection import train_test_split as _split
-        stratify = None
-        if task_type == "classification" and target_col and target_col in df.columns:
-            # Stratify only when each class has ≥ 2 samples
-            vc = df[target_col].value_counts()
-            if (vc >= 2).all():
-                stratify = df[target_col]
-        if task_type == "clustering":
-            train_df, holdout_df = _split(df, test_size=holdout_fraction, random_state=seed)
-        else:
-            train_df, holdout_df = _split(df, test_size=holdout_fraction,
-                                          random_state=seed, stratify=stratify)
-        train_df.to_csv(train_path, sep=delimiter, index=False)
-        holdout_df.to_csv(holdout_path, sep=delimiter, index=False)
-        manifest = {
-            "split_strategy": "stratified" if stratify is not None else "random",
-            "random_seed": seed,
-            "holdout_fraction": holdout_fraction,
-            "task_type": task_type,
-            "target_column": target_col,
-            "n_train": int(len(train_df)),
-            "n_holdout": int(len(holdout_df)),
-            "delimiter": delimiter,
-            "combined_path": str(out_path.name),
-            "train_path": str(train_path.name),
-            "holdout_path": str(holdout_path.name),
-        }
-        with open(manifest_path, "w") as f:
-            json.dump(manifest, f, indent=2)
-        print(f"   🔀 Holdout split written: train={len(train_df):,}, holdout={len(holdout_df):,} "
-              f"(seed={seed}, stratified={manifest['split_strategy']=='stratified'})")
-    except Exception as e:
-        print(f"   ⚠️ Sibling train/holdout split failed (non-fatal, downstream will fall back): {e}")
+    train_path = Path(train_out) if train_out else out_path.parent / "train.csv"
+    holdout_path = (
+        Path(holdout_out) if holdout_out else out_path.parent / "holdout.csv"
+    )
+    manifest_path = out_path.parent / "holdout_manifest.json"
+
+    if split_assignment is not None:
+        if split_assignment.isna().any():
+            raise ValueError("Preassigned partition must assign every row")
+        labels = set(split_assignment.astype(str).unique())
+        if labels != {TRAIN_PARTITION, HOLDOUT_PARTITION}:
+            raise ValueError(
+                "Preassigned partition must contain only train and holdout rows"
+            )
+        train_mask = split_assignment.astype(str).eq(TRAIN_PARTITION)
+        holdout_mask = split_assignment.astype(str).eq(HOLDOUT_PARTITION)
+        train_df = persisted_df.loc[train_mask]
+        holdout_df = persisted_df.loc[holdout_mask]
+        holdout_identity = row_identity.loc[holdout_mask]
+        split_strategy = "preassigned"
+    else:
+        legacy_partitioned = ensure_holdout_partition(
+            persisted_df,
+            target_col=target_col,
+            task_type=task_type,
+            holdout_fraction=holdout_fraction,
+            random_seed=seed,
+            split_strategy=str(cfg.get("holdout_split_strategy", "random")),
+            time_column=cfg.get("holdout_time_column"),
+        )
+        legacy_assignment = legacy_partitioned.pop(SPLIT_COLUMN)
+        legacy_identity = legacy_partitioned.pop(ROW_ID_COLUMN)
+        train_mask = legacy_assignment.eq(TRAIN_PARTITION)
+        holdout_mask = legacy_assignment.eq(HOLDOUT_PARTITION)
+        train_df = legacy_partitioned.loc[train_mask]
+        holdout_df = legacy_partitioned.loc[holdout_mask]
+        holdout_identity = legacy_identity.loc[holdout_mask]
+        split_strategy = "legacy_fallback"
+
+    if train_df.empty or holdout_df.empty:
+        raise ValueError("Partition must contain non-empty train and holdout rows")
+    if bool((train_mask & holdout_mask).any()):
+        raise ValueError("Train and holdout partitions must be disjoint")
+    if int(train_mask.sum() + holdout_mask.sum()) != len(persisted_df):
+        raise ValueError("Train and holdout partitions must cover every row")
+
+    train_path.parent.mkdir(parents=True, exist_ok=True)
+    holdout_path.parent.mkdir(parents=True, exist_ok=True)
+    persisted_df.to_csv(out_path, sep=delimiter, index=False)
+    train_df.to_csv(train_path, sep=delimiter, index=False)
+    holdout_with_identity = holdout_df.copy()
+    holdout_with_identity[ROW_ID_COLUMN] = holdout_identity.values
+    holdout_with_identity.to_csv(holdout_path, sep=delimiter, index=False)
+    holdout_manifest = {
+        "status": "written",
+        "split_strategy": split_strategy,
+        "partition_assigned_before_preprocessing": split_assignment is not None,
+        "random_seed": seed,
+        "holdout_fraction": holdout_fraction,
+        "task_type": task_type,
+        "target_column": target_col,
+        "n_train": int(len(train_df)),
+        "n_holdout": int(len(holdout_df)),
+        "delimiter": delimiter,
+        "combined_path": str(out_path.name),
+        "train_path": str(train_path.name),
+        "holdout_path": str(holdout_path.name),
+    }
+    safe_write_json(manifest_path, holdout_manifest)
+    print(
+        f"   🔀 Holdout split written: train={len(train_df):,}, "
+        f"holdout={len(holdout_df):,} (seed={seed}, strategy={split_strategy})"
+    )
+
+    report["holdout_manifest"] = holdout_manifest
+
+    safe_write_json(Path(report_dir) / "feature_engineering_report.json", report)
+    safe_write_json(Path(report_dir) / "fe_report.json", report)
+    safe_write_json(Path(report_dir) / "imbalance_metadata.json", report["imbalance_metadata"])
+
+    outputs_dir = ensure_outputs_dir()
+    safe_write_json(outputs_dir / "fe_report.json", report)
+    safe_write_json(outputs_dir / "holdout_manifest.json", holdout_manifest)
 
 
 def main():
@@ -387,6 +499,8 @@ def main():
     parser.add_argument("--recipe_name", required=False, default=None)
     parser.add_argument("--report_dir", required=True)
     parser.add_argument("--dataset_out", required=True)
+    parser.add_argument("--train_out", required=True)
+    parser.add_argument("--holdout_out", required=True)
     args = parser.parse_args()
     
     print("\n" + "="*80)
@@ -405,15 +519,15 @@ def main():
     if args.recipe_name:
         import yaml
         root = Path(__file__).resolve().parents[2]
-        recipe_path = root / "configs" / "recipes" / args.recipe_name
-        if recipe_path.is_file():
+        recipe_path = resolve_recipe_path(root, args.recipe_name, task_type)
+        if recipe_path is not None:
             with open(recipe_path, "r") as f:
                 recipe = yaml.safe_load(f)
             feature_selection_config = recipe.get("stage4_feature_engineering", {}).get("feature_selection", {})
             print(f"✅ Loaded recipe: {recipe.get('recipe_name', args.recipe_name)}")
             print(f"   📋 Feature selection: {feature_selection_config.get('method', 'none')}")
         else:
-            print(f"⚠️  Recipe file not found: {recipe_path}, using defaults")
+            raise FileNotFoundError(f"Recipe file not found under configs/recipes: {args.recipe_name}")
 
     df = load_csv(args.dataset_in, delimiter=delimiter)
     print(f"📊 Input shape: {df.shape[0]:,} rows × {df.shape[1]} columns")
@@ -426,8 +540,22 @@ def main():
         print(f"   📋 Feature selection method: {feature_selection_config.get('method', 'none')}")
     
     report = generate_report(kept, pca_metadata, imbalance_metadata)
-    save_outputs(df2, report, args.report_dir, args.dataset_out, delimiter=delimiter,
-                 task_type=task_type, target_col=target_col, cfg=cfg)
+    save_outputs(
+        df2,
+        report,
+        args.report_dir,
+        args.dataset_out,
+        train_out=args.train_out,
+        holdout_out=args.holdout_out,
+        delimiter=delimiter,
+        task_type=task_type,
+        target_col=target_col,
+        cfg=cfg,
+    )
+    analysis_df = df2.drop(
+        columns=[SPLIT_COLUMN, ROW_ID_COLUMN],
+        errors="ignore",
+    )
     
     # 🎯 Multi-Stage EDA: Final feature set quality check
     print("\n🔍 Generating Stage 4 EDA (Final Feature Set)...")
@@ -436,11 +564,11 @@ def main():
     
     # 1. Correlation heatmap (FINAL: selected features only)
     heatmap_path = job_outputs_dir / "stage4_correlation_heatmap.png"
-    generate_correlation_heatmap(df2, heatmap_path, "Stage 4 - Final Features")
+    generate_correlation_heatmap(analysis_df, heatmap_path, "Stage 4 - Final Features")
     
     # 2. Sweetviz HTML report
     sweetviz_path = job_outputs_dir / "stage4_sweetviz_report.html"
-    generate_sweetviz_report(df2, sweetviz_path, "Stage 4 - Final Features", target_col, cfg)
+    generate_sweetviz_report(analysis_df, sweetviz_path, "Stage 4 - Final Features", target_col, cfg)
 
     # Start MLflow run
     # Create dual logger for MLflow and Azure ML
@@ -455,7 +583,7 @@ def main():
         logger.log_param("variance_threshold", 1e-6)
         logger.log_metric("kept_feature_count", int(report["kept_feature_count"]))
         logger.log_metric("rows_after_fe", int(df2.shape[0]))
-        logger.log_metric("cols_after_fe", int(df2.shape[1]))
+        logger.log_metric("cols_after_fe", int(analysis_df.shape[1]))
         try:
             logger.log_dict(report, "feature_engineering_report.json")
         except Exception as artifact_err:

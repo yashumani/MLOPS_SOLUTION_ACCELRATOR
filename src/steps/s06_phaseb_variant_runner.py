@@ -22,8 +22,12 @@ import sys
 import time
 import hashlib
 import subprocess
+import signal
+import secrets
 import math
 import random
+import multiprocessing
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Any, Tuple, Optional
 from datetime import datetime
@@ -32,6 +36,7 @@ import pandas as pd
 import numpy as np
 import mlflow
 import os
+import yaml
 
 # Ensure src/ on path (single canonical insertion at front of sys.path)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -39,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # Module-level logger for diagnostic/debug messages.
 logger = logging.getLogger(__name__)
 
-from utils.variant_schema import load_variant, validate_variant_for_task, VariantConfig
+from utils.variant_schema import load_variant, validate_variant_for_task, validate_variant_yaml, VariantConfig
 from utils.dataset_profiler import DatasetProfiler
 from utils.variant_recommender import VariantRecommender
 from utils.variant_planner import (
@@ -51,6 +56,43 @@ from utils.candidate_ledger import (
     make_row, normalize_metrics, write_stage_table, sha256_file,
 )
 from utils.model_universe import get_model_list
+from orchestration.config_compiler import (
+    CANDIDATE_ENGINE_TIMEOUT_CAP_SECONDS,
+    PHASE_B_TIMEOUT_CAP_SECONDS,
+    ROUND1_MAX_VARIANTS_CAP,
+    ROUND2_MAX_VARIANTS_CAP,
+    compile_config,
+)
+from orchestration.contracts import (
+    CandidateRecord,
+    ExecutionManifest,
+    QualityDecision,
+    SplitManifest,
+    canonical_hash,
+)
+from utils.recipe_catalog import normalize_recipe, semantic_recipe_hash
+from utils.fitted_variant_preprocessor import FittedVariantPreprocessor
+from utils.model_bundle import (
+    ModelBundle,
+    capture_input_schema,
+    save_model_bundle,
+)
+from utils.common_evaluator import (
+    EvaluationSpec,
+    build_fold_local_pipeline,
+    evaluate_candidate,
+)
+
+
+LEGACY_VARIANTS_LIST_MAX_CHARS = 1800
+_CANDIDATE_CATALOG_IDENTITY_FIELDS = (
+    "execution_id",
+    "recipe_catalog_hash",
+    "recipe_paths",
+    "recipe_ids",
+    "candidate_ids",
+    "candidate_records",
+)
 
 
 def _parse_bool(value) -> bool:
@@ -77,6 +119,9 @@ class VariantResult:
     failure_reason: Optional[str] = None
     leakage_risk: str = "none"
     n_features: int = 0
+    mlflow_run_id: Optional[str] = None
+    candidate_id: Optional[str] = None
+    candidate_record: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -96,6 +141,16 @@ class ChampionManifest:
     timestamp: str
     leakage_risk: str
     task_type: str
+    safety_net_review_required: bool = False
+    review_status: str = "accepted"
+    registration_eligible: bool = True
+    review_reason: Optional[str] = None
+    execution_id: str = ""
+    candidate_id: str = ""
+    mlflow_parent_run_id: Optional[str] = None
+    mlflow_child_run_id: Optional[str] = None
+    recipe: Dict[str, Any] = None
+    model_bundle_id: Optional[str] = None
 
 
 # ============================================================================
@@ -205,6 +260,69 @@ def atomic_write(path: Path, content: str):
         raise e
 
 
+def atomic_copy_file(source: Path, destination: str | Path) -> None:
+    """Publish a required uri_file output atomically inside the watchdog."""
+    target = Path(destination)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    try:
+        temporary.write_bytes(source.read_bytes())
+        os.replace(str(temporary), str(target))
+    except Exception:
+        if temporary.exists():
+            temporary.unlink()
+        raise
+
+
+def write_variant_validation_report(output_path: Path, reports: list[dict]) -> None:
+    if not reports:
+        return
+    json_path = output_path / "variant_validation_report.json"
+    csv_path = output_path / "variant_validation_report.csv"
+    atomic_write(json_path, json.dumps(reports, indent=2, default=str))
+    pd.DataFrame(reports).to_csv(csv_path, index=False)
+    print(f"📋 Variant YAML validation report: {json_path} / {csv_path}")
+
+
+def build_variant_anomaly_report(
+    variant: VariantConfig,
+    transformed_df: pd.DataFrame,
+    target_column: str | None,
+) -> dict:
+    feature_df = transformed_df.drop(columns=[target_column], errors="ignore") if target_column else transformed_df
+    non_numeric = feature_df.select_dtypes(exclude=[np.number]).columns.tolist()
+    missing_counts = transformed_df.isna().sum()
+    missing_columns = {col: int(count) for col, count in missing_counts.items() if int(count) > 0}
+    numeric_df = feature_df.select_dtypes(include=[np.number])
+    infinite_columns: list[str] = []
+    high_skew_columns: dict[str, float] = {}
+    if not numeric_df.empty:
+        infinite_counts = np.isinf(numeric_df.to_numpy()).sum(axis=0)
+        infinite_columns = [
+            col for col, count in zip(numeric_df.columns.tolist(), infinite_counts) if int(count) > 0
+        ]
+        skew_values = numeric_df.skew(numeric_only=True).replace([np.inf, -np.inf], np.nan).dropna()
+        high_skew_columns = {
+            col: round(float(value), 4)
+            for col, value in skew_values.items()
+            if abs(float(value)) > 2.0
+        }
+    status = "fail" if non_numeric or missing_columns or infinite_columns else "warn" if high_skew_columns else "pass"
+    return {
+        "variant_id": variant.variant_id,
+        "status": status,
+        "n_features": int(feature_df.shape[1]),
+        "non_numeric_feature_count": len(non_numeric),
+        "missing_columns_after_count": len(missing_columns),
+        "infinite_columns_after_count": len(infinite_columns),
+        "high_skew_feature_count": len(high_skew_columns),
+        "non_numeric_features": non_numeric,
+        "missing_columns": missing_columns,
+        "infinite_columns": infinite_columns,
+        "high_skew_columns": high_skew_columns,
+    }
+
+
 # ============================================================================
 # DEFENSIVE GUARDS
 # ============================================================================
@@ -242,6 +360,203 @@ def deadline_guard(deadline: float, label: str) -> bool:
         print(f"   ⏰ DEADLINE EXCEEDED at {label}")
         return True
     return False
+
+
+def require_phase_b_budget(deadline: float, label: str) -> float:
+    """Return remaining seconds or fail the component before emitting outputs."""
+
+    remaining = float(deadline) - time.time()
+    if remaining <= 0:
+        raise HardDeadlineExceeded(
+            f"Phase B wall-clock budget exhausted at {label}"
+        )
+    return remaining
+
+
+class HardDeadlineExceeded(TimeoutError):
+    """Raised after a blocking child process has been terminated."""
+
+
+def _terminate_process_tree(process: subprocess.Popen) -> None:
+    """Force-stop one worker and its descendants without a grace overrun."""
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            [
+                "taskkill",
+                "/PID",
+                str(process.pid),
+                "/T",
+                "/F",
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    else:
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            return
+    try:
+        process.wait(timeout=1.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def run_subprocess_with_hard_deadline(
+    command: list[str],
+    *,
+    timeout_seconds: float,
+    env: Optional[dict[str, str]] = None,
+) -> int:
+    """Run an entire component process under one killable wall-clock ceiling."""
+    if timeout_seconds <= 0:
+        raise HardDeadlineExceeded("No Phase B component time remains")
+    started_at = time.monotonic()
+    process_options: dict[str, Any] = {}
+    if os.name == "nt":
+        process_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        process_options["start_new_session"] = True
+    process = subprocess.Popen(command, env=env, **process_options)
+    remaining = float(timeout_seconds) - (time.monotonic() - started_at)
+    if remaining <= 0:
+        _terminate_process_tree(process)
+        raise HardDeadlineExceeded(
+            "Phase B component hard end-to-end wall-clock budget expired "
+            "during startup"
+        )
+    try:
+        return int(process.wait(timeout=remaining))
+    except subprocess.TimeoutExpired as error:
+        _terminate_process_tree(process)
+        raise HardDeadlineExceeded(
+            "Phase B component exceeded its hard end-to-end wall-clock "
+            f"budget of {float(timeout_seconds):.3f}s and was killed"
+        ) from error
+
+
+def _phase_b_budget_from_cli(argv: list[str]) -> float:
+    """Read only the outer watchdog budget without duplicating the main parser."""
+    option = "--phaseb_time_budget_sec"
+    if option not in argv:
+        return 10800.0
+    index = argv.index(option)
+    if index + 1 >= len(argv):
+        raise ValueError(f"{option} requires a value")
+    budget = float(argv[index + 1])
+    if not 1 <= budget <= PHASE_B_TIMEOUT_CAP_SECONDS:
+        raise ValueError(
+            "phaseb_time_budget_sec must be between 1 and "
+            f"{PHASE_B_TIMEOUT_CAP_SECONDS}"
+        )
+    return budget
+
+
+def run_phase_b_cli() -> int:
+    """Wrap the complete S06 lifecycle, including I/O and artifact uploads."""
+    token_option = "--_phaseb_watchdog_token"
+    if token_option in sys.argv:
+        index = sys.argv.index(token_option)
+        supplied = sys.argv[index + 1] if index + 1 < len(sys.argv) else ""
+        expected = os.getenv("MLOPS_S06_DEADLINE_TOKEN", "")
+        if (
+            not supplied
+            or not expected
+            or not secrets.compare_digest(supplied, expected)
+        ):
+            raise RuntimeError("Invalid Phase B watchdog worker token")
+        del sys.argv[index : index + 2]
+        main()
+        return 0
+    budget = _phase_b_budget_from_cli(sys.argv[1:])
+    token = secrets.token_hex(32)
+    worker_env = os.environ.copy()
+    worker_env.pop("MLOPS_S06_DEADLINE_WORKER", None)
+    worker_env["MLOPS_S06_DEADLINE_TOKEN"] = token
+    return run_subprocess_with_hard_deadline(
+        [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            token_option,
+            token,
+            *sys.argv[1:],
+        ],
+        timeout_seconds=budget,
+        env=worker_env,
+    )
+
+
+def _isolated_callable_worker(
+    result_path: str,
+    function,
+    args: tuple,
+    kwargs: dict,
+) -> None:
+    """Execute one pickleable callable and persist its result out of process."""
+
+    import joblib
+
+    try:
+        value = function(*args, **kwargs)
+        joblib.dump({"ok": True, "value": value}, result_path)
+    except BaseException as exc:  # noqa: BLE001 - preserve child diagnostics
+        joblib.dump(
+            {
+                "ok": False,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
+            result_path,
+        )
+
+
+def run_with_hard_timeout(
+    function,
+    *args,
+    timeout_seconds: float,
+    **kwargs,
+):
+    """Run a blocking callable in a killable spawned process."""
+
+    if timeout_seconds <= 0:
+        raise HardDeadlineExceeded("No time remains before the hard deadline")
+    with tempfile.TemporaryDirectory(prefix="mlops-s06-deadline-") as directory:
+        result_path = str(Path(directory) / "result.joblib")
+        context = multiprocessing.get_context("spawn")
+        process = context.Process(
+            target=_isolated_callable_worker,
+            args=(result_path, function, args, kwargs),
+            daemon=True,
+        )
+        process.start()
+        process.join(timeout=float(timeout_seconds))
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=2.0)
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=2.0)
+            raise HardDeadlineExceeded(
+                f"{getattr(function, '__name__', 'operation')} exceeded "
+                f"{float(timeout_seconds):.3f}s and was terminated"
+            )
+        if not Path(result_path).is_file():
+            raise RuntimeError(
+                "Isolated operation exited without a serialized result "
+                f"(exit_code={process.exitcode})"
+            )
+        import joblib
+
+        payload = joblib.load(result_path)
+        if not payload.get("ok"):
+            raise RuntimeError(
+                f"{payload.get('error_type', 'ChildError')}: "
+                f"{payload.get('error', 'unknown isolated failure')}"
+            )
+        return payload["value"]
 
 
 def get_primary_metric(task_type: str) -> str:
@@ -291,6 +606,50 @@ def safe_float(x) -> float:
         return val
     except (TypeError, ValueError):
         return float('-inf')
+
+
+def count_distinct_phaseb_candidates(valid_results) -> int:
+    """Count distinct realized candidate identities in comparable results."""
+    return len(
+        {
+            result.candidate_id
+            or f"{result.variant_id}:{result.engine}:{result.algorithm}"
+            for result in valid_results
+        }
+    )
+
+
+def require_valid_phaseb_results(
+    valid_results,
+    minimum_candidates: int = 1,
+) -> None:
+    """Fail closed when too few candidates can produce selection evidence."""
+    if minimum_candidates < 1:
+        raise ValueError("minimum_candidates must be at least 1")
+    candidate_count = count_distinct_phaseb_candidates(valid_results)
+    if candidate_count >= minimum_candidates:
+        return
+    if minimum_candidates > 1:
+        raise RuntimeError(
+            f"Phase B produced {candidate_count} distinct comparable candidate(s); "
+            f"at least {minimum_candidates} are required before champion selection"
+        )
+    raise RuntimeError(
+        "Phase B produced no valid variants; cross-validation selection "
+        "evidence is mandatory"
+    )
+
+
+def is_usable_phaseb_result(result: VariantResult) -> bool:
+    """Accept every finite successful CV result; quality policy owns thresholds."""
+
+    score = safe_float(result.metrics.get("primary_metric"))
+    return (
+        not result.failed
+        and not result.timed_out
+        and result.algorithm != "skipped"
+        and math.isfinite(score)
+    )
 
 
 def get_result_score(result, primary_metric_name: str) -> float:
@@ -674,355 +1033,36 @@ def apply_variant_preprocessing(
     return X
 
 
-def preprocess_holdout_aligned(
+def preprocess_training_data(
     df_train_raw: pd.DataFrame,
-    df_holdout_raw: pd.DataFrame,
-    variant: 'VariantConfig',
-    target_column: str
-) -> pd.DataFrame:
-    """Preprocess holdout data using statistics fitted on training data.
+    variant: "VariantConfig",
+    target_column: str,
+    random_seed: int = 42,
+) -> tuple[pd.DataFrame, FittedVariantPreprocessor]:
+    """Fit the complete recipe on training rows only.
 
-    This solves the train/holdout preprocessing mismatch where
-    apply_variant_preprocessing() refits all transformers on holdout,
-    causing:
-      - Imputation with holdout means (not training means)
-      - Label encoding with different category orderings
-      - Scaling with holdout statistics
-      - SMOTE applied to holdout (creating synthetic test samples!)
-      - Feature selection based on holdout correlations
-
-    This function:
-      1. Fits imputation on TRAINING, transforms holdout with training stats
-      2. Fits encoding on TRAINING categories, applies same mapping to holdout
-      3. Fits scaler on TRAINING (encoded), transforms holdout
-      4. NEVER applies SMOTE/resampling to holdout
-      5. Selects features from TRAINING, applies same selection to holdout
-      6. Uses TRAINING outlier bounds for holdout capping (no row removal)
-
-    Returns preprocessed holdout DataFrame with target column.
+    Phase B never receives or transforms the locked final-test partition.  The
+    returned fitted object is the exact preprocessing graph later persisted in
+    the immutable raw-input ModelBundle.
     """
-    print(f"   🔄 Preprocessing holdout with training-aligned statistics")
 
-    X_tr = df_train_raw.drop(columns=[target_column]).copy()
-    y_tr = df_train_raw[target_column].copy()
-    X_ho = df_holdout_raw.drop(columns=[target_column]).copy()
-    y_ho = df_holdout_raw[target_column].copy()
-
-    num_cols = X_tr.select_dtypes(include=[np.number]).columns.tolist()
-    cat_cols = X_tr.select_dtypes(include=['object', 'category']).columns.tolist()
-
-    # ═══════════════════════════════════════════════════════════════════
-    # IMPUTATION — fit on training, transform holdout with training stats
-    # ═══════════════════════════════════════════════════════════════════
-    imp_method = variant.stage3_preprocessing.imputation.method
-
-    # Compute training fill values for numeric columns
-    if imp_method in ("mean", "numeric_mean_cat_mode"):
-        num_fill = X_tr[num_cols].mean() if num_cols else pd.Series(dtype=float)
-    elif imp_method in ("median", "numeric_median_cat_mode"):
-        num_fill = X_tr[num_cols].median() if num_cols else pd.Series(dtype=float)
-    elif imp_method == "trimmed_mean":
-        from scipy import stats as sp_stats_imp
-        trim_frac = getattr(variant.stage3_preprocessing.imputation, 'trim_fraction', 0.1)
-        num_fill = pd.Series(
-            {c: sp_stats_imp.trim_mean(X_tr[c].dropna().values, proportiontocut=trim_frac)
-             for c in num_cols if len(X_tr[c].dropna()) > 0},
-            dtype=float
-        )
-    elif imp_method == "winsorized_mean":
-        from scipy.stats.mstats import winsorize as _winsorize_imp
-        trim_frac = getattr(variant.stage3_preprocessing.imputation, 'trim_fraction', 0.05)
-        num_fill = pd.Series(
-            {c: float(_winsorize_imp(X_tr[c].dropna().values,
-                                     limits=[trim_frac, trim_frac]).mean())
-             for c in num_cols if len(X_tr[c].dropna()) > 0},
-            dtype=float
-        )
-    elif imp_method == "constant":
-        fv = getattr(variant.stage3_preprocessing.imputation, 'fill_value', 0)
-        num_fill = pd.Series({c: fv for c in num_cols})
-    elif imp_method == "zero_fill":
-        num_fill = pd.Series({c: 0 for c in num_cols})
+    if target_column and target_column in df_train_raw.columns:
+        raw_features = df_train_raw.drop(columns=[target_column])
+        target = df_train_raw[target_column].copy()
     else:
-        # Default fallback: training mean
-        num_fill = X_tr[num_cols].mean() if num_cols else pd.Series(dtype=float)
-
-    # Apply based on method type
-    if imp_method == "knn":
-        from sklearn.impute import KNNImputer
-        n_neighbors = getattr(variant.stage3_preprocessing.imputation, 'n_neighbors', 5)
-        if num_cols and X_tr[num_cols].isnull().any().any():
-            imp = KNNImputer(n_neighbors=n_neighbors, weights='distance')
-            imp.fit(X_tr[num_cols])
-            X_tr[num_cols] = imp.transform(X_tr[num_cols])
-            if num_cols:
-                ho_num = [c for c in num_cols if c in X_ho.columns]
-                X_ho[ho_num] = imp.transform(X_ho[ho_num])
-        else:
-            X_tr[num_cols] = X_tr[num_cols].fillna(num_fill)
-            X_ho[num_cols] = X_ho[num_cols].fillna(num_fill)
-    elif imp_method == "iterative":
-        from sklearn.experimental import enable_iterative_imputer  # noqa: F401
-        from sklearn.impute import IterativeImputer
-        max_iter = getattr(variant.stage3_preprocessing.imputation, 'max_iter', 10)
-        if num_cols and X_tr[num_cols].isnull().any().any():
-            imp = IterativeImputer(random_state=42, max_iter=max_iter)
-            imp.fit(X_tr[num_cols])
-            X_tr[num_cols] = imp.transform(X_tr[num_cols])
-            ho_num = [c for c in num_cols if c in X_ho.columns]
-            X_ho[ho_num] = imp.transform(X_ho[ho_num])
-        else:
-            X_tr[num_cols] = X_tr[num_cols].fillna(num_fill)
-            X_ho[num_cols] = X_ho[num_cols].fillna(num_fill)
-    elif imp_method in ("mode", "most_frequent"):
-        from sklearn.impute import SimpleImputer
-        if num_cols and X_tr[num_cols].isnull().any().any():
-            imp_n = SimpleImputer(strategy='most_frequent')
-            imp_n.fit(X_tr[num_cols])
-            X_tr[num_cols] = imp_n.transform(X_tr[num_cols])
-            X_ho[num_cols] = imp_n.transform(X_ho[num_cols])
-        if cat_cols:
-            imp_c = SimpleImputer(strategy='most_frequent')
-            tr_cats = [c for c in cat_cols if c in X_tr.columns]
-            ho_cats = [c for c in cat_cols if c in X_ho.columns]
-            if tr_cats:
-                imp_c.fit(X_tr[tr_cats])
-                X_tr[tr_cats] = imp_c.transform(X_tr[tr_cats])
-                if ho_cats:
-                    X_ho[ho_cats] = imp_c.transform(X_ho[ho_cats])
-    elif imp_method == "drop":
-        # Training: drop NaN rows. Holdout: fill with training mean
-        train_fill = X_tr[num_cols].mean() if num_cols else pd.Series(dtype=float)
-        X_tr = X_tr.dropna()
-        y_tr = y_tr.loc[X_tr.index].reset_index(drop=True)
-        X_tr = X_tr.reset_index(drop=True)
-        X_ho[num_cols] = X_ho[num_cols].fillna(train_fill)
-    elif imp_method == "random_sample":
-        for c in num_cols:
-            non_null = X_tr[c].dropna()
-            if non_null.empty:
-                continue
-            if X_tr[c].isnull().any():
-                n_m = int(X_tr[c].isnull().sum())
-                X_tr.loc[X_tr[c].isnull(), c] = non_null.sample(
-                    n=n_m, replace=True, random_state=42).values
-            if c in X_ho.columns and X_ho[c].isnull().any():
-                n_m = int(X_ho[c].isnull().sum())
-                X_ho.loc[X_ho[c].isnull(), c] = non_null.sample(
-                    n=n_m, replace=True, random_state=42).values
-    elif imp_method in ("forward_fill", "backward_fill", "interpolate_linear"):
-        # Order-dependent methods: apply to training, use training mean for holdout
-        if imp_method == "forward_fill":
-            X_tr = X_tr.ffill().bfill()
-        elif imp_method == "backward_fill":
-            X_tr = X_tr.bfill().ffill()
-        else:
-            if num_cols:
-                X_tr[num_cols] = X_tr[num_cols].interpolate(
-                    method='linear', limit_direction='both')
-        train_fill = X_tr[num_cols].mean() if num_cols else pd.Series(dtype=float)
-        X_ho[num_cols] = X_ho[num_cols].fillna(train_fill)
-    else:
-        # All other methods (mean, median, constant, zero_fill, trimmed_mean, etc.)
-        if num_cols:
-            X_tr[num_cols] = X_tr[num_cols].fillna(num_fill)
-            ho_num = [c for c in num_cols if c in X_ho.columns]
-            X_ho[ho_num] = X_ho[ho_num].fillna(num_fill)
-
-    # Categorical imputation: always use training modes
-    for c in cat_cols:
-        mode = X_tr[c].mode()
-        fill_val = mode.iloc[0] if not mode.empty else "missing"
-        X_tr[c] = X_tr[c].fillna(fill_val)
-        if c in X_ho.columns:
-            X_ho[c] = X_ho[c].fillna(fill_val)
-
-    print(f"      Imputation ({imp_method}): training stats applied to holdout")
-
-    # ═══════════════════════════════════════════════════════════════════
-    # OUTLIER HANDLING — training bounds, capping only on holdout
-    # ═══════════════════════════════════════════════════════════════════
-    outlier_cfg = getattr(variant.stage3_preprocessing, 'outlier_handling', None)
-    outlier_method = outlier_cfg.method if outlier_cfg else "none"
-    if outlier_method and outlier_method != "none":
-        _out_num = X_tr.select_dtypes(include=[np.number]).columns.tolist()
-        try:
-            if outlier_method in ("iqr_removal", "iqr_capping"):
-                Q1 = X_tr[_out_num].quantile(0.25)
-                Q3 = X_tr[_out_num].quantile(0.75)
-                IQR = Q3 - Q1
-                lower = Q1 - 1.5 * IQR
-                upper = Q3 + 1.5 * IQR
-                if outlier_method == "iqr_removal":
-                    mask = ~((X_tr[_out_num] < lower) |
-                             (X_tr[_out_num] > upper)).any(axis=1)
-                    X_tr = X_tr[mask].reset_index(drop=True)
-                    y_tr = y_tr[mask].reset_index(drop=True)
-                else:
-                    X_tr[_out_num] = X_tr[_out_num].clip(
-                        lower=lower, upper=upper, axis=1)
-                # Holdout: always CAP (never remove rows)
-                ho_out = [c for c in _out_num if c in X_ho.columns]
-                X_ho[ho_out] = X_ho[ho_out].clip(
-                    lower=lower[ho_out], upper=upper[ho_out], axis=1)
-            elif outlier_method == "zscore":
-                from scipy import stats as sp_stats_out
-                z_scores = np.abs(sp_stats_out.zscore(
-                    X_tr[_out_num], nan_policy='omit'))
-                mask = (z_scores < 3).all(axis=1)
-                # Save training mean/std before removal for holdout capping
-                tr_mean = X_tr[_out_num].mean()
-                tr_std = X_tr[_out_num].std()
-                X_tr = X_tr[mask].reset_index(drop=True)
-                y_tr = y_tr[mask].reset_index(drop=True)
-                # Holdout: cap at training mean ± 3*std
-                for c in _out_num:
-                    if c in X_ho.columns:
-                        X_ho[c] = X_ho[c].clip(
-                            lower=tr_mean[c] - 3 * tr_std[c],
-                            upper=tr_mean[c] + 3 * tr_std[c])
-            elif outlier_method == "winsorize":
-                for c in _out_num:
-                    low_pct = float(X_tr[c].quantile(0.05))
-                    high_pct = float(X_tr[c].quantile(0.95))
-                    X_tr[c] = X_tr[c].clip(lower=low_pct, upper=high_pct)
-                    if c in X_ho.columns:
-                        X_ho[c] = X_ho[c].clip(lower=low_pct, upper=high_pct)
-            elif outlier_method == "isolation_forest":
-                from sklearn.ensemble import IsolationForest
-                iso = IsolationForest(
-                    contamination=0.05, random_state=42, n_jobs=-1)
-                iso.fit(X_tr[_out_num].fillna(0))
-                preds = iso.predict(X_tr[_out_num].fillna(0))
-                mask = preds == 1
-                X_tr = X_tr[mask].reset_index(drop=True)
-                y_tr = y_tr[mask].reset_index(drop=True)
-                # Holdout: do NOT remove rows (prediction still proceeds)
-            print(f"      Outlier handling ({outlier_method}): training bounds applied")
-        except Exception as e:
-            print(f"      ⚠️ Outlier handling '{outlier_method}' failed: {e}, skipping")
-
-    # ═══════════════════════════════════════════════════════════════════
-    # ENCODING — training categories → consistent holdout mapping
-    # ═══════════════════════════════════════════════════════════════════
-    encoding_method = variant.stage3_preprocessing.encoding.categorical_method
-    cat_cols_enc = X_tr.select_dtypes(include=['object', 'category']).columns.tolist()
-
-    if encoding_method == "label" or (
-        encoding_method and encoding_method not in ("onehot", "none")
-        and len(cat_cols_enc) > 0
-    ):
-        for c in cat_cols_enc:
-            # Use TRAINING sorted unique values as canonical category order
-            train_cats = sorted(X_tr[c].dropna().unique().tolist())
-            cat_type = pd.CategoricalDtype(categories=train_cats, ordered=True)
-            X_tr[c] = X_tr[c].astype(cat_type).cat.codes
-            if c in X_ho.columns:
-                X_ho[c] = X_ho[c].astype(cat_type).cat.codes
-    elif encoding_method == "onehot":
-        X_tr = pd.get_dummies(X_tr, columns=cat_cols_enc, drop_first=True)
-        X_ho = pd.get_dummies(X_ho, columns=[
-            c for c in cat_cols_enc if c in X_ho.columns], drop_first=True)
-        # Align holdout columns to training columns
-        for c in X_tr.columns:
-            if c not in X_ho.columns:
-                X_ho[c] = 0
-        X_ho = X_ho[X_tr.columns]
-
-    print(f"      Encoding ({encoding_method}): training categories applied to holdout")
-
-    # ═══════════════════════════════════════════════════════════════════
-    # SCALING — fit on training (encoded), transform holdout
-    # ═══════════════════════════════════════════════════════════════════
-    scaling_method = variant.stage3_preprocessing.scaling.method
-    numeric_cols_sc = X_tr.select_dtypes(include=[np.number]).columns.tolist()
-
-    if scaling_method and scaling_method != "none" and numeric_cols_sc:
-        if scaling_method == "standard":
-            from sklearn.preprocessing import StandardScaler
-            scaler = StandardScaler()
-        elif scaling_method == "robust":
-            from sklearn.preprocessing import RobustScaler
-            scaler = RobustScaler()
-        elif scaling_method == "minmax":
-            from sklearn.preprocessing import MinMaxScaler
-            scaler = MinMaxScaler()
-        else:
-            from sklearn.preprocessing import StandardScaler
-            scaler = StandardScaler()
-
-        scaler.fit(X_tr[numeric_cols_sc])
-        X_tr[numeric_cols_sc] = scaler.transform(X_tr[numeric_cols_sc])
-        ho_sc = [c for c in numeric_cols_sc if c in X_ho.columns]
-        X_ho[ho_sc] = scaler.transform(X_ho[ho_sc])
-        print(f"      Scaling ({scaling_method}): fitted on training, applied to holdout")
-
-    # ═══════════════════════════════════════════════════════════════════
-    # SMOTE / IMBALANCE — SKIPPED in holdout alignment
-    # SMOTE is now deferred to post-model-selection retraining in
-    # train_pycaret_variant(). Feature selection below runs on natural
-    # (non-SMOTE'd) data, consistent with how the model was selected.
-    # ═══════════════════════════════════════════════════════════════════
-    imb_cfg = getattr(variant.stage3_preprocessing, 'imbalance_handling', None)
-    imb_method = imb_cfg.method if imb_cfg else "none"
-    if imb_method and imb_method != "none":
-        print(f"      ⏭️ Imbalance ({imb_method}): deferred to post-model-selection retraining; "
-              f"holdout UNTOUCHED ({len(X_ho)} rows preserved)")
-
-    # ═══════════════════════════════════════════════════════════════════
-    # FEATURE SELECTION — determine from training, apply to holdout
-    # ═══════════════════════════════════════════════════════════════════
-    fs_config = variant.stage4_feature_engineering.feature_selection
-    fs_method = fs_config.method if fs_config else "none"
-    fs_threshold = (fs_config.threshold
-                    if fs_config and fs_config.threshold is not None else 0.01)
-
-    if fs_method and fs_method != "none" and y_tr is not None:
-        numeric_fs_cols = X_tr.select_dtypes(include=[np.number]).columns.tolist()
-        cols_to_keep = list(X_tr.columns)  # default: keep all
-
-        try:
-            if fs_method == "correlation":
-                correlations = X_tr[numeric_fs_cols].corrwith(y_tr).abs()
-                sel = correlations[correlations >= fs_threshold].index.tolist()
-                non_num = [c for c in X_tr.columns if c not in numeric_fs_cols]
-                cols_to_keep = list(set(sel + non_num))
-            elif fs_method == "variance":
-                from sklearn.feature_selection import VarianceThreshold
-                var_thresh = fs_threshold if fs_threshold > 0 else 0.01
-                selector = VarianceThreshold(threshold=var_thresh)
-                selector.fit(X_tr[numeric_fs_cols])
-                kept = selector.get_support()
-                sel = [numeric_fs_cols[i]
-                       for i in range(len(numeric_fs_cols)) if kept[i]]
-                non_num = [c for c in X_tr.columns if c not in numeric_fs_cols]
-                cols_to_keep = sel + non_num
-            elif fs_method == "mutual_info":
-                from sklearn.feature_selection import (
-                    mutual_info_classif, mutual_info_regression)
-                mi_func = (mutual_info_classif if y_tr.nunique() <= 20
-                           else mutual_info_regression)
-                mi_scores = mi_func(
-                    X_tr[numeric_fs_cols].fillna(0), y_tr, random_state=42)
-                mi_series = pd.Series(mi_scores, index=numeric_fs_cols)
-                sel = mi_series[mi_series >= fs_threshold].index.tolist()
-                non_num = [c for c in X_tr.columns if c not in numeric_fs_cols]
-                cols_to_keep = sel + non_num if sel else list(X_tr.columns)
-        except Exception as e:
-            print(f"      ⚠️ Feature selection failed: {e}, keeping all features")
-            cols_to_keep = list(X_tr.columns)
-
-        # Apply same selection to holdout
-        ho_cols = [c for c in cols_to_keep if c in X_ho.columns]
-        X_ho = X_ho[ho_cols]
-        print(f"      Feature selection ({fs_method}): {len(ho_cols)} features "
-              f"from training applied to holdout")
-
-    # Rejoin target
-    X_ho[target_column] = y_ho.values
-    print(f"   ✅ Holdout preprocessing complete: {X_ho.shape[0]} rows × "
-          f"{X_ho.shape[1]} cols (training-aligned, no SMOTE)")
-    return X_ho
+        raw_features = df_train_raw.copy()
+        target = None
+    preprocessor = FittedVariantPreprocessor(
+        variant.to_dict(),
+        random_seed=random_seed,
+    )
+    transformed = preprocessor.fit_transform(raw_features, target)
+    if not isinstance(transformed, pd.DataFrame):
+        transformed = pd.DataFrame(transformed)
+    transformed = transformed.reset_index(drop=True)
+    if target is not None:
+        transformed[target_column] = target.reset_index(drop=True).values
+    return transformed, preprocessor
 
 
 # ============================================================================
@@ -1032,7 +1072,8 @@ def preprocess_holdout_aligned(
 def run_round0_feasibility(
     df: pd.DataFrame,
     variant: VariantConfig,
-    target_column: str
+    target_column: str,
+    df_transformed: pd.DataFrame | None = None,
 ) -> Tuple[Optional[pd.DataFrame], Dict[str, Any]]:
     """Round 0: Feasibility check via transform-only (no model training).
     
@@ -1065,7 +1106,13 @@ def run_round0_feasibility(
     
     try:
         # Apply preprocessing transform
-        df_transformed = apply_variant_preprocessing(df, variant, target_column, apply_smote=False)
+        if df_transformed is None:
+            df_transformed = apply_variant_preprocessing(
+                df,
+                variant,
+                target_column,
+                apply_smote=False,
+            )
         n_features_after = df_transformed.shape[1] - (1 if target_column else 0)
         feature_multiplier = n_features_after / max(n_features_before, 1)
         
@@ -1106,12 +1153,103 @@ def run_round0_feasibility(
         return None, report
 
 
-def run_round1_proxy(
-    df_transformed: pd.DataFrame,
-    variant_id: str,
+def fit_round1_proxy_preprocessor(
+    X_train_raw: pd.DataFrame,
+    X_validation_raw: pd.DataFrame,
+    y_train: Optional[pd.Series],
+    variant: VariantConfig,
+    *,
+    random_seed: int,
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    FittedVariantPreprocessor,
+]:
+    """Fit learned recipe transforms on proxy-training rows only."""
+
+    preprocessor = FittedVariantPreprocessor(
+        variant.to_dict(),
+        random_seed=random_seed,
+    )
+    transformed_train = preprocessor.fit_transform(X_train_raw, y_train)
+    transformed_validation = preprocessor.transform(X_validation_raw)
+    return transformed_train, transformed_validation, preprocessor
+
+
+def prepare_round1_proxy_partitions(
+    df_raw: pd.DataFrame,
+    variant: VariantConfig,
     target_column: str,
     task_type: str,
-    max_samples: int = 5000
+    max_samples: int = 5000,
+    random_seed: int = 42,
+) -> tuple[
+    pd.DataFrame,
+    Optional[pd.DataFrame],
+    Optional[pd.Series],
+    Optional[pd.Series],
+    FittedVariantPreprocessor,
+]:
+    """Split raw proxy rows before fitting any learned recipe transform."""
+
+    df_sample = df_raw.sample(
+        n=min(max_samples, len(df_raw)),
+        random_state=random_seed,
+    )
+    if target_column and target_column in df_sample.columns:
+        raw_features = df_sample.drop(columns=[target_column])
+    else:
+        raw_features = df_sample.copy()
+
+    if task_type == "clustering":
+        preprocessor = FittedVariantPreprocessor(
+            variant.to_dict(),
+            random_seed=random_seed,
+        )
+        transformed = preprocessor.fit_transform(raw_features, None)
+        return transformed, None, None, None, preprocessor
+
+    if not target_column or target_column not in df_sample.columns:
+        raise ValueError(f"Target column {target_column!r} missing from proxy data")
+    target = df_sample[target_column]
+    from sklearn.model_selection import train_test_split
+
+    split_kwargs: dict[str, Any] = {
+        "test_size": 0.3,
+        "random_state": random_seed,
+    }
+    if task_type == "classification":
+        split_kwargs["stratify"] = target
+    X_train_raw, X_validation_raw, y_train, y_validation = train_test_split(
+        raw_features,
+        target,
+        **split_kwargs,
+    )
+    transformed_train, transformed_validation, preprocessor = (
+        fit_round1_proxy_preprocessor(
+            X_train_raw,
+            X_validation_raw,
+            y_train,
+            variant,
+            random_seed=random_seed,
+        )
+    )
+    return (
+        transformed_train,
+        transformed_validation,
+        y_train,
+        y_validation,
+        preprocessor,
+    )
+
+
+def run_round1_proxy(
+    df_raw: pd.DataFrame,
+    variant: VariantConfig,
+    target_column: str,
+    task_type: str,
+    max_samples: int = 5000,
+    random_seed: int = 42,
 ) -> Dict[str, Any]:
     """Round 1: Proxy leaderboard using cheap SGD model on sampled data.
     
@@ -1124,6 +1262,7 @@ def run_round1_proxy(
         - n_features: int
     """
     start_time = time.time()
+    variant_id = variant.variant_id
     
     report = {
         "variant_id": variant_id,
@@ -1131,22 +1270,29 @@ def run_round1_proxy(
         "reason": "",
         "proxy_runtime_sec": 0.0,
         "proxy_metric": 0.0,
-        "n_features": df_transformed.shape[1] - 1
+        "n_features": 0,
     }
     
     try:
-        # Sample dataset for speed
-        df_sample = df_transformed.sample(n=min(max_samples, len(df_transformed)), random_state=42)
-        
-        X = df_sample.drop(columns=[target_column])
-        y = df_sample[target_column]
-        
-        # Train/test split
-        from sklearn.model_selection import train_test_split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.3, random_state=42, stratify=y if task_type == "classification" else None
+        X_train, X_validation, y_train, y_validation, preprocessor = (
+            prepare_round1_proxy_partitions(
+                df_raw,
+                variant,
+                target_column,
+                task_type,
+                max_samples=max_samples,
+                random_seed=random_seed,
+            )
         )
-        
+        report["n_features"] = int(X_train.shape[1])
+        report["preprocessor_fit_rows"] = int(len(X_train))
+        report["proxy_validation_rows"] = int(
+            0 if X_validation is None else len(X_validation)
+        )
+        report["preprocessor_task_type"] = str(
+            preprocessor.recipe.get("task_type") or ""
+        )
+
         # Train cheap proxy model with improved config
         if task_type == "classification":
             from sklearn.linear_model import SGDClassifier
@@ -1155,7 +1301,7 @@ def run_round1_proxy(
             # More iterations + early stopping for better convergence
             proxy_model = SGDClassifier(
                 loss='log_loss',
-                random_state=42,
+                random_state=random_seed,
                 max_iter=500,  # Increased from 100
                 tol=1e-3,
                 early_stopping=True,
@@ -1163,11 +1309,11 @@ def run_round1_proxy(
                 n_iter_no_change=5
             )
             proxy_model.fit(X_train, y_train)
-            y_pred = proxy_model.predict(X_test)
+            y_pred = proxy_model.predict(X_validation)
             
             # Use balanced_accuracy for imbalanced datasets
-            proxy_accuracy = accuracy_score(y_test, y_pred)
-            proxy_balanced_acc = balanced_accuracy_score(y_test, y_pred)
+            proxy_accuracy = accuracy_score(y_validation, y_pred)
+            proxy_balanced_acc = balanced_accuracy_score(y_validation, y_pred)
             proxy_metric = proxy_balanced_acc  # Primary metric
             
             # Log both metrics
@@ -1179,7 +1325,7 @@ def run_round1_proxy(
             from sklearn.metrics import r2_score
             
             proxy_model = SGDRegressor(
-                random_state=42,
+                random_state=random_seed,
                 max_iter=500,  # Increased from 100
                 tol=1e-3,
                 early_stopping=True,
@@ -1187,18 +1333,17 @@ def run_round1_proxy(
                 n_iter_no_change=5
             )
             proxy_model.fit(X_train, y_train)
-            y_pred = proxy_model.predict(X_test)
+            y_pred = proxy_model.predict(X_validation)
             
             # Use R2 as proxy metric
-            proxy_metric = r2_score(y_test, y_pred)
+            proxy_metric = r2_score(y_validation, y_pred)
             
         elif task_type == "clustering":
             # Clustering: use KMeans + silhouette_score as proxy metric (no target column)
             from sklearn.cluster import KMeans
             from sklearn.metrics import silhouette_score
             
-            # For clustering, X is the full dataframe (no target to drop)
-            X_cluster = df_sample.select_dtypes(include=['number']).copy()
+            X_cluster = X_train.select_dtypes(include=['number']).copy()
             if target_column in X_cluster.columns:
                 X_cluster = X_cluster.drop(columns=[target_column], errors='ignore')
             
@@ -1211,7 +1356,11 @@ def run_round1_proxy(
             n_clusters = min(3, len(X_cluster) // 5)
             if n_clusters < 2:
                 n_clusters = 2
-            proxy_model = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+            proxy_model = KMeans(
+                n_clusters=n_clusters,
+                random_state=random_seed,
+                n_init=10,
+            )
             labels = proxy_model.fit_predict(X_cluster)
             
             n_unique = len(set(labels))
@@ -1246,12 +1395,322 @@ def run_round1_proxy(
         return report
 
 
+def rank_round2_proxy_survivors(
+    reports: List[Dict[str, Any]],
+    *,
+    task_type: str,
+    configured_threshold: float,
+    max_variants: int,
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """Rank successful Round 1 evidence and return a bounded Round 2 list."""
+
+    if not 1 <= max_variants <= ROUND2_MAX_VARIANTS_CAP:
+        raise ValueError(
+            f"Round 2 max_variants must be between 1 and {ROUND2_MAX_VARIANTS_CAP}"
+        )
+    effective_threshold = configured_threshold
+    eligible: list[Dict[str, Any]] = []
+    rejected: list[Dict[str, Any]] = []
+    for report in reports:
+        score = safe_float(report.get("proxy_metric"))
+        status = str(report.get("status", "error"))
+        if status != "pass" or score < effective_threshold:
+            rejected.append(
+                {
+                    "variant_id": report.get("variant_id"),
+                    "status": status,
+                    "proxy_metric": score,
+                    "reason": report.get("reason")
+                    or f"proxy_metric below {effective_threshold}",
+                }
+            )
+            continue
+        eligible.append(report)
+    eligible.sort(
+        key=lambda report: (
+            -safe_float(report.get("proxy_metric")),
+            str(report.get("semantic_hash", "")),
+            str(report.get("variant_id", "")),
+            str(report.get("variant_path", "")),
+        )
+    )
+    selected = eligible[:max_variants]
+    for report in eligible[max_variants:]:
+        rejected.append(
+            {
+                "variant_id": report.get("variant_id"),
+                "status": "pruned",
+                "proxy_metric": safe_float(report.get("proxy_metric")),
+                "reason": f"outside top {max_variants} Round 2 budget",
+            }
+        )
+    return [str(report["variant_path"]) for report in selected], rejected
+
+
+def select_feasible_round1_candidates(
+    catalog_scores: List[VariantScore],
+    screening_reports: List[Dict[str, Any]],
+    *,
+    max_variants: int,
+    diversity_min_hamming: int,
+) -> List[VariantScore]:
+    """Apply the Round 1 cap only after every catalog candidate is screened."""
+
+    status_by_path = {
+        str(report.get("variant_path")): str(report.get("status", "error"))
+        for report in screening_reports
+    }
+    feasible = [
+        candidate
+        for candidate in catalog_scores
+        if status_by_path.get(str(candidate.variant_path)) == "pass"
+    ]
+    return diverse_sample(feasible, max_variants, diversity_min_hamming)
+
+
+def _canonical_recipe_path(value: str) -> str:
+    """Normalize a recipe reference to its catalog-relative identity."""
+
+    normalized = str(value).replace("\\", "/").strip()
+    marker = "configs/recipes/"
+    if marker in normalized:
+        normalized = normalized.split(marker, 1)[1]
+    return normalized.lstrip("./")
+
+
+def resolve_recipe_paths(
+    requested_paths: List[str],
+    *,
+    project_root: Path,
+) -> List[str]:
+    """Resolve recipes beneath ``configs/recipes`` and reject every escape."""
+
+    root = project_root.resolve()
+    recipes_root = (root / "configs" / "recipes").resolve()
+    resolved: list[str] = []
+    for requested in requested_paths:
+        raw = Path(str(requested).strip())
+        if not str(raw):
+            raise ValueError("Recipe paths must be non-empty")
+        candidates = (
+            [raw]
+            if raw.is_absolute()
+            else [recipes_root / raw, root / raw]
+        )
+        existing = next(
+            (candidate.resolve() for candidate in candidates if candidate.exists()),
+            None,
+        )
+        if existing is None:
+            raise FileNotFoundError(f"Cannot resolve recipe path: {requested!r}")
+        try:
+            existing.relative_to(recipes_root)
+        except ValueError as exc:
+            raise ValueError(
+                f"Recipe path escapes allowed root {recipes_root}: {requested!r}"
+            ) from exc
+        if not existing.is_file():
+            raise ValueError(f"Recipe path is not a file: {requested!r}")
+        resolved.append(str(existing))
+    return resolved
+
+
+def load_candidate_catalog(path: str | Path) -> Tuple[Dict[str, Any], List[str]]:
+    """Load the complete immutable catalog transported as an Azure ``uri_file``."""
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("candidate_catalog must contain a JSON object")
+    missing = [
+        field
+        for field in _CANDIDATE_CATALOG_IDENTITY_FIELDS
+        if field not in payload
+    ]
+    if missing:
+        raise ValueError(
+            "candidate_catalog is missing immutable identity fields: "
+            + ", ".join(missing)
+        )
+    recipe_paths = payload["recipe_paths"]
+    if (
+        not isinstance(recipe_paths, list)
+        or not recipe_paths
+        or any(not isinstance(path, str) or not path.strip() for path in recipe_paths)
+    ):
+        raise ValueError(
+            "candidate_catalog recipe_paths must be a non-empty string list"
+        )
+    if len(recipe_paths) != len(set(recipe_paths)):
+        raise ValueError("candidate_catalog recipe_paths must be unique")
+    if not isinstance(payload["candidate_records"], list) or not payload[
+        "candidate_records"
+    ]:
+        raise ValueError(
+            "candidate_catalog candidate_records must be a non-empty list"
+        )
+    return payload, list(recipe_paths)
+
+
+def validate_candidate_catalog_binding(
+    execution_payload: Dict[str, Any],
+    candidate_catalog: Dict[str, Any],
+) -> None:
+    """Fail closed if either immutable submission artifact was substituted."""
+
+    if not isinstance(execution_payload, dict):
+        raise ValueError("execution_manifest must contain a JSON object")
+    for field in _CANDIDATE_CATALOG_IDENTITY_FIELDS:
+        if execution_payload.get(field) != candidate_catalog.get(field):
+            raise ValueError(
+                "candidate_catalog does not exactly match execution_manifest "
+                f"field {field!r}"
+            )
+
+
+def bind_candidate_records_to_runtime_split(
+    records: Tuple[CandidateRecord, ...],
+    split_manifest: SplitManifest,
+) -> Tuple[CandidateRecord, ...]:
+    """Derive realized search identities from the actual Stage 2 row split."""
+
+    return tuple(
+        CandidateRecord(
+            task_type=record.task_type,
+            recipe_id=record.recipe_id,
+            recipe_hash=record.recipe_hash,
+            engine=record.engine,
+            algorithm=record.algorithm,
+            parameters=record.to_dict()["parameters"],
+            split_id=split_manifest.split_id,
+            data_version=record.data_version,
+            code_sha=record.code_sha,
+            environment_hash=record.environment_hash,
+        )
+        for record in records
+    )
+
+
+def validate_execution_manifest_for_run(
+    payload: Dict[str, Any],
+    *,
+    config: Dict[str, Any],
+    requested_variant_paths: List[str],
+    resolved_variant_paths: List[str],
+    engines: List[str],
+    round1_max_variants: int,
+    round2_max_variants: int,
+    proxy_prune_threshold: float,
+    candidate_engine_timeout_seconds: int,
+    phase_b_timeout_seconds: int,
+) -> Tuple[ExecutionManifest, Tuple[CandidateRecord, ...]]:
+    """Fail closed if S06 runtime inputs diverge from the submission contract."""
+
+    manifest = ExecutionManifest.from_dict(payload)
+    expected_paths = tuple(
+        _canonical_recipe_path(path) for path in requested_variant_paths
+    )
+    if manifest.config_hash != config["compiled_config_hash"]:
+        raise ValueError("ExecutionManifest config_hash does not match compiled config")
+    if manifest.task_type != config["task_type"]:
+        raise ValueError("ExecutionManifest task_type does not match compiled config")
+    if manifest.engines != tuple(engines):
+        raise ValueError("ExecutionManifest engines do not match S06 engine_list")
+    if manifest.recipe_paths != expected_paths:
+        raise ValueError(
+            "ExecutionManifest recipe_paths do not exactly match catalog input"
+        )
+
+    expected_recipe_ids: list[str] = []
+    normalized_recipes: list[Dict[str, Any]] = []
+    for resolved_path in resolved_variant_paths:
+        with open(resolved_path, "r", encoding="utf-8") as handle:
+            raw_recipe = yaml.safe_load(handle) or {}
+        normalized = normalize_recipe(
+            raw_recipe, task_type=config["task_type"]
+        )
+        normalized_recipes.append(normalized)
+        expected_recipe_ids.append(canonical_hash(normalized))
+    if manifest.recipe_ids != tuple(expected_recipe_ids):
+        raise ValueError(
+            "ExecutionManifest recipe_ids do not match recipe file semantics"
+        )
+
+    expected_budgets = {
+        "round1_max_variants": int(round1_max_variants),
+        "round2_max_variants": int(round2_max_variants),
+        "proxy_prune_threshold": float(proxy_prune_threshold),
+        "candidate_engine_timeout_seconds": int(
+            candidate_engine_timeout_seconds
+        ),
+        "phase_b_timeout_seconds": int(phase_b_timeout_seconds),
+        "hpo_trials": int(config["phases"]["phase_c_hpo"]["n_trials"]),
+        "hpo_timeout_seconds": int(
+            config["phases"]["phase_c_hpo"]["timeout_seconds"]
+        ),
+    }
+    if canonical_hash(manifest.budgets) != canonical_hash(expected_budgets):
+        raise ValueError("ExecutionManifest budgets do not match S06 runtime inputs")
+
+    candidate_payloads = payload.get("candidate_records")
+    if not isinstance(candidate_payloads, list) or not candidate_payloads:
+        raise ValueError("ExecutionManifest must include candidate_records")
+    supplied_records = tuple(
+        CandidateRecord.from_dict(item) for item in candidate_payloads
+    )
+    split_id = canonical_hash(config["split"])
+    dataset = config["dataset"]
+    data_version = (
+        f"{dataset['name']}@{dataset['version']}:"
+        f"{dataset.get('blob_path', '')}"
+    )
+    environment_hash = manifest.environment_hashes.get("training")
+    expected_records = tuple(
+        CandidateRecord(
+            task_type=manifest.task_type,
+            recipe_id=recipe_id,
+            recipe_hash=recipe_id,
+            engine=engine,
+            algorithm="engine_search",
+            parameters=normalized,
+            split_id=split_id,
+            data_version=data_version,
+            code_sha=manifest.code_sha,
+            environment_hash=environment_hash,
+        )
+        for recipe_id, normalized in zip(
+            expected_recipe_ids, normalized_recipes
+        )
+        for engine in manifest.engines
+    )
+    if tuple(record.candidate_id for record in expected_records) != (
+        manifest.candidate_ids
+    ):
+        raise ValueError(
+            "ExecutionManifest candidate_ids do not match canonical "
+            "catalog-derived CandidateRecords"
+        )
+    if len(supplied_records) != len(expected_records):
+        raise ValueError(
+            "ExecutionManifest candidate_records do not cover recipe×engine exactly"
+        )
+    for index, (supplied, expected) in enumerate(
+        zip(supplied_records, expected_records)
+    ):
+        if supplied.to_dict() != expected.to_dict():
+            raise ValueError(
+                "CandidateRecord does not match canonical catalog-derived "
+                f"record at index {index}"
+            )
+    return manifest, expected_records
+
+
 def train_pycaret_variant(
     df: pd.DataFrame,
     variant: VariantConfig,
     target_column: str,
     task_type: str,
-    time_budget: int = 300
+    time_budget: int = 300,
+    random_seed: int = 42,
 ) -> Tuple[Any, Dict[str, Any], bool]:
     """Train models using PyCaret with variant configuration.
     
@@ -1260,12 +1719,6 @@ def train_pycaret_variant(
     """
     start_time = time.time()
     timed_out = False
-    
-    # Adaptive time budget: large datasets (>50K rows) get more time
-    n_rows = len(df)
-    if n_rows >= 50000 and time_budget < 600:
-        print(f"      ⏱️ Adaptive budget: {n_rows:,} rows detected, raising budget {time_budget}→600s")
-        time_budget = 600
     
     try:
         if task_type == "classification":
@@ -1291,7 +1744,7 @@ def train_pycaret_variant(
             setup(
                 data=df,
                 target=target_column,
-                session_id=42,  # Deterministic seed
+                session_id=random_seed,
                 fold=3,  # 3-fold CV (was defaulting to 10 — 3.3x speedup)
                 preprocess=False,  # CRITICAL: avoid double-preprocessing
                 normalize=False,         # K5: defense-in-depth
@@ -1316,7 +1769,9 @@ def train_pycaret_variant(
             
             # Train models with time budget (soft timeout)
             remaining_time = max(0.0, time_budget - (time.time() - start_time))
-            budget_minutes = max(1, int(remaining_time // 60))
+            # PyCaret accepts fractional minutes. Never round a lower configured
+            # ceiling up to a one-minute floor.
+            budget_minutes = max(1.0 / 60.0, remaining_time / 60.0)
             print(f"      PyCaret: remaining_time={remaining_time:.1f}s, budget={budget_minutes} minutes")
             
             if remaining_time < 30:
@@ -1387,11 +1842,9 @@ def train_pycaret_variant(
             # Now retrain the selected champion on the FULL training set with
             # SMOTE so the deployed model has maximum minority-class exposure.
             #
-            # DESIGN DECISION (R2 audit 2026-02): Label encoders fitted here
-            # are saved to a sidecar dict (_smote_label_encoders) so they can
-            # be persisted alongside model.pkl.  Without this, s10 would
-            # receive a model trained on label-encoded features but no way to
-            # reproduce that encoding at inference time.
+            # Any training-only resampling metadata stays attached to the
+            # selected estimator; inference transforms are owned exclusively
+            # by the fitted preprocessing graph in ModelBundle.
             # ─────────────────────────────────────────────────────────────
             _smote_label_encoders = {}  # col_name → fitted LabelEncoder
             _imb_cfg = getattr(variant.stage3_preprocessing, 'imbalance_handling', None)
@@ -1413,16 +1866,16 @@ def train_pycaret_variant(
                     _sampler = None
                     if _imb_method == "smote":
                         from imblearn.over_sampling import SMOTE
-                        _sampler = SMOTE(random_state=42, n_jobs=-1)
+                        _sampler = SMOTE(random_state=random_seed, n_jobs=-1)
                     elif _imb_method == "adasyn":
                         from imblearn.over_sampling import ADASYN
-                        _sampler = ADASYN(random_state=42, n_jobs=-1)
+                        _sampler = ADASYN(random_state=random_seed, n_jobs=-1)
                     elif _imb_method == "smoteenn":
                         from imblearn.combine import SMOTEENN
-                        _sampler = SMOTEENN(random_state=42)
+                        _sampler = SMOTEENN(random_state=random_seed)
                     elif _imb_method == "smotetomek":
                         from imblearn.combine import SMOTETomek
-                        _sampler = SMOTETomek(random_state=42)
+                        _sampler = SMOTETomek(random_state=random_seed)
                     if _sampler is not None:
                         X_resampled, y_resampled = _sampler.fit_resample(X_train_full, y_train_full)
                         print(f"      ⚖️ SMOTE full-data retrain ({_imb_method}): {len(X_train_full)} → {len(X_resampled)} rows")
@@ -1465,7 +1918,7 @@ def train_pycaret_variant(
             setup(
                 data=df,
                 target=target_column,
-                session_id=42,  # Deterministic seed
+                session_id=random_seed,
                 fold=3,  # 3-fold CV (was defaulting to 10 — 3.3x speedup)
                 preprocess=False,  # CRITICAL: avoid double-preprocessing
                 normalize=False,         # K5: defense-in-depth
@@ -1527,28 +1980,18 @@ def train_pycaret_variant(
             return best_model, metrics, timed_out
             
         else:
-            # Clustering: use sklearn KMeans directly (bypasses PyCaret's
-            # internal silhouette_score which is O(n²) and prohibitively
-            # slow on large datasets like Online Retail ~433K rows).
-            from sklearn.cluster import KMeans
-            from sklearn.metrics import silhouette_score as _sil_score
-            
-            # Remove target column if present (clustering is unsupervised)
+            # Clustering remains PyCaret-only.  The outer killable process
+            # enforces the same hard candidate-engine deadline.
+            from pycaret.clustering import create_model, pull, setup
+
             df_cluster = df.copy()
-            if target_column in df_cluster.columns:
+            if target_column and target_column in df_cluster:
                 df_cluster = df_cluster.drop(columns=[target_column])
-            
-            # Cast numeric columns to float64 to prevent dtype mismatch errors
-            _numeric_cols = df_cluster.select_dtypes(include=[np.number]).columns
-            df_cluster[_numeric_cols] = df_cluster[_numeric_cols].astype(np.float64)
-            
-            # Drop any remaining non-numeric columns (clustering needs numeric)
             df_cluster = df_cluster.select_dtypes(include=[np.number])
-            print(f"      Clustering: {len(df_cluster)} rows × {df_cluster.shape[1]} numeric features")
-            
+            if df_cluster.empty or df_cluster.shape[1] == 0:
+                raise ValueError("No numeric features available for clustering")
             remaining_time = max(0.0, time_budget - (time.time() - start_time))
             if remaining_time < 30:
-                timed_out = True
                 return None, {
                     "primary_metric": 0.0,
                     "algorithm": "insufficient_time",
@@ -1556,40 +1999,47 @@ def train_pycaret_variant(
                     "timed_out": True,
                     "error": f"Insufficient time: {remaining_time:.1f}s"
                 }, True
-            
-            best_model = KMeans(n_clusters=3, random_state=42, n_init=10)
-            best_model.fit(df_cluster)
-            
+
+            setup(
+                data=df_cluster.astype(np.float64),
+                session_id=random_seed,
+                preprocess=False,
+                normalize=False,
+                transformation=False,
+                verbose=False,
+                log_experiment=False,
+                html=False,
+            )
+            best_model = create_model(
+                "kmeans",
+                num_clusters=3,
+                verbose=False,
+            )
+            leaderboard = pull()
             actual_runtime = time.time() - start_time
-            if actual_runtime > time_budget:
-                timed_out = True
-            
-            # Compute silhouette score on a sample for large datasets
-            # (silhouette_score is O(n²) — infeasible above ~50K rows)
-            _SIL_SAMPLE_SIZE = 10000
-            sil_score = 0.0
-            try:
-                labels = best_model.labels_
-                if len(df_cluster) > _SIL_SAMPLE_SIZE:
-                    _rng = np.random.RandomState(42)
-                    _idx = _rng.choice(len(df_cluster), _SIL_SAMPLE_SIZE, replace=False)
-                    sil_score = float(_sil_score(df_cluster.iloc[_idx], labels[_idx]))
-                    print(f"      Silhouette score (sampled {_SIL_SAMPLE_SIZE} rows): {sil_score:.4f}")
-                else:
-                    sil_score = float(_sil_score(df_cluster, labels))
-                    print(f"      Silhouette score: {sil_score:.4f}")
-            except Exception as _sil_err:
-                print(f"      ⚠️ Silhouette computation failed: {_sil_err}")
-            
+            timed_out = actual_runtime > time_budget
+            silhouette_column = next(
+                (
+                    column
+                    for column in leaderboard.columns
+                    if "silhouette" in str(column).lower()
+                ),
+                None,
+            )
+            sil_score = (
+                float(leaderboard[silhouette_column].iloc[0])
+                if silhouette_column is not None and not leaderboard.empty
+                else 0.0
+            )
             metrics = {
                 "primary_metric": sil_score,
                 "silhouette_score": sil_score,
                 "algorithm": str(type(best_model).__name__),
                 "runtime_sec": actual_runtime,
                 "timed_out": timed_out,
-                "n_models_trained": 1
+                "n_models_trained": 1,
+                "engine": "pycaret",
             }
-            
             return best_model, metrics, timed_out
             
     except Exception as e:
@@ -1608,7 +2058,8 @@ def train_flaml_variant(
     variant: VariantConfig,
     target_column: str,
     task_type: str,
-    time_budget: int = 300
+    time_budget: int = 300,
+    random_seed: int = 42,
 ) -> Tuple[Any, Dict[str, Any], bool]:
     """Train models using FLAML with variant configuration.
     
@@ -1617,18 +2068,6 @@ def train_flaml_variant(
     """
     start_time = time.time()
     timed_out = False
-    
-    # Adaptive time budget: large datasets (>50K rows) get more time (matches PyCaret logic)
-    n_rows = len(df)
-    if n_rows >= 50000 and time_budget < 600:
-        print(f"      ⏱️ FLAML adaptive budget: {n_rows:,} rows detected, raising budget {time_budget}→600s")
-        time_budget = 600
-    
-    # Enforce minimum FLAML budget floor to prevent 100% timeouts
-    flaml_min = getattr(train_flaml_variant, '_min_budget', 120)
-    if time_budget < flaml_min:
-        print(f"      ⏱️ FLAML min budget floor: raising {time_budget}→{flaml_min}s")
-        time_budget = flaml_min
     
     try:
         from flaml import AutoML
@@ -1674,7 +2113,7 @@ def train_flaml_variant(
             task=flaml_task,
             time_budget=min(remaining_time, time_budget),
             metric="roc_auc" if task_type == "classification" else "r2",  # AUC handles class imbalance (matches s5b baseline)
-            seed=42,  # Deterministic seed
+            seed=random_seed,
             verbose=0,
             log_training_metric=False
         )
@@ -1842,6 +2281,11 @@ def run_variant_with_nested_mlflow(
     task_type: str,
     time_budget: int,
     attempt_deadline: float,
+    execution_id: str,
+    search_candidate: CandidateRecord,
+    random_seed: int,
+    cv_folds: int,
+    mlflow_parent_run_id: Optional[str],
     df_preprocessed: Optional[pd.DataFrame] = None  # FIX 2: Reuse cached transform
 ) -> Tuple[VariantResult, Any]:
     """Run one variant with one engine, nested MLflow tracking.
@@ -1868,11 +2312,13 @@ def run_variant_with_nested_mlflow(
                 metrics={"primary_metric": 0.0},
                 runtime_sec=time.time() - start_time,
                 timed_out=True,
-                failed=False,
+                failed=True,
                 failure_reason="Time budget exceeded before preprocessing"
             ), None
         
-        with mlflow.start_run(run_name=run_name, nested=True):
+        with mlflow.start_run(run_name=run_name, nested=True) as child_run:
+            child_run_id = child_run.info.run_id
+            mlflow.set_tag("execution_id", execution_id)
             # Log variant configuration
             mlflow.log_params({
                 "variant_id": variant.variant_id,
@@ -1891,22 +2337,20 @@ def run_variant_with_nested_mlflow(
                 df_processed = df_preprocessed
                 n_features = df_processed.shape[1] - 1  # Exclude target
             else:
-                print(f"  🔄 Applying preprocessing...")
-                try:
-                    df_processed = apply_variant_preprocessing(df, variant, target_column, apply_smote=False)
-                    n_features = df_processed.shape[1] - 1  # Exclude target
-                except Exception as e:
-                    print(f"  ❌ Preprocessing failed: {e}")
-                    return VariantResult(
-                        variant_id=variant.variant_id,
-                        engine=engine,
-                        algorithm="preprocessing_failed",
-                        metrics={"primary_metric": 0.0},
-                        runtime_sec=time.time() - start_time,
-                        timed_out=False,
-                        failed=True,
-                        failure_reason=f"Preprocessing error: {str(e)}"
-                    ), None
+                return VariantResult(
+                    variant_id=variant.variant_id,
+                    engine=engine,
+                    algorithm="preprocessing_contract_missing",
+                    metrics={"primary_metric": 0.0},
+                    runtime_sec=time.time() - start_time,
+                    timed_out=False,
+                    failed=True,
+                    failure_reason=(
+                        "Candidate execution requires the training-only fitted "
+                        "preprocessing output"
+                    ),
+                    mlflow_run_id=child_run_id,
+                ), None
             
             # Hard budget guard: check after preprocessing
             if deadline_guard(attempt_deadline, "after_preprocessing"):
@@ -1917,29 +2361,212 @@ def run_variant_with_nested_mlflow(
                     metrics={"primary_metric": 0.0},
                     runtime_sec=time.time() - start_time,
                     timed_out=True,
-                    failed=False,
-                    failure_reason="Time budget exceeded after preprocessing"
+                    failed=True,
+                    failure_reason="Time budget exceeded after preprocessing",
+                    mlflow_run_id=child_run_id,
                 ), None
             
             # Train model with timeout enforcement
             print(f"  🏋️  Training with {engine} (budget: {time_budget}s)...")
-            if engine == "pycaret":
-                model, metrics, timed_out = train_pycaret_variant(
-                    df_processed, variant, target_column, task_type, time_budget
-                )
-            elif engine == "flaml":
-                model, metrics, timed_out = train_flaml_variant(
-                    df_processed, variant, target_column, task_type, time_budget
-                )
-            else:
+            training_function = {
+                "pycaret": train_pycaret_variant,
+                "flaml": train_flaml_variant,
+            }.get(engine)
+            if training_function is None:
                 raise ValueError(f"Unknown engine: {engine}")
+            remaining_seconds = min(
+                float(time_budget),
+                float(CANDIDATE_ENGINE_TIMEOUT_CAP_SECONDS),
+                max(0.0, attempt_deadline - time.time()),
+            )
+            try:
+                model, metrics, timed_out = run_with_hard_timeout(
+                    training_function,
+                    df_processed,
+                    variant,
+                    target_column,
+                    task_type,
+                    remaining_seconds,
+                    random_seed,
+                    timeout_seconds=remaining_seconds,
+                )
+            except HardDeadlineExceeded as exc:
+                return VariantResult(
+                    variant_id=variant.variant_id,
+                    engine=engine,
+                    algorithm="hard_timeout",
+                    metrics={"primary_metric": 0.0},
+                    runtime_sec=time.time() - start_time,
+                    timed_out=True,
+                    failed=True,
+                    failure_reason=str(exc),
+                    leakage_risk=check_leakage_risk(variant),
+                    n_features=n_features,
+                    mlflow_run_id=child_run_id,
+                ), None
             
             # Capture model for champion tracking
             trained_model = model
             
             # Validate and clean metrics
             metrics = validate_metrics(metrics)
-            
+
+            selected_parameters = {}
+            if model is not None and hasattr(model, "get_params"):
+                try:
+                    selected_parameters = json.loads(
+                        json.dumps(
+                            model.get_params(deep=False),
+                            sort_keys=True,
+                            default=str,
+                        )
+                    )
+                except Exception as exc:
+                    return VariantResult(
+                        variant_id=variant.variant_id,
+                        engine=engine,
+                        algorithm=metrics.get("algorithm", "unknown"),
+                        metrics={"primary_metric": 0.0},
+                        runtime_sec=time.time() - start_time,
+                        timed_out=False,
+                        failed=True,
+                        failure_reason=(
+                            "Selected model parameters are not serializable: "
+                            f"{exc}"
+                        ),
+                        mlflow_run_id=child_run_id,
+                    ), None
+            realized_candidate = CandidateRecord(
+                task_type=search_candidate.task_type,
+                recipe_id=search_candidate.recipe_id,
+                recipe_hash=search_candidate.recipe_hash,
+                engine=search_candidate.engine,
+                algorithm=str(metrics.get("algorithm") or type(model).__name__),
+                parameters={
+                    "recipe": search_candidate.to_dict()["parameters"],
+                    "selected_model_parameters": selected_parameters,
+                },
+                split_id=search_candidate.split_id,
+                data_version=search_candidate.data_version,
+                code_sha=search_candidate.code_sha,
+                environment_hash=search_candidate.environment_hash,
+            )
+            mlflow.set_tag("candidate_id", realized_candidate.candidate_id)
+            mlflow.set_tag(
+                "parent_search_candidate_id",
+                search_candidate.candidate_id,
+            )
+            realized_candidate_payload = realized_candidate.to_dict()
+            remaining_evaluation_seconds = min(
+                float(CANDIDATE_ENGINE_TIMEOUT_CAP_SECONDS),
+                max(0.0, attempt_deadline - time.time()),
+            )
+            if remaining_evaluation_seconds <= 0 or model is None or timed_out:
+                terminal_timeout = bool(
+                    timed_out or remaining_evaluation_seconds <= 0
+                )
+                terminal_reason = (
+                    "No budget remains for common evaluation"
+                    if terminal_timeout
+                    else "Engine produced no selected estimator"
+                )
+                return VariantResult(
+                    variant_id=variant.variant_id,
+                    engine=engine,
+                    algorithm=metrics.get("algorithm", "unknown"),
+                    metrics={"primary_metric": 0.0},
+                    runtime_sec=time.time() - start_time,
+                    timed_out=terminal_timeout,
+                    failed=True,
+                    failure_reason=terminal_reason,
+                    mlflow_run_id=child_run_id,
+                    candidate_id=realized_candidate.candidate_id,
+                    candidate_record={
+                        **realized_candidate_payload,
+                        "status": "timed_out" if terminal_timeout else "failed",
+                        "timed_out": terminal_timeout,
+                        "censored": terminal_timeout,
+                        "failure_reason": terminal_reason,
+                        "mlflow_run_id": child_run_id,
+                    },
+                ), None
+            raw_features = (
+                df.drop(columns=[target_column])
+                if target_column and target_column in df
+                else df.copy()
+            )
+            raw_target = (
+                df[target_column]
+                if target_column and target_column in df
+                else None
+            )
+            evaluation_pipeline = build_fold_local_pipeline(
+                FittedVariantPreprocessor(
+                    variant.to_dict(),
+                    random_seed=random_seed,
+                ),
+                model,
+                recipe=variant.to_dict(),
+                task_type=task_type,
+                random_seed=random_seed,
+            )
+            evidence = evaluate_candidate(
+                evaluation_pipeline,
+                raw_features,
+                raw_target,
+                candidate_id=realized_candidate.candidate_id,
+                engine=engine,
+                spec=EvaluationSpec(
+                    task_type=task_type,
+                    seed=random_seed,
+                    folds=int(cv_folds),
+                    timeout_seconds=remaining_evaluation_seconds,
+                    execution_id=execution_id,
+                ),
+                mlflow_parent_run_id=mlflow_parent_run_id,
+                mlflow_child_run_id=child_run_id,
+            )
+            if not evidence.selectable:
+                evaluator_timed_out = evidence.status in {
+                    "timeout",
+                    "timed_out",
+                }
+                return VariantResult(
+                    variant_id=variant.variant_id,
+                    engine=engine,
+                    algorithm=metrics.get("algorithm", "unknown"),
+                    metrics={
+                        "primary_metric": 0.0,
+                        "common_evaluator": evidence.to_dict(),
+                    },
+                    runtime_sec=time.time() - start_time,
+                    timed_out=evaluator_timed_out,
+                    failed=True,
+                    failure_reason=(
+                        evidence.failure_reason
+                        or f"Common evaluation status: {evidence.status}"
+                    ),
+                    mlflow_run_id=child_run_id,
+                    candidate_id=realized_candidate.candidate_id,
+                    candidate_record={
+                        **realized_candidate_payload,
+                        "status": evidence.status,
+                        "metrics": evidence.metrics,
+                        "timed_out": evaluator_timed_out,
+                        "censored": bool(evidence.censored),
+                        "failure_reason": evidence.failure_reason,
+                        "mlflow_run_id": child_run_id,
+                    },
+                ), None
+            metrics = {
+                **evidence.metrics,
+                "primary_metric": float(evidence.selection_score),
+                "algorithm": str(metrics.get("algorithm") or type(model).__name__),
+                "runtime_sec": time.time() - start_time,
+                "timed_out": False,
+                "common_evaluator": evidence.to_dict(),
+            }
+
             # Hard budget guard: check after training
             if deadline_guard(attempt_deadline, "after_training"):
                 # Preserve real training metrics (model already trained)
@@ -1951,9 +2578,10 @@ def run_variant_with_nested_mlflow(
                     metrics=metrics,
                     runtime_sec=time.time() - start_time,
                     timed_out=True,
-                    failed=False,
-                    failure_reason="Time budget exceeded after training"
-                ), trained_model
+                    failed=True,
+                    failure_reason="Time budget exceeded after training",
+                    mlflow_run_id=child_run_id,
+                ), None
             
             # Log metrics
             _mlflow_metrics = {
@@ -1997,16 +2625,10 @@ def run_variant_with_nested_mlflow(
                     metrics=metrics,
                     runtime_sec=time.time() - start_time,
                     timed_out=True,
-                    failed=False,
-                    failure_reason="Time budget exceeded before model logging"
-                ), trained_model
-            
-            # Log model if successful
-            if model is not None:
-                try:
-                    mlflow.sklearn.log_model(model, "model")
-                except Exception as e:
-                    print(f"⚠️ Could not log model: {e}")
+                    failed=True,
+                    failure_reason="Time budget exceeded before model logging",
+                    mlflow_run_id=child_run_id,
+                ), None
             
             # Return normalized result (no checkpoint marking here)
             return VariantResult(
@@ -2016,11 +2638,25 @@ def run_variant_with_nested_mlflow(
                 metrics=metrics,
                 runtime_sec=metrics.get("runtime_sec", 0.0),
                 timed_out=timed_out,
-                failed=(model is None),
-                failure_reason=metrics.get("error") if model is None else None,
+                failed=(model is None or bool(timed_out)),
+                failure_reason=(
+                    metrics.get("error")
+                    if model is None
+                    else ("Engine reported timeout" if timed_out else None)
+                ),
                 leakage_risk=check_leakage_risk(variant),
-                n_features=n_features
-            ), trained_model
+                n_features=n_features,
+                mlflow_run_id=child_run_id,
+                candidate_id=realized_candidate.candidate_id,
+                candidate_record={
+                    **realized_candidate_payload,
+                    "status": "success",
+                    "metrics": evidence.metrics,
+                    "timed_out": False,
+                    "failure_reason": None,
+                    "mlflow_run_id": child_run_id,
+                },
+            ), (None if timed_out else trained_model)
     
     except Exception as e:
         print(f"  ❌ Unexpected failure: {e}")
@@ -2034,20 +2670,58 @@ def run_variant_with_nested_mlflow(
             timed_out=False,
             failed=True,
             failure_reason=f"Unexpected error: {str(e)}"
-        ), trained_model
+        ), None
 
 
 def main():
     parser = argparse.ArgumentParser(description="Phase B Variant Runner (HARDENED)")
     parser.add_argument("--config_path", type=str, required=True, help="Path to main config YAML")
+    parser.add_argument(
+        "--execution_manifest",
+        type=str,
+        required=True,
+        help="Immutable schema-v2 execution manifest",
+    )
+    parser.add_argument(
+        "--split_manifest",
+        type=str,
+        required=True,
+        help="Immutable Stage 2 split evidence",
+    )
+    parser.add_argument(
+        "--candidate_catalog",
+        type=str,
+        required=False,
+        help="Complete immutable recipe and CandidateRecord catalog uri_file",
+    )
     parser.add_argument("--variants_json", type=str, required=False, help="JSON file containing list of variant paths")
-    parser.add_argument("--variants_list", type=str, required=False, help="Comma-separated list of variant paths")
+    parser.add_argument(
+        "--variants_list",
+        type=str,
+        required=False,
+        help=(
+            "Bounded compatibility-only comma-separated recipe paths; "
+            "canonical submissions use --candidate_catalog"
+        ),
+    )
     parser.add_argument("--engine_list", type=str, required=True, help="Comma-separated engines (pycaret,flaml)")
     parser.add_argument("--dataset_in", type=str, required=True, help="Input dataset path")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory")
+    parser.add_argument("--leaderboard_out", type=str, required=False)
+    parser.add_argument("--all_results_out", type=str, required=False)
+    parser.add_argument("--champion_manifest_out", type=str, required=False)
+    parser.add_argument("--execution_manifest_out", type=str, required=False)
+    parser.add_argument("--split_manifest_out", type=str, required=False)
+    parser.add_argument("--quality_decision_out", type=str, required=False)
     parser.add_argument("--time_budget_per_variant", type=int, default=300, help="Time budget per variant (seconds)")
     parser.add_argument("--flaml_min_budget", type=int, default=120,
-                        help="Minimum FLAML time budget in seconds (floor to prevent 100%% timeout)")
+                        help="Deprecated compatibility input; no floor is applied")
+    parser.add_argument(
+        "--phaseb_time_budget_sec",
+        type=int,
+        default=10800,
+        help="Hard Phase B wall-clock ceiling",
+    )
     
     # Signal artifact flags - DEFAULT TO TRUE (always enabled unless explicitly disabled via env vars)
     parser.add_argument("--enable_round0_feasibility", action=argparse.BooleanOptionalAction, default=True,
@@ -2062,7 +2736,7 @@ def main():
                         help="Enable V3-Proposed adaptive planner mode")
     parser.add_argument("--round1_max_variants", type=int, default=40,
                         help="Max variants for Round 1 proxy training")
-    parser.add_argument("--round2_max_variants", type=int, default=10,
+    parser.add_argument("--round2_max_variants", type=int, default=8,
                         help="Max variants for Round 2 full training")
     parser.add_argument("--proxy_prune_threshold", type=float, default=0.50,
                         help="Proxy metric threshold for pruning (classification)")
@@ -2072,39 +2746,163 @@ def main():
                         help="Enable preprocessing cache")
     
     args = parser.parse_args()
+    if not 1 <= args.time_budget_per_variant <= CANDIDATE_ENGINE_TIMEOUT_CAP_SECONDS:
+        raise ValueError(
+            "time_budget_per_variant must be between 1 and "
+            f"{CANDIDATE_ENGINE_TIMEOUT_CAP_SECONDS}"
+        )
+    if not 1 <= args.phaseb_time_budget_sec <= PHASE_B_TIMEOUT_CAP_SECONDS:
+        raise ValueError(
+            "phaseb_time_budget_sec must be between 1 and "
+            f"{PHASE_B_TIMEOUT_CAP_SECONDS}"
+        )
+    if not 1 <= args.round1_max_variants <= ROUND1_MAX_VARIANTS_CAP:
+        raise ValueError(
+            f"round1_max_variants must be <= {ROUND1_MAX_VARIANTS_CAP}"
+        )
+    if not 1 <= args.round2_max_variants <= ROUND2_MAX_VARIANTS_CAP:
+        raise ValueError(
+            f"round2_max_variants must be <= {ROUND2_MAX_VARIANTS_CAP}"
+        )
+    if args.round2_max_variants > args.round1_max_variants:
+        raise ValueError("Round 2 maximum cannot exceed Round 1 maximum")
     
     # Parse arguments
-    engines = [e.strip() for e in args.engine_list.split(",")]
+    engines = [e.strip().lower() for e in args.engine_list.split(",") if e.strip()]
+    if not engines or len(engines) != len(set(engines)):
+        raise ValueError("engine_list must contain unique, non-empty engines")
     
-    # Load variant paths from JSON file OR string list
-    if args.variants_json:
+    # Canonical schema-v2 transport is the immutable catalog uri_file.  Keep the
+    # former path inputs only for bounded/direct compatibility callers.
+    candidate_catalog_payload = None
+    supplied_sources = sum(
+        bool(value)
+        for value in (
+            args.candidate_catalog,
+            args.variants_json,
+            args.variants_list,
+        )
+    )
+    if supplied_sources != 1:
+        raise ValueError(
+            "Provide exactly one of --candidate_catalog, --variants_json, "
+            "or --variants_list"
+        )
+    if args.candidate_catalog:
+        candidate_catalog_payload, variant_paths = load_candidate_catalog(
+            args.candidate_catalog
+        )
+    elif args.variants_json:
         with open(args.variants_json, 'r') as f:
             variant_paths = json.load(f)
     elif args.variants_list:
+        if len(args.variants_list) > LEGACY_VARIANTS_LIST_MAX_CHARS:
+            raise ValueError(
+                "Legacy variants_list exceeds the bounded compatibility limit "
+                f"of {LEGACY_VARIANTS_LIST_MAX_CHARS} characters; use "
+                "--candidate_catalog"
+            )
         variant_paths = [p.strip() for p in args.variants_list.split(",")]
     else:
-        raise ValueError("Must provide either --variants_json or --variants_list")
-    
-    # ======== FIX: RESOLVE VARIANT PATHS ========
-    # Variant paths may be relative to configs/recipes/ (e.g. "classification/variant_search/variant_xxx.yml")
-    # Resolve them to absolute paths so open() works in Azure ML job context
+        raise AssertionError("unreachable candidate input state")
+    if (
+        not isinstance(variant_paths, list)
+        or not variant_paths
+        or any(not isinstance(path, str) or not path.strip() for path in variant_paths)
+    ):
+        raise ValueError("Candidate input must contain non-empty recipe paths")
+    requested_variant_paths = list(variant_paths)
     _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-    _RECIPES_BASE = _PROJECT_ROOT / "configs" / "recipes"
-    resolved_variant_paths = []
-    for _vp in variant_paths:
-        _vp_path = Path(_vp)
-        if _vp_path.exists():
-            resolved_variant_paths.append(str(_vp_path))
-        elif (_RECIPES_BASE / _vp).exists():
-            resolved_variant_paths.append(str(_RECIPES_BASE / _vp))
-        elif (_PROJECT_ROOT / _vp).exists():
-            resolved_variant_paths.append(str(_PROJECT_ROOT / _vp))
-        else:
-            # Keep original for error reporting downstream
-            print(f"   ⚠️ Cannot resolve variant path: {_vp}")
-            print(f"      Tried: {_vp_path}, {_RECIPES_BASE / _vp}, {_PROJECT_ROOT / _vp}")
-            resolved_variant_paths.append(str(_RECIPES_BASE / _vp))
-    variant_paths = resolved_variant_paths
+    variant_paths = resolve_recipe_paths(
+        requested_variant_paths,
+        project_root=_PROJECT_ROOT,
+    )
+
+    # Compile the same immutable schema-v2 artifact used by submission.
+    with open(args.config_path, "r", encoding="utf-8") as handle:
+        raw_config = yaml.safe_load(handle) or {}
+    config = compile_config(
+        raw_config,
+        source_name=Path(args.config_path).name,
+    )
+    minimum_comparable_candidates = int(
+        config["metrics"]["min_comparable_candidates"]
+    )
+    task_type = config["task_type"]
+    target_column = config["dataset"]["target_column"]
+    delimiter = config["dataset"]["delimiter"]
+    if tuple(engines) != tuple(config["phases"]["phase_b"]["engines"]):
+        raise ValueError(
+            "engine_list must exactly match compiled phases.phase_b.engines"
+        )
+
+    output_path = Path(args.output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    phase_b_started_at = time.time()
+    phase_b_deadline = phase_b_started_at + args.phaseb_time_budget_sec
+
+    with open(args.execution_manifest, "r", encoding="utf-8") as handle:
+        execution_payload = json.load(handle)
+    if candidate_catalog_payload is not None:
+        validate_candidate_catalog_binding(
+            execution_payload,
+            candidate_catalog_payload,
+        )
+    execution_manifest, submitted_candidate_records = (
+        validate_execution_manifest_for_run(
+        execution_payload,
+        config=config,
+        requested_variant_paths=requested_variant_paths,
+        resolved_variant_paths=variant_paths,
+        engines=engines,
+        round1_max_variants=args.round1_max_variants,
+        round2_max_variants=args.round2_max_variants,
+        proxy_prune_threshold=args.proxy_prune_threshold,
+        candidate_engine_timeout_seconds=args.time_budget_per_variant,
+        phase_b_timeout_seconds=args.phaseb_time_budget_sec,
+        )
+    )
+    split_manifest = SplitManifest.from_json(
+        Path(args.split_manifest).read_text(encoding="utf-8")
+    )
+    if split_manifest.task_type != task_type:
+        raise ValueError("SplitManifest task_type does not match config")
+    if split_manifest.random_seed != int(config["random_seed"]):
+        raise ValueError("SplitManifest random_seed does not match config")
+    if split_manifest.strategy != config["split"]["strategy"]:
+        raise ValueError("SplitManifest strategy does not match config")
+    if not split_manifest.locked_test or split_manifest.test_count <= 0:
+        raise ValueError("SplitManifest must prove a non-empty locked test set")
+    canonical_candidate_records = bind_candidate_records_to_runtime_split(
+        submitted_candidate_records,
+        split_manifest,
+    )
+    validated_execution_payload = {
+        **execution_manifest.to_dict(),
+        "candidate_records": [
+            record.to_dict() for record in submitted_candidate_records
+        ],
+        "split_manifest": split_manifest.to_dict(),
+        "runtime_split_id": split_manifest.split_id,
+        "runtime_candidate_ids": [
+            record.candidate_id for record in canonical_candidate_records
+        ],
+        "runtime_candidate_records": [
+            record.to_dict() for record in canonical_candidate_records
+        ],
+    }
+    atomic_write(
+        output_path / "execution_manifest.json",
+        json.dumps(
+            validated_execution_payload,
+            indent=2,
+            sort_keys=True,
+        ),
+    )
+    atomic_write(
+        output_path / "split_manifest.json",
+        split_manifest.to_json(indent=2),
+    )
     
     print(f"\n{'='*80}")
     print(f"PHASE B VARIANT RUNNER (HARDENED)")
@@ -2114,72 +2912,26 @@ def main():
     print(f"Total runs: {len(variant_paths) * len(engines)}")
     print(f"{'='*80}\n")
     
-    # Load config to get task type and target column
-    import yaml
-    with open(args.config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    task_type = config.get("task_type", "classification")
-    target_column = config.get("dataset", {}).get("target_column")
-    delimiter = config.get("dataset", {}).get("delimiter", ",")
-    
-    # Wire --flaml_min_budget to the training function via function attribute
-    train_flaml_variant._min_budget = args.flaml_min_budget
-    print(f"FLAML min budget floor: {args.flaml_min_budget}s")
-    
-    # Create output directory
-    output_path = Path(args.output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    phases_cfg = config.get("phases") or {}
+    phase_b_cfg = phases_cfg.get("phase_b") or phases_cfg.get("phase_b_recipes") or {}
+    print(f"Execution manifest: {execution_manifest.execution_id}")
     
     # ======== HARDENING FEATURE 6: DETERMINISTIC SEEDING ========
-    set_deterministic_seed(42)
-    
-    # ======== HARDENING FEATURE 1: CHECKPOINTING ========
-    total_expected = len(variant_paths) * len(engines)
-    checkpoint = CheckpointManager(output_path / "resume_state.json")
-    progress = checkpoint.get_progress(total_expected=total_expected)
-    print(f"\n📊 Checkpoint Progress: {progress['completed']}/{progress['total']} completed")
-    if progress['completed'] > 0:
-        print(f"   ⏮️  Resuming from previous run (last updated: {progress['last_updated']})")
-    print(f"   ⏱️  Time budget per variant: {args.time_budget_per_variant}s\n")
+    set_deterministic_seed(int(config["random_seed"]))
     
     # Load dataset (respect config delimiter — e.g. bank_marketing uses ";")
     print(f"📂 Loading dataset from {args.dataset_in}")
-    df_full = pd.read_csv(args.dataset_in, sep=delimiter)
-    print(f"   Shape: {df_full.shape[0]} rows × {df_full.shape[1]} columns")
-    
-    # ════════════════════════════════════════════════════════════════════
-    # BATCH 3 FIX: HOLDOUT SPLIT — prevents data leakage across all
-    # preprocessing steps (SMOTE, scaling, imputation, outlier handling,
-    # feature selection).  Preprocessing + training now see only 80% of
-    # the data; the 20% holdout is reserved for honest evaluation.
-    # ════════════════════════════════════════════════════════════════════
-    from sklearn.model_selection import train_test_split as _holdout_split
-    holdout_fraction = 0.2
-    if task_type == "classification" and target_column in df_full.columns:
-        stratify_col = df_full[target_column]
-    else:
-        stratify_col = None
-    df, df_holdout = _holdout_split(
-        df_full,
-        test_size=holdout_fraction,
-        random_state=42,
-        stratify=stratify_col
-    )
-    df = df.reset_index(drop=True)
-    df_holdout = df_holdout.reset_index(drop=True)
-    print(f"   🔀 Holdout split: {len(df)} train / {len(df_holdout)} holdout ({holdout_fraction:.0%})")
-    
-    # Save holdout for downstream steps and champion evaluation
-    holdout_path = output_path / "holdout_data.csv"
-    df_holdout.to_csv(holdout_path, index=False)
-    print(f"   📁 Holdout saved to {holdout_path}")
+    df = pd.read_csv(args.dataset_in, sep=delimiter)
+    if df.empty or len(df) != split_manifest.train_count:
+        raise ValueError(
+            "Training-only input row count does not match SplitManifest"
+        )
+    print(f"   Training-only shape: {df.shape[0]} rows × {df.shape[1]} columns")
     
     # ======== HARDENING FEATURE 4: DATA FINGERPRINTING ========
-    # Fingerprint computed on FULL data (for reproducibility tracking)
-    data_fingerprint = compute_data_fingerprint(df_full)
+    data_fingerprint = compute_data_fingerprint(df)
     code_version = get_code_version()
-    print(f"   Data fingerprint: {data_fingerprint['hash'][:12]}... (full dataset)")
+    print(f"   Data fingerprint: {data_fingerprint['hash'][:12]}... (training only)")
     print(f"   Code version: {code_version}\n")
     
     # ======== V3-PROPOSED: PREPROCESSING CACHE ========
@@ -2270,13 +3022,14 @@ def main():
             planner_config=planner_config
         )
         
-        # Update variant_paths to use only selected variants
+        # Keep the planner shortlist advisory. The canonical funnel must screen
+        # every catalog recipe for feasibility before applying its Round 1 cap.
         original_count = len(variant_paths)
-        variant_paths = [v.variant_path for v in round1_candidates]
+        planner_proposed_paths = [v.variant_path for v in round1_candidates]
         
         print(f"\n📋 PLANNER RESULT:")
         print(f"   Original variants: {original_count}")
-        print(f"   Selected for Round 1: {len(variant_paths)}")
+        print(f"   Proposed for Round 1: {len(planner_proposed_paths)}")
         print(f"   Top 5 by relevance score:")
         for v in sorted(round1_candidates, key=lambda x: x.relevance_score, reverse=True)[:5]:
             print(f"      - {v.variant_id}: score={v.relevance_score:.1f}")
@@ -2293,6 +3046,325 @@ def main():
             }, f, indent=2, default=str)
         print(f"   ✅ Saved variant_plan.json")
         print(f"{'='*80}\n")
+
+    # Round 1 is a real execution gate.  Only its bounded, ranked survivors may
+    # enter the expensive recipe×engine loop below.
+    if not args.enable_round1_proxy:
+        raise ValueError(
+            "Round 1 proxy evaluation is required by the canonical recipe funnel"
+        )
+    # Profile every eligible catalog recipe against the training-only dataset,
+    # then bound the expensive Round 1 proxy executions.  This preserves
+    # data-aware ranking without a submission-side, data-blind truncation.
+    catalog_eda = EdaPriors(
+        missing_rate=float(
+            df.isnull().sum().sum() / max(1, df.shape[0] * df.shape[1])
+        ),
+        imbalance_ratio=(
+            float(df[target_column].value_counts(normalize=True).min())
+            if task_type == "classification"
+            and target_column
+            and target_column in df
+            else 1.0
+        ),
+        high_cardinality_cols=[
+            column
+            for column in df.select_dtypes(include=["object"]).columns
+            if df[column].nunique() > 50
+        ],
+        outlier_prevalence=0.0,
+        skewness_issues=sum(
+            1
+            for column in df.select_dtypes(include=[np.number]).columns
+            if abs(df[column].skew()) > 1
+        ),
+        n_rows=df.shape[0],
+        n_features=max(0, df.shape[1] - (1 if target_column in df else 0)),
+    )
+    catalog_profiles: list[dict[str, Any]] = []
+    catalog_scores: list[VariantScore] = []
+    for catalog_path in variant_paths:
+        with open(catalog_path, "r", encoding="utf-8") as handle:
+            catalog_recipe = yaml.safe_load(handle) or {}
+        relevance_score, reasoning = score_variant_relevance(
+            catalog_recipe,
+            catalog_eda,
+            task_type,
+        )
+        stage3 = catalog_recipe.get("stage3_preprocessing") or {}
+        stage4 = catalog_recipe.get("stage4_feature_engineering") or {}
+        variant_id = (
+            catalog_recipe.get("recipe_name")
+            or (catalog_recipe.get("variant_metadata") or {}).get("variant_id")
+            or Path(catalog_path).stem
+        )
+        catalog_profiles.append(
+            {
+                "variant_id": variant_id,
+                "variant_path": catalog_path,
+                "relevance_score": float(relevance_score),
+                "reasoning": reasoning,
+                "semantic_hash": semantic_recipe_hash(
+                    catalog_recipe,
+                    task_type=task_type,
+                ),
+            }
+        )
+        catalog_scores.append(
+            VariantScore(
+                variant_id=variant_id,
+                variant_path=catalog_path,
+                relevance_score=relevance_score,
+                reasoning=reasoning,
+                preprocessing_hash=compute_preprocessing_hash(catalog_recipe),
+                imputation=(stage3.get("imputation") or {}).get("method", "none"),
+                encoding=(stage3.get("encoding") or {}).get(
+                    "categorical_method", "onehot"
+                ),
+                scaling=(stage3.get("scaling") or {}).get("method", "none"),
+                imbalance=(stage3.get("imbalance_handling") or {}).get(
+                    "method", "none"
+                ),
+                feature_selection=(stage4.get("feature_selection") or {}).get(
+                    "method", "none"
+                ),
+            )
+        )
+    profiled_count = len(catalog_scores)
+    catalog_screening_reports: list[dict[str, Any]] = []
+    round1_rejected: list[dict[str, Any]] = []
+    for catalog_score in catalog_scores:
+        variant_path = str(catalog_score.variant_path)
+        require_phase_b_budget(phase_b_deadline, "round0_screen_start")
+        validation_report = validate_variant_yaml(
+            variant_path,
+            task_type=task_type,
+        )
+        if not validation_report.get("valid"):
+            reason = "; ".join(
+                validation_report.get("errors")
+                or ["variant validation failed"]
+            )
+            screening_report = {
+                "variant_id": validation_report.get(
+                    "variant_id", Path(variant_path).stem
+                ),
+                "variant_path": variant_path,
+                "status": "quarantined",
+                "reason": reason,
+            }
+            catalog_screening_reports.append(screening_report)
+            round1_rejected.append(
+                {
+                    **screening_report,
+                    "proxy_metric": 0.0,
+                }
+            )
+            continue
+        try:
+            variant = load_variant(variant_path)
+            validate_variant_for_task(variant, task_type)
+            screening_report = {
+                "variant_id": variant.variant_id,
+                "variant_path": variant_path,
+                "status": "pass",
+                "reason": "",
+            }
+            if args.enable_round0_feasibility:
+                remaining_budget = require_phase_b_budget(
+                    phase_b_deadline,
+                    "round0_feasibility_start",
+                )
+                (
+                    transformed_train,
+                    _,
+                    y_train,
+                    _,
+                    _,
+                ) = run_with_hard_timeout(
+                    prepare_round1_proxy_partitions,
+                    df,
+                    variant,
+                    target_column,
+                    task_type,
+                    5000,
+                    int(config["random_seed"]),
+                    timeout_seconds=min(
+                        float(args.time_budget_per_variant),
+                        remaining_budget,
+                    ),
+                )
+                feasibility_frame = transformed_train.copy()
+                if y_train is not None:
+                    feasibility_frame[target_column] = np.asarray(y_train)
+                _, feasibility = run_round0_feasibility(
+                    df,
+                    variant,
+                    target_column,
+                    df_transformed=feasibility_frame,
+                )
+                screening_report = {
+                    **feasibility,
+                    "variant_path": variant_path,
+                }
+            catalog_screening_reports.append(screening_report)
+            if screening_report["status"] != "pass":
+                round1_rejected.append(
+                    {
+                        "variant_id": variant.variant_id,
+                        "variant_path": variant_path,
+                        "status": "quarantined",
+                        "proxy_metric": 0.0,
+                        "reason": screening_report.get("reason")
+                        or "Round 0 feasibility failed",
+                    }
+                )
+        except HardDeadlineExceeded as exc:
+            if time.time() >= phase_b_deadline:
+                raise
+            screening_report = {
+                "variant_id": Path(variant_path).stem,
+                "variant_path": variant_path,
+                "status": "timeout",
+                "reason": str(exc),
+                "censored": True,
+            }
+            catalog_screening_reports.append(screening_report)
+            round1_rejected.append(
+                {
+                    **screening_report,
+                    "proxy_metric": 0.0,
+                }
+            )
+        except Exception as exc:
+            screening_report = {
+                "variant_id": Path(variant_path).stem,
+                "variant_path": variant_path,
+                "status": "error",
+                "reason": str(exc),
+            }
+            catalog_screening_reports.append(screening_report)
+            round1_rejected.append(
+                {
+                    **screening_report,
+                    "proxy_metric": 0.0,
+                }
+            )
+
+    round1_selected = select_feasible_round1_candidates(
+        catalog_scores,
+        catalog_screening_reports,
+        max_variants=args.round1_max_variants,
+        diversity_min_hamming=args.diversity_min_hamming,
+    )
+    variant_paths = [item.variant_path for item in round1_selected]
+    round1_funnel_reports: list[dict[str, Any]] = []
+    round1_input_paths = list(variant_paths)
+    for variant_path in round1_input_paths:
+        require_phase_b_budget(phase_b_deadline, "round1_start")
+        try:
+            variant = load_variant(variant_path)
+            validate_variant_for_task(variant, task_type)
+            proxy_report = run_with_hard_timeout(
+                run_round1_proxy,
+                df,
+                variant,
+                target_column,
+                task_type,
+                5000,
+                int(config["random_seed"]),
+                timeout_seconds=min(
+                    float(args.time_budget_per_variant),
+                    require_phase_b_budget(
+                        phase_b_deadline,
+                        "round1_proxy_start",
+                    ),
+                ),
+            )
+            with open(variant_path, "r", encoding="utf-8") as handle:
+                raw_recipe = yaml.safe_load(handle) or {}
+            proxy_report.update(
+                {
+                    "variant_path": variant_path,
+                    "semantic_hash": semantic_recipe_hash(
+                        raw_recipe, task_type=task_type
+                    ),
+                }
+            )
+            round1_funnel_reports.append(proxy_report)
+        except HardDeadlineExceeded:
+            raise
+        except Exception as exc:
+            round1_rejected.append(
+                {
+                    "variant_id": Path(variant_path).stem,
+                    "variant_path": variant_path,
+                    "status": "error",
+                    "proxy_metric": 0.0,
+                    "reason": str(exc),
+                }
+            )
+
+    variant_paths, ranked_rejections = rank_round2_proxy_survivors(
+        round1_funnel_reports,
+        task_type=task_type,
+        configured_threshold=args.proxy_prune_threshold,
+        max_variants=args.round2_max_variants,
+    )
+    round1_rejected.extend(ranked_rejections)
+    funnel_evidence = {
+        "schema_version": "2.0",
+        "execution_id": execution_manifest.execution_id,
+        "round1_input_count": len(round1_input_paths),
+        "catalog_profiled_count": profiled_count,
+        "catalog_feasible_count": sum(
+            report.get("status") == "pass"
+            for report in catalog_screening_reports
+        ),
+        "catalog_profiles": catalog_profiles,
+        "catalog_screening_reports": catalog_screening_reports,
+        "round1_max_variants": args.round1_max_variants,
+        "round2_max_variants": args.round2_max_variants,
+        "proxy_prune_threshold": args.proxy_prune_threshold,
+        "round1_reports": round1_funnel_reports,
+        "round2_variant_paths": variant_paths,
+        "rejected": round1_rejected,
+    }
+    require_phase_b_budget(
+        phase_b_deadline,
+        "before_recipe_funnel_write",
+    )
+    atomic_write(
+        output_path / "recipe_funnel.json",
+        json.dumps(funnel_evidence, indent=2, sort_keys=True, default=str),
+    )
+    if not variant_paths:
+        raise RuntimeError(
+            "Recipe funnel produced no eligible Round 2 variants; "
+            "see recipe_funnel.json"
+        )
+    print(
+        f"🎯 Recipe funnel: {len(round1_input_paths)} Round 1 inputs → "
+        f"{len(variant_paths)} Round 2 survivors"
+    )
+
+    # Checkpoint identity now reflects the bounded Round 2 candidate set.
+    total_expected = len(variant_paths) * len(engines)
+    checkpoint = CheckpointManager(output_path / "resume_state.json")
+    progress = checkpoint.get_progress(total_expected=total_expected)
+    print(
+        f"\n📊 Checkpoint Progress: {progress['completed']}/"
+        f"{progress['total']} completed"
+    )
+    if progress["completed"] > 0:
+        print(
+            "   ⏮️  Resuming from previous run "
+            f"(last updated: {progress['last_updated']})"
+        )
+    print(
+        f"   ⏱️  Time budget per candidate-engine: "
+        f"{args.time_budget_per_variant}s\n"
+    )
     
     # Disable autologging (do NOT change tracking URI — breaks MLflow hierarchy)
     try:
@@ -2303,16 +3375,9 @@ def main():
         mlflow.autolog(disable=True)
     except Exception as e:
         logger.debug("mlflow.autolog(disable=True) failed: %s", e)
-    # 🔥 FIX: Convert azureml:// tracking URI to https:// to avoid registry errors
-    # Azure ML sets MLFLOW_TRACKING_URI to azureml:// which MLflow registry doesn't support
-    _mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "")
-    if _mlflow_uri.startswith("azureml://"):
-        _https_uri = _mlflow_uri.replace("azureml://", "https://")
-        mlflow.set_tracking_uri(_https_uri)
-        print(f"🔗 MLflow tracking URI converted to HTTPS")
-    # Also set local model registry as defense-in-depth
-    os.makedirs("/tmp/mlflow-registry", exist_ok=True)
-    mlflow.set_registry_uri("file:///tmp/mlflow-registry")
+    # Preserve Azure ML's workspace tracking and registry endpoints exactly.
+    # Rewriting the tracking URI or installing a local registry would sever the
+    # nested candidate runs from the component run's immutable workspace lineage.
     
     # ======== AZURE ML PIPELINE COMPATIBILITY (CRITICAL) ========
     # Azure ML pipeline steps automatically create an MLflow run
@@ -2338,6 +3403,7 @@ def main():
         best_score = float('-inf')  # Unified score (higher is better)
         best_key: Tuple[str, str] = (None, None)  # (variant_id, engine)
         best_model: Any = None
+        best_preprocessor: Optional[FittedVariantPreprocessor] = None
         
         skipped_count = 0
         failed_count = 0
@@ -2346,6 +3412,9 @@ def main():
         round0_feasibility_reports = [] if args.enable_round0_feasibility else None
         round1_proxy_reports = [] if args.enable_round1_proxy else None
         elimination_decisions = [] if args.enable_elimination_report else None
+        variant_validation_reports: list[dict] = []
+        variant_anomaly_reports: list[dict] = []
+        variant_preprocessors: dict[str, FittedVariantPreprocessor] = {}
         
         print(f"🔍 Phase B Signals: Round0={'ON' if args.enable_round0_feasibility else 'OFF'}, Round1={'ON' if args.enable_round1_proxy else 'OFF'}, Elimination={'ON' if args.enable_elimination_report else 'OFF'}\n")
         
@@ -2356,36 +3425,83 @@ def main():
             print(f"{'='*80}")
             
             try:
+                validation_report = validate_variant_yaml(variant_path, task_type=task_type)
+                variant_validation_reports.append(validation_report)
+                if not validation_report.get("valid"):
+                    error_text = "; ".join(validation_report.get("errors") or ["unknown validation error"])
+                    print(f"   ❌ Variant YAML validation failed: {error_text}")
+                    if args.enable_elimination_report:
+                        elimination_decisions.append({
+                            "variant_id": validation_report.get("variant_id", Path(variant_path).stem),
+                            "engine": "all",
+                            "stage": "variant_yaml_validation",
+                            "reason": "variant_yaml_invalid",
+                            "details": error_text,
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                        })
+                    for engine in engines:
+                        all_results.append(VariantResult(
+                            variant_id=validation_report.get("variant_id", Path(variant_path).stem),
+                            engine=engine,
+                            algorithm="variant_yaml_invalid",
+                            metrics={"primary_metric": 0.0},
+                            runtime_sec=0.0,
+                            timed_out=False,
+                            failed=True,
+                            failure_reason=error_text,
+                        ))
+                    failed_count += len(engines)
+                    continue
+
                 # Load and validate variant
                 variant = load_variant(variant_path)
                 validate_variant_for_task(variant, task_type)
+                with open(variant_path, "r", encoding="utf-8") as recipe_handle:
+                    variant_recipe_hash = semantic_recipe_hash(
+                        yaml.safe_load(recipe_handle) or {},
+                        task_type=task_type,
+                    )
             
                 print(f"   Variant ID: {variant.variant_id}")
                 print(f"   Config: {variant.stage3_preprocessing.imputation.method}+{variant.stage3_preprocessing.encoding.categorical_method}+{variant.stage3_preprocessing.scaling.method}")
-            
+
+                preprocessing_started_at = time.time()
+                try:
+                    df_transformed, fitted_preprocessor = run_with_hard_timeout(
+                        preprocess_training_data,
+                        df,
+                        variant,
+                        target_column,
+                        int(config["random_seed"]),
+                        timeout_seconds=min(
+                            CANDIDATE_ENGINE_TIMEOUT_CAP_SECONDS,
+                            max(0.0, phase_b_deadline - time.time()),
+                        ),
+                    )
+                except Exception as exc:
+                    print(f"   ❌ Training-only preprocessing failed: {exc}")
+                    failed_count += len(engines)
+                    continue
+                preprocessing_runtime_sec = (
+                    time.time() - preprocessing_started_at
+                )
+                variant_preprocessors[variant.variant_id] = fitted_preprocessor
+
                 # ==== INSERT POINT C: Round 0 Feasibility Check ====
-                df_transformed = None
-                cache_key = None
-                cache_hit = False
-                
-                # Check preprocessing cache first (V3-Proposed)
                 if preprocessing_cache.enabled:
-                    preproc_config = {
-                        "imputation": variant.stage3_preprocessing.imputation.method,
-                        "encoding": variant.stage3_preprocessing.encoding.categorical_method,
-                        "scaling": variant.stage3_preprocessing.scaling.method
-                    }
-                    is_cacheable, cache_reason = preprocessing_cache.is_cacheable(preproc_config)
-                    if is_cacheable:
-                        cache_key = preprocessing_cache.compute_key(preproc_config, data_fingerprint['hash'])
-                        df_transformed = preprocessing_cache.get(cache_key)
-                        if df_transformed is not None:
-                            cache_hit = True
-                            print(f"   🗄️  CACHE HIT: Reusing preprocessed data (key={cache_key[:8]}...)")
+                    print(
+                        "   🔒 Preprocessing cache bypassed so the exact fitted "
+                        "training transformer can be bundled"
+                    )
                 
-                if args.enable_round0_feasibility and not cache_hit:
+                if args.enable_round0_feasibility:
                     print(f"   🔍 Round 0: Feasibility check (transform-only)...")
-                    df_transformed, feas_report = run_round0_feasibility(df, variant, target_column)
+                    df_transformed, feas_report = run_round0_feasibility(
+                        df,
+                        variant,
+                        target_column,
+                        df_transformed=df_transformed,
+                    )
                     round0_feasibility_reports.append(feas_report)
                     
                     if feas_report["status"] == "fail":
@@ -2416,24 +3532,12 @@ def main():
                         continue
                     else:
                         print(f"      ✅ PASSED: {feas_report['n_features_after']} features [{feas_report['transform_runtime_sec']:.2f}s]")
-                        # Store in cache if cacheable (V3-Proposed)
-                        if cache_key and not cache_hit and df_transformed is not None:
-                            preprocessing_cache.put(cache_key, df_transformed)
-                            print(f"      🗄️  CACHE STORE: key={cache_key[:8]}...")
-                elif cache_hit:
-                    # Cache hit - add synthetic feasibility report
-                    feas_report = {
-                        "variant_id": variant.variant_id,
-                        "status": "pass",
-                        "reason": "cache_hit",
-                        "transform_runtime_sec": 0.0,
-                        "n_features_before": df.shape[1] - 1,
-                        "n_features_after": df_transformed.shape[1] - 1 if df_transformed is not None else 0,
-                        "feature_multiplier": 1.0,
-                        "feature_explosion": False
-                    }
-                    if round0_feasibility_reports is not None:
-                        round0_feasibility_reports.append(feas_report)
+
+                if df_transformed is not None and not any(
+                    report.get("variant_id") == variant.variant_id
+                    for report in variant_anomaly_reports
+                ):
+                    variant_anomaly_reports.append(build_variant_anomaly_report(variant, df_transformed, target_column))
                 
                 # ==== INSERT POINT D: Round 1 Proxy Leaderboard ====
                 if args.enable_round1_proxy:
@@ -2441,8 +3545,25 @@ def main():
                     # Reuse transformed data from Round 0 if available
                     if df_transformed is None:
                         df_transformed = apply_variant_preprocessing(df, variant, target_column, apply_smote=False)
+                    if not any(report.get("variant_id") == variant.variant_id for report in variant_anomaly_reports):
+                        variant_anomaly_reports.append(build_variant_anomaly_report(variant, df_transformed, target_column))
                     
-                    proxy_report = run_round1_proxy(df_transformed, variant.variant_id, target_column, task_type)
+                    proxy_report = run_with_hard_timeout(
+                        run_round1_proxy,
+                        df,
+                        variant,
+                        target_column,
+                        task_type,
+                        5000,
+                        int(config["random_seed"]),
+                        timeout_seconds=min(
+                            float(args.time_budget_per_variant),
+                            require_phase_b_budget(
+                                phase_b_deadline,
+                                "signal_proxy_start",
+                            ),
+                        ),
+                    )
                     round1_proxy_reports.append(proxy_report)
                     
                     if proxy_report["status"] == "fail":
@@ -2455,6 +3576,20 @@ def main():
                 # Run with each engine
                 for engine in engines:
                     print(f"\n   🔧 Engine: {engine}")
+                    search_candidate = next(
+                        (
+                            record
+                            for record in canonical_candidate_records
+                            if record.recipe_hash == variant_recipe_hash
+                            and record.engine == engine
+                        ),
+                        None,
+                    )
+                    if search_candidate is None:
+                        raise RuntimeError(
+                            "No canonical search CandidateRecord for "
+                            f"{variant.variant_id}::{engine}"
+                        )
                 
                     # ======== HARDENING FEATURE 1: SKIP IF ALREADY COMPLETED ========
                     if checkpoint.is_completed(variant.variant_id, engine):
@@ -2466,26 +3601,68 @@ def main():
                     result = None
                     model = None
                     attempt_start = time.time()
-                    
-                    # C1 FIX (UPDATED): Compute effective budget matching FLAML's
-                    # adaptive logic.  FLAML internally raises budget to 600s for
-                    # >50K rows.  After automl.fit() we may run time-aware
-                    # cross_val_predict (3-fold × 2 passes).  The outer deadline
-                    # must accommodate both FLAML training AND optional CV work,
-                    # otherwise deadline_guard discards valid results.
-                    effective_budget = args.time_budget_per_variant
-                    if engine == "flaml":
-                        n_rows = len(df)
-                        if n_rows >= 50000 and effective_budget < 600:
-                            effective_budget = 600
-                        effective_budget = max(effective_budget, 120)  # min floor
-                        # Buffer: 360s to cover time-aware cross_val_predict
-                        # (up to 3-fold × 2 calls).  CV is best-effort and will
-                        # self-skip when remaining time is too short, so this
-                        # extra headroom is only used when CV actually runs.
-                        effective_budget += 360
-                    attempt_deadline = attempt_start + effective_budget
-                
+                    remaining_phase_budget = phase_b_deadline - attempt_start
+                    if remaining_phase_budget <= 0:
+                        result = VariantResult(
+                            variant_id=variant.variant_id,
+                            engine=engine,
+                            algorithm="phase_b_budget_exhausted",
+                            metrics={"primary_metric": 0.0},
+                            runtime_sec=0.0,
+                            timed_out=True,
+                            failed=True,
+                            failure_reason=(
+                                "Phase B wall-clock budget exhausted before "
+                                "candidate-engine start"
+                            ),
+                        )
+                        all_results.append(result)
+                        checkpoint.mark_completed(variant.variant_id, engine)
+                        failed_count += 1
+                        if args.enable_elimination_report:
+                            elimination_decisions.append(
+                                {
+                                    "variant_id": variant.variant_id,
+                                    "engine": engine,
+                                    "stage": "training",
+                                    "reason": "phase_b_budget_exhausted",
+                                    "details": result.failure_reason,
+                                    "timestamp": datetime.utcnow().isoformat()
+                                    + "Z",
+                                }
+                            )
+                        continue
+                    candidate_budget = min(
+                        max(
+                            0.0,
+                            float(args.time_budget_per_variant)
+                            - preprocessing_runtime_sec,
+                        ),
+                        remaining_phase_budget,
+                    )
+                    if candidate_budget <= 0:
+                        result = VariantResult(
+                            variant_id=variant.variant_id,
+                            engine=engine,
+                            algorithm="preprocessing_budget_exhausted",
+                            metrics={"primary_metric": 0.0},
+                            runtime_sec=preprocessing_runtime_sec,
+                            timed_out=True,
+                            failed=True,
+                            failure_reason=(
+                                "Training-only preprocessing consumed the "
+                                "candidate-engine hard deadline"
+                            ),
+                        )
+                        all_results.append(result)
+                        checkpoint.mark_completed(variant.variant_id, engine)
+                        failed_count += 1
+                        continue
+                    attempt_deadline = min(
+                        phase_b_deadline,
+                        attempt_start + candidate_budget,
+                    )
+
                     try:
                         # ======== HARDENING FEATURE 2: HARD BUDGET GUARD ========
                         # FIX 2B: Pass cached df_transformed if available (from Round0/Round1)
@@ -2495,8 +3672,17 @@ def main():
                             engine=engine,
                             target_column=target_column,
                             task_type=task_type,
-                            time_budget=args.time_budget_per_variant,
+                            time_budget=candidate_budget,
                             attempt_deadline=attempt_deadline,
+                            execution_id=execution_manifest.execution_id,
+                            search_candidate=search_candidate,
+                            random_seed=int(config["random_seed"]),
+                            cv_folds=int(config["split"]["cv_folds"]),
+                            mlflow_parent_run_id=(
+                                mlflow.active_run().info.run_id
+                                if mlflow.active_run()
+                                else None
+                            ),
                             df_preprocessed=df_transformed  # Reuse cached transform if available
                         )
                     except Exception as e:
@@ -2532,18 +3718,18 @@ def main():
                         checkpoint.mark_completed(variant.variant_id, engine)
                     
                         # Track champion-so-far (avoid OOM)
-                        # MUST match the leaderboard's usable_results filter:
-                        # exclude timed-out and zero-metric runs so that
-                        # best_key always agrees with champion_result.
-                        if (model is not None
-                                and not result.failed
-                                and not result.timed_out
-                                and safe_float(result.metrics.get("primary_metric")) > 0.01):
+                        # MUST match the leaderboard's usable-results filter so
+                        # best_key always agrees with champion_result. Weak but
+                        # finite evidence remains eligible for S10 quality policy.
+                        if model is not None and is_usable_phaseb_result(result):
                             current_score = get_result_score(result, primary_metric_name)
                             if current_score > best_score:
                                 best_score = current_score
                                 best_key = (variant.variant_id, engine)
                                 best_model = model
+                                best_preprocessor = variant_preprocessors.get(
+                                    variant.variant_id
+                                )
                                 original_val = safe_float(result.metrics.get("primary_metric"))
                                 print(f"   🏆 NEW CHAMPION: {variant.variant_id}::{engine} = {original_val:.4f} (score={current_score:.4f})")
                     
@@ -2568,17 +3754,22 @@ def main():
                         else:
                             print(f"   ✅ SUCCESS: {result.algorithm} | metric={result.metrics.get('primary_metric', 0.0):.4f} [{result.runtime_sec:.1f}s]")
         
+            except HardDeadlineExceeded:
+                raise
             except Exception as e:
                 print(f"   ❌ Variant processing failed: {e}")
                 failed_count += 1
                 continue
-        valid_results = [r for r in all_results if not r.failed and r.algorithm != "skipped"]
-        
-        # Filter out timed-out runs with zero metrics (unusable champions)
-        usable_results = [
-            r for r in valid_results 
-            if r.metrics.get("primary_metric", 0.0) > 0.01 and not r.timed_out
+        require_phase_b_budget(
+            phase_b_deadline,
+            "post_training_evidence",
+        )
+        valid_results = [
+            result
+            for result in all_results
+            if is_usable_phaseb_result(result)
         ]
+        usable_results = valid_results
         
         # Track eliminated timed-out/zero-metric variants
         if args.enable_elimination_report and len(usable_results) < len(valid_results):
@@ -2592,116 +3783,36 @@ def main():
                         "details": f"timed_out={r.timed_out}, metric={r.metrics.get('primary_metric', 0.0):.4f}",
                         "timestamp": datetime.utcnow().isoformat() + "Z"
                     })
-        
-        if len(usable_results) > 0:
-            # Use only usable results for champion selection
-            valid_results = usable_results
-            print(f"\n✅ Found {len(valid_results)} usable results (filtered out {len([r for r in all_results if not r.failed]) - len(valid_results)} timed-out/zero-metric runs)")
-        elif len(valid_results) > 0:
-            # Fallback: use timed-out results but warn user
-            print(f"\n⚠️  WARNING: All {len(valid_results)} valid results are timed-out or have zero metrics")
-            print(f"   Champion selection may not be meaningful. Consider increasing time_budget_per_variant.")
-        
-        if len(valid_results) == 0:
-            print("\n⚠️ NO VALID RESULTS - Cannot select champion")
-            print("   All variants either failed or were skipped. Check logs for errors.")
-            print("   Creating placeholder output files to satisfy component YAML...\n")
-            
-            # CRITICAL: Create placeholder files to prevent cp command failures
-            leaderboard_path = output_path / "leaderboard.csv"
-            manifest_path = output_path / "champion_manifest.json"
+
+        if usable_results:
+            print(f"\n✅ Found {len(valid_results)} usable results (filtered out {len([r for r in all_results if not r.failed]) - len(valid_results)} timed-out/non-finite runs)")
+
+        if (
+            count_distinct_phaseb_candidates(valid_results)
+            < minimum_comparable_candidates
+        ):
+            print("\n❌ INSUFFICIENT COMPARABLE RESULTS - Cannot select a champion")
+            print(
+                "   Phase B requires at least "
+                f"{minimum_comparable_candidates} distinct completed candidates."
+            )
             results_path = output_path / "all_results.json"
-            
-            # Empty leaderboard with task-type-aware metric columns
-            _metric_cols = get_metric_columns_for_task(task_type)
-            pd.DataFrame(columns=["variant_id", "engine", "algorithm", "primary_metric"]
-                                  + _metric_cols
-                                  + ["runtime_sec", "n_features", "leakage_risk", "timed_out", "failed"]).to_csv(leaderboard_path, index=False)
-            print(f"   📊 Created empty leaderboard: {leaderboard_path}")
-            
-            # Placeholder champion manifest
-            placeholder_manifest = {
-                "variant_id": "none",
-                "variant_path": "none",
-                "engine": "none",
-                "algorithm": "none",
-                "primary_metric_name": primary_metric_name.lower().replace(" ", "_"),
-                "primary_metric_value": 0.0,
-                "metrics": {},
-                "preprocessing_config": {},
-                "feature_engineering_config": {},
-                "data_fingerprint": data_fingerprint,
-                "code_version": code_version,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "leakage_risk": "unknown",
-                "task_type": task_type,
-                "status": "no_valid_results"
-            }
-            with open(manifest_path, 'w') as f:
-                json.dump(placeholder_manifest, f, indent=2)
-            print(f"   🏆 Created placeholder manifest: {manifest_path}")
-            
-            # All results (failures only)
-            with open(results_path, 'w') as f:
-                json.dump([asdict(r) for r in all_results], f, indent=2, default=str)
-            print(f"   📄 Created results with failures: {results_path}")
-            
-            print(f"\n⚠️ Phase B Variant Runner completed with NO VALID RESULTS")
-            print(f"   Total attempts: {len(all_results)}")
-            print(f"   All failed or skipped - pipeline cannot proceed to champion selection\n")
-            
-            # T6: Safety net — train a simple default model so downstream steps have a model.pkl
-            try:
-                import joblib as _jl
-                _model_pkl = output_path / "model.pkl"
-                if not _model_pkl.exists():
-                    print(f"   🔄 T6: Training safety-net XGBoost with default params...")
-                    import xgboost as xgb
-                    if task_type == "classification" and target_column and target_column in df.columns:
-                        _X = df.drop(columns=[target_column]).select_dtypes(include=["number"])
-                        _y = df[target_column]
-                        if _X.shape[1] > 0:
-                            _X = _X.fillna(_X.median())
-                            from sklearn.preprocessing import LabelEncoder as _LE
-                            if _y.dtype == "object":
-                                _y = _LE().fit_transform(_y)
-                            _fb = xgb.XGBClassifier(n_estimators=50, random_state=42, n_jobs=-1)
-                            _fb.fit(_X, _y)
-                            _jl.dump(_fb, _model_pkl)
-                            placeholder_manifest["algorithm"] = "xgboost_safety_net"
-                            placeholder_manifest["status"] = "safety_net_fallback"
-                            with open(manifest_path, 'w') as f:
-                                json.dump(placeholder_manifest, f, indent=2)
-                            print(f"   ✅ Safety-net classifier saved: {_model_pkl}")
-                    elif task_type == "regression" and target_column and target_column in df.columns:
-                        _X = df.drop(columns=[target_column]).select_dtypes(include=["number"])
-                        _y = df[target_column]
-                        if _X.shape[1] > 0:
-                            _X = _X.fillna(_X.median())
-                            _fb = xgb.XGBRegressor(n_estimators=50, random_state=42, n_jobs=-1)
-                            _fb.fit(_X, _y)
-                            _jl.dump(_fb, _model_pkl)
-                            placeholder_manifest["algorithm"] = "xgboost_safety_net"
-                            placeholder_manifest["status"] = "safety_net_fallback"
-                            with open(manifest_path, 'w') as f:
-                                json.dump(placeholder_manifest, f, indent=2)
-                            print(f"   ✅ Safety-net regressor saved: {_model_pkl}")
-                    elif task_type == "clustering":
-                        _X = df.select_dtypes(include=["number"]).fillna(0)
-                        if _X.shape[1] > 0:
-                            from sklearn.cluster import KMeans as _KM
-                            _fb = _KM(n_clusters=3, random_state=42, n_init=10)
-                            _fb.fit(_X)
-                            _jl.dump(_fb, _model_pkl)
-                            placeholder_manifest["algorithm"] = "kmeans_safety_net"
-                            placeholder_manifest["status"] = "safety_net_fallback"
-                            with open(manifest_path, 'w') as f:
-                                json.dump(placeholder_manifest, f, indent=2)
-                            print(f"   ✅ Safety-net clustering model saved: {_model_pkl}")
-            except Exception as _sn_err:
-                print(f"   ⚠️  Safety-net model training failed (non-fatal): {_sn_err}")
-            
-            return
+            atomic_write(
+                results_path,
+                json.dumps(
+                    [asdict(r) for r in all_results],
+                    indent=2,
+                    default=str,
+                ),
+            )
+            write_variant_validation_report(
+                output_path,
+                variant_validation_reports,
+            )
+            require_valid_phaseb_results(
+                valid_results,
+                minimum_candidates=minimum_comparable_candidates,
+            )
         
         # ======== HARDENING FEATURE 4: NORMALIZED RESULTS ========
         # Generate leaderboard using VariantResult schema with unified scoring
@@ -2738,19 +3849,14 @@ def main():
         leaderboard_df_export = leaderboard_df.drop(columns=["score"])
         leaderboard_path = output_path / "leaderboard.csv"
         
-        # Deadline guard before leaderboard write
-        final_deadline = time.time() + 60  # Give 60s for final writes
-        if not deadline_guard(final_deadline, "before_leaderboard_write"):
-            # ======== HARDENING FEATURE 3: ATOMIC LEADERBOARD WRITE ========
-            leaderboard_temp = output_path / "leaderboard.csv.tmp"
-            leaderboard_df_export.to_csv(leaderboard_temp, index=False)
-            os.replace(str(leaderboard_temp), str(leaderboard_path))
-            print(f"\n📊 Leaderboard saved (atomic): {leaderboard_path}")
-        else:
-            # CRITICAL: Still create leaderboard to prevent component YAML copy failure
-            print(f"\n⚠️ Deadline exceeded - creating minimal leaderboard")
-            leaderboard_df_export.head(10).to_csv(leaderboard_path, index=False)
-            print(f"   Saved top 10 results to: {leaderboard_path}")
+        # The hard Phase B budget includes every output and lineage write.
+        final_deadline = phase_b_deadline
+        require_phase_b_budget(final_deadline, "before_leaderboard_write")
+        # ======== HARDENING FEATURE 3: ATOMIC LEADERBOARD WRITE ========
+        leaderboard_temp = output_path / "leaderboard.csv.tmp"
+        leaderboard_df_export.to_csv(leaderboard_temp, index=False)
+        os.replace(str(leaderboard_temp), str(leaderboard_path))
+        print(f"\n📊 Leaderboard saved (atomic): {leaderboard_path}")
         
         # Select champion using unified scoring (matches leaderboard sort)
         # Get variant_id + engine from top leaderboard row
@@ -2762,8 +3868,9 @@ def main():
                 break
         
         if champion_result is None:
-            # Fallback: use first valid result
-            champion_result = valid_results[0]
+            raise RuntimeError(
+                "Leaderboard champion has no exact retained candidate result"
+            )
         
         # Find corresponding variant config
         champion_variant_path = None
@@ -2773,7 +3880,11 @@ def main():
                 champion_variant_path = vp
                 break
         
-        champion_variant = load_variant(champion_variant_path) if champion_variant_path else None
+        if champion_variant_path is None:
+            raise RuntimeError(
+                "Leaderboard champion recipe is absent from the bounded catalog"
+            )
+        champion_variant = load_variant(champion_variant_path)
         
             # ======== HARDENING FEATURE 3: STABLE CHAMPION MANIFEST CONTRACT ========
         # Store original (non-negated) metric value in manifest
@@ -2781,6 +3892,119 @@ def main():
         original_metric_value = safe_float(
             champion_result.metrics.get("primary_metric") or 
             champion_result.metrics.get(primary_metric_name_lower)
+        )
+        champion_key = (champion_result.variant_id, champion_result.engine)
+        if champion_key != best_key:
+            raise RuntimeError(
+                "Leaderboard champion does not match the exact retained model: "
+                f"leaderboard={champion_key}, retained={best_key}"
+            )
+        if best_model is None or best_preprocessor is None:
+            raise RuntimeError(
+                "Exact champion model and fitted preprocessing graph must both "
+                "be retained"
+            )
+        with open(
+            champion_variant_path, "r", encoding="utf-8"
+        ) as champion_recipe_handle:
+            champion_recipe_hash = semantic_recipe_hash(
+                yaml.safe_load(champion_recipe_handle) or {},
+                task_type=task_type,
+            )
+        champion_search_candidate = next(
+            (
+                record
+                for record in canonical_candidate_records
+                if record.recipe_hash == champion_recipe_hash
+                and record.engine == champion_result.engine
+            ),
+            None,
+        )
+        if champion_search_candidate is None:
+            raise RuntimeError(
+                "Champion has no canonical catalog-derived CandidateRecord"
+            )
+        if not champion_result.candidate_id:
+            raise RuntimeError("Champion has no realized candidate identity")
+        parent_run_id = (
+            mlflow.active_run().info.run_id if mlflow.active_run() else None
+        )
+        raw_features = (
+            df.drop(columns=[target_column])
+            if target_column and target_column in df
+            else df.copy()
+        )
+        labels = (
+            tuple(
+                sorted(
+                    df[target_column].dropna().unique().tolist(),
+                    key=lambda value: str(value),
+                )
+            )
+            if task_type == "classification"
+            and target_column
+            and target_column in df
+            else ()
+        )
+        model_bundle = ModelBundle(
+            estimator=best_model,
+            preprocessing=best_preprocessor,
+            task_type=task_type,
+            candidate_id=champion_result.candidate_id,
+            input_schema=capture_input_schema(raw_features),
+            recipe=champion_variant.to_dict(),
+            selection_metrics=champion_result.metrics,
+            final_test_metrics={},
+            environment={
+                "environment_hash": execution_manifest.environment_hash,
+                "code_sha": execution_manifest.code_sha,
+                "component": "s06_phaseb_variant_runner",
+            },
+            lineage={
+                "execution_id": execution_manifest.execution_id,
+                "split_id": split_manifest.split_id,
+                "parent_run_id": parent_run_id,
+                "candidate_run_id": champion_result.mlflow_run_id,
+                "recipe_hash": champion_search_candidate.recipe_hash,
+                "parent_search_candidate_id": (
+                    champion_search_candidate.candidate_id
+                ),
+                "realized_candidate_id": champion_result.candidate_id,
+            },
+            dependencies=(
+                "mlflow",
+                "pandas",
+                "scikit-learn",
+                champion_result.engine,
+            ),
+            labels=labels,
+            input_example=(
+                raw_features.head(1).to_dict(orient="records")
+                if not raw_features.empty
+                else None
+            ),
+        )
+        bundle_manifest = save_model_bundle(model_bundle, output_path)
+        quality_decision = QualityDecision(
+            decision="block",
+            candidate_id=champion_result.candidate_id,
+            evaluated_bundle_hash=model_bundle.bundle_id,
+            metric_name=primary_metric_name_lower,
+            metric_value=original_metric_value,
+            threshold=None,
+            registration_allowed=False,
+            promotion_aliases=(),
+            registration_tags={
+                "quality_stage": "selection_only",
+                "locked_test_evaluated": "false",
+            },
+            reasons=(
+                "S10 owns the sole locked final-test evaluation",
+            ),
+        )
+        atomic_write(
+            output_path / "quality_decision.json",
+            quality_decision.to_json(indent=2),
         )
         
         champion_manifest = ChampionManifest(
@@ -2806,48 +4030,53 @@ def main():
             code_version=code_version,
             timestamp=datetime.utcnow().isoformat() + "Z",
             leakage_risk=champion_result.leakage_risk,
-            task_type=task_type
+            task_type=task_type,
+            safety_net_review_required=False,
+            review_status="locked_test_pending",
+            registration_eligible=False,
+            review_reason="S10 locked final-test evaluation is pending.",
+            execution_id=execution_manifest.execution_id,
+            candidate_id=champion_result.candidate_id,
+            mlflow_parent_run_id=parent_run_id,
+            mlflow_child_run_id=champion_result.mlflow_run_id,
+            recipe=champion_variant.to_dict(),
+            model_bundle_id=model_bundle.bundle_id,
         )
         
             # ======== HARDENING FEATURE 5: ATOMIC WRITES ========
         # Parent MLflow run already active (started at beginning of main())
         # All artifacts will be logged to this parent run
         
-        # Deadline guard before manifest write
         manifest_path = output_path / "champion_manifest.json"
-        if not deadline_guard(final_deadline, "before_manifest_write"):
-            # Save champion manifest with stable schema
-            atomic_write(manifest_path, json.dumps(asdict(champion_manifest), indent=2))
-            print(f"🏆 Champion manifest saved: {manifest_path}")
-            print(f"   Schema: ChampionManifest v1.1 (15 fields with primary_metric_name/value)")
-            
-            # Log to MLflow
-            try:
-                mlflow.log_artifact(str(manifest_path), "phase_b_outputs")
-                print(f"   ☁️  Logged to MLflow: phase_b_outputs/champion_manifest.json")
-            except Exception as e:
-                print(f"   ⚠️  Could not log manifest to MLflow: {e}")
-        else:
-            # CRITICAL: Still create manifest to prevent component YAML copy failure
-            print(f"⚠️ Deadline exceeded - creating minimal manifest")
-            with open(manifest_path, 'w') as f:
-                json.dump(asdict(champion_manifest), f, indent=2)
-            print(f"   Saved manifest to: {manifest_path}")
-        
+        require_phase_b_budget(final_deadline, "before_manifest_write")
+        # Save champion manifest with stable schema
+        atomic_write(manifest_path, json.dumps(asdict(champion_manifest), indent=2))
+        print(f"🏆 Champion manifest saved: {manifest_path}")
+        print(f"   Schema: ChampionManifest v1.1 (15 fields with primary_metric_name/value)")
+
+        # Log to MLflow
+        try:
+            mlflow.log_artifact(str(manifest_path), "phase_b_outputs")
+            print(f"   ☁️  Logged to MLflow: phase_b_outputs/champion_manifest.json")
+        except Exception as e:
+            print(f"   ⚠️  Could not log manifest to MLflow: {e}")
+
         # Save all results with normalized schema (atomic write)
         # CRITICAL: Always create this file (required by component YAML)
+        require_phase_b_budget(final_deadline, "before_results_write")
         results_path = output_path / "all_results.json"
         atomic_write(results_path, json.dumps([asdict(r) for r in all_results], indent=2, default=str))
         print(f"📄 All results saved: {results_path}")
         print(f"   Schema: VariantResult (10 fields, normalized across engines)")
-        
+        write_variant_validation_report(output_path, variant_validation_reports)
+
         # Log to MLflow
         try:
             mlflow.log_artifact(str(results_path), "phase_b_outputs")
             print(f"   ☁️  Logged to MLflow: phase_b_outputs/all_results.json")
         except Exception as e:
             print(f"   ⚠️  Could not log all_results to MLflow: {e}")
-        
+
         # ── Candidate Ledger ──────────────────────────────────────────────
         try:
             _ledger_rows = []
@@ -2897,6 +4126,7 @@ def main():
         except Exception as _ledger_err:
             print(f"⚠️  Candidate ledger write failed (non-fatal): {_ledger_err}")
         
+        require_phase_b_budget(final_deadline, "before_signal_artifacts")
         # ======== PHASE B SIGNAL ARTIFACTS ========
         print(f"\n{'='*80}")
         print(f"PHASE B SIGNAL ARTIFACTS")
@@ -3016,281 +4246,79 @@ def main():
                 print(f"   ☁️  Logged signal metrics to MLflow parent run")
             except Exception as e:
                 print(f"   ⚠️  Could not log signal metrics to MLflow: {e}")
-        
-        print(f"{'='*80}\n")
-        
-        # ======== HARDENING FEATURE 4: CHAMPION MODEL ARTIFACT ========
-        # Validate champion consistency before saving
-        champion_key = (champion_result.variant_id, champion_result.engine)
-        
-        print(f"\n🎯 Champion Selection:")
-        print(f"   Variant: {champion_manifest.variant_id}")
-        print(f"   Engine: {champion_manifest.engine}")
-        print(f"   Algorithm: {champion_manifest.algorithm}")
-        print(f"   Metric: {champion_manifest.primary_metric_name} = {champion_manifest.primary_metric_value:.4f}")
-        
-        # Check champion consistency — mismatch is a hard error
-        # best_key == (None, None) means no usable (non-timed-out) model was
-        # retained in memory; fall through to the best_model-is-None branch.
-        if best_key != (None, None) and champion_key != best_key:
-            diagnostic = (
-                f"Champion mismatch detected!\n"
-                f"   Leaderboard champion: {champion_key}\n"
-                f"   Best tracked model:   {best_key}\n"
-                f"   This indicates a bug in champion selection logic."
-            )
-            print(f"\n🚨 FATAL: {diagnostic}")
-            
-            # Save diagnostic info before aborting
-            pointer_data = {
-                "reason": "mismatch",
-                "leaderboard_champion": {
-                    "variant_id": champion_key[0],
-                    "engine": champion_key[1]
-                },
-                "tracked_best": {
-                    "variant_id": best_key[0] if best_key[0] is not None else None,
-                    "engine": best_key[1] if best_key[1] is not None else None
-                },
-                "mlflow": {
-                    "tracking_uri": mlflow.get_tracking_uri(),
-                    "parent_run_id": mlflow.active_run().info.run_id if mlflow.active_run() else None,
-                }
-            }
-            pointer_path = output_path / "champion_model_pointer.json"
-            atomic_write(pointer_path, json.dumps(pointer_data, indent=2))
-            print(f"   📋 Diagnostic saved: {pointer_path}")
-            
-            # T14: Downgrade mismatch from fatal RuntimeError to warning + safety-net.
-            # The leaderboard champion still has valid metrics; the in-memory model
-            # was evicted (e.g. timeout).  Proceed to safety-net so downstream has model.pkl.
-            print(f"   🔄 T14: Proceeding to safety-net instead of aborting...")
-            best_model = None  # force safety-net path below
 
-        # T14: Separate `if` (not elif) so mismatch path falls through to safety-net
-        if best_model is None:
-            print(f"   ⚠️  WARNING: No champion model available (all attempts failed/timed out)")
-            # T6: Safety net — train a default model so downstream has model.pkl
-            _model_pkl = output_path / "model.pkl"
-            if not _model_pkl.exists():
-                try:
-                    import joblib as _jl_fb
-                    import xgboost as _xgb_fb
-                    print(f"   🔄 T6: Training safety-net XGBoost...")
-                    if task_type in ("classification", "regression") and target_column and target_column in df.columns:
-                        _X = df.drop(columns=[target_column]).select_dtypes(include=["number"]).fillna(0)
-                        _y = df[target_column]
-                        if _X.shape[1] > 0:
-                            if task_type == "classification":
-                                from sklearn.preprocessing import LabelEncoder as _LE2
-                                if _y.dtype == "object":
-                                    _y = _LE2().fit_transform(_y)
-                                _fb = _xgb_fb.XGBClassifier(n_estimators=50, random_state=42, n_jobs=-1)
-                            else:
-                                _fb = _xgb_fb.XGBRegressor(n_estimators=50, random_state=42, n_jobs=-1)
-                            _fb.fit(_X, _y)
-                            _jl_fb.dump(_fb, _model_pkl)
-                            print(f"   ✅ Safety-net model saved: {_model_pkl}")
-                    elif task_type == "clustering":
-                        # T14: Add clustering safety-net
-                        _X = df.select_dtypes(include=["number"]).fillna(0)
-                        if _X.shape[1] > 0:
-                            from sklearn.cluster import KMeans as _KM2
-                            _fb = _KM2(n_clusters=3, random_state=42, n_init=10)
-                            _fb.fit(_X)
-                            _jl_fb.dump(_fb, _model_pkl)
-                            print(f"   ✅ Safety-net clustering model saved: {_model_pkl}")
-                except Exception as _sn2_err:
-                    print(f"   ⚠️  Safety-net failed (non-fatal): {_sn2_err}")
-        elif deadline_guard(final_deadline, "before_model_save"):
-            print(f"   ⚠️  Skipped champion model save (deadline exceeded)")
-        else:
-            # Save champion model to disk atomically
-            # CRITICAL: Save as model.pkl (not champion_model.pkl) for downstream compatibility
-            # final_evaluation.py load_model_and_encoder() expects model.pkl inside folder
-            # CRITICAL: Use joblib (not pickle) — s10 loads with joblib.load()
-            import joblib as _joblib
-            model_path = output_path / "model.pkl"
-            model_temp = output_path / "model.pkl.tmp"
+        if variant_anomaly_reports:
+            anomaly_path = output_path / "variant_anomaly_report.json"
+            anomaly_csv_path = output_path / "variant_anomaly_report.csv"
+            atomic_write(anomaly_path, json.dumps(variant_anomaly_reports, indent=2, default=str))
+            pd.DataFrame(variant_anomaly_reports).to_csv(anomaly_csv_path, index=False)
+            print(f"🧪 Variant anomaly report: {anomaly_path} / {anomaly_csv_path}")
             try:
-                _joblib.dump(best_model, str(model_temp))
-                os.replace(str(model_temp), str(model_path))
-                print(f"   💾 Champion model saved to disk (atomic): {model_path}")
-                
-                # Log to MLflow
-                try:
-                    mlflow.log_artifact(str(model_path), "phase_b_outputs")
-                    print(f"   ☁️  Logged to MLflow: phase_b_outputs/model.pkl")
-                except Exception as e:
-                    print(f"   ⚠️  Could not log champion model to MLflow: {e}")
+                mlflow.log_artifact(str(anomaly_path), "phase_b_outputs")
+                mlflow.log_artifact(str(anomaly_csv_path), "phase_b_outputs")
             except Exception as e:
-                print(f"   ⚠️  Could not save champion model to disk: {e}")
-                if model_temp.exists():
-                    model_temp.unlink()
+                print(f"   ⚠️  Could not log variant anomaly report to MLflow: {e}")
         
-        # ════════════════════════════════════════════════════════════════════
-        # BATCH 3 FIX: HOLDOUT EVALUATION — honest out-of-sample metrics
-        # for the champion model on the 20% holdout set.
-        # ════════════════════════════════════════════════════════════════════
-        if best_model is not None and df_holdout is not None and len(df_holdout) > 0:
-            print(f"\n{'='*60}")
-            print(f"🧪 HOLDOUT EVALUATION (unseen 20% data)")
-            print(f"{'='*60}")
-            try:
-                # Apply same preprocessing as champion variant to holdout
-                # CRITICAL: Use training-aligned preprocessing (fit on train, transform holdout)
-                if champion_variant is not None:
-                    df_holdout_proc = preprocess_holdout_aligned(
-                        df, df_holdout, champion_variant, target_column
-                    )
-                else:
-                    df_holdout_proc = df_holdout.copy()
-
-                if target_column in df_holdout_proc.columns:
-                    X_holdout = df_holdout_proc.drop(columns=[target_column])
-                    y_holdout = df_holdout_proc[target_column]
-                else:
-                    raise ValueError(f"Target column '{target_column}' not in preprocessed holdout")
-
-                # Align columns to what the trained model expects
-                if hasattr(best_model, 'feature_names_in_'):
-                    train_features = list(best_model.feature_names_in_)
-                elif hasattr(best_model, 'feature_name_'):
-                    train_features = list(best_model.feature_name_)
-                elif hasattr(best_model, 'feature_names_'):
-                    # CatBoost uses feature_names_ attribute
-                    train_features = list(best_model.feature_names_)
-                else:
-                    train_features = None
-
-                if train_features is not None:
-                    missing_cols = set(train_features) - set(X_holdout.columns)
-                    extra_cols = set(X_holdout.columns) - set(train_features)
-                    if missing_cols:
-                        print(f"   ⚠️  Adding {len(missing_cols)} missing columns (zeroed)")
-                    if extra_cols:
-                        print(f"   ⚠️  Dropping {len(extra_cols)} extra columns")
-                    X_holdout = X_holdout.reindex(columns=train_features, fill_value=0)
-
-                # ── Save preprocessed holdout data for downstream s10 evaluation ──
-                # s10 receives s4 (baseline-preprocessed) data but Phase B model
-                # expects variant-preprocessed data. Saving the aligned holdout
-                # here lets s10 evaluate Phase B on correctly preprocessed data.
-                try:
-                    eval_df = X_holdout.copy()
-                    eval_df[target_column] = y_holdout.values
-                    eval_data_path = output_path / "phaseb_eval_data.csv"
-                    eval_df.to_csv(eval_data_path, index=False)
-                    print(f"   📁 Phase B eval data saved for s10: {eval_data_path} ({len(eval_df)} rows)")
-                except Exception as _save_err:
-                    print(f"   ⚠️  Could not save Phase B eval data (non-fatal): {_save_err}")
-
-                y_pred = best_model.predict(X_holdout)
-
-                holdout_metrics = {}
-                if task_type == "classification":
-                    from sklearn.metrics import (accuracy_score, f1_score,
-                                                 precision_score, recall_score,
-                                                 roc_auc_score, balanced_accuracy_score)
-                    holdout_metrics["holdout_accuracy"] = float(accuracy_score(y_holdout, y_pred))
-                    holdout_metrics["holdout_balanced_accuracy"] = float(balanced_accuracy_score(y_holdout, y_pred))
-                    holdout_metrics["holdout_f1"] = float(f1_score(y_holdout, y_pred, average="weighted", zero_division=0))
-                    holdout_metrics["holdout_precision"] = float(precision_score(y_holdout, y_pred, average="weighted", zero_division=0))
-                    holdout_metrics["holdout_recall"] = float(recall_score(y_holdout, y_pred, average="weighted", zero_division=0))
-                    if hasattr(best_model, 'predict_proba'):
-                        try:
-                            y_proba = best_model.predict_proba(X_holdout)
-                            n_classes = y_proba.shape[1] if len(y_proba.shape) > 1 else 2
-                            if n_classes == 2:
-                                holdout_metrics["holdout_auc"] = float(roc_auc_score(y_holdout, y_proba[:, 1]))
-                            else:
-                                holdout_metrics["holdout_auc"] = float(roc_auc_score(y_holdout, y_proba, multi_class="ovr", average="weighted"))
-                        except Exception as e:
-                            logger.debug("holdout AUC computation failed: %s", e)
-                elif task_type == "regression":
-                    from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-                    holdout_metrics["holdout_r2"] = float(r2_score(y_holdout, y_pred))
-                    holdout_metrics["holdout_mse"] = float(mean_squared_error(y_holdout, y_pred))
-                    holdout_metrics["holdout_rmse"] = float(mean_squared_error(y_holdout, y_pred, squared=False))
-                    holdout_metrics["holdout_mae"] = float(mean_absolute_error(y_holdout, y_pred))
-
-                for k, v in holdout_metrics.items():
-                    print(f"   {k}: {v:.4f}")
-
-                # Log to MLflow
-                try:
-                    mlflow.log_metrics(holdout_metrics)
-                    print(f"   ☁️  Logged holdout metrics to MLflow parent run")
-                except Exception as e:
-                    print(f"   ⚠️  Could not log holdout metrics to MLflow: {e}")
-
-                # Save holdout metrics to JSON
-                holdout_metrics_path = output_path / "holdout_metrics.json"
-                with open(holdout_metrics_path, 'w') as f:
-                    json.dump(holdout_metrics, f, indent=2)
-                print(f"   📄 Holdout metrics saved: {holdout_metrics_path}")
-
-                # Update champion manifest with holdout metrics
-                champion_manifest.metrics["holdout"] = holdout_metrics
-                atomic_write(manifest_path, json.dumps(asdict(champion_manifest), indent=2))
-                print(f"   📋 Updated champion manifest with holdout metrics")
-
-            except Exception as e:
-                print(f"   ⚠️  Holdout evaluation failed (non-fatal): {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            if best_model is None:
-                print(f"\n⚠️  Skipping holdout evaluation (no champion model)")
-            elif df_holdout is None or len(df_holdout) == 0:
-                print(f"\n⚠️  Skipping holdout evaluation (no holdout data)")
-
-        # Log leaderboard to MLflow
+        # S06 ends at selection and immutable raw-input bundle emission.  S10
+        # alone mounts and evaluates the locked final-test partition.
+        require_phase_b_budget(final_deadline, "before_final_manifest_update")
+        validated_execution_payload["realized_candidate_records"] = [
+            result.candidate_record
+            for result in all_results
+            if result.candidate_record is not None
+        ]
+        atomic_write(
+            output_path / "execution_manifest.json",
+            json.dumps(
+                validated_execution_payload,
+                indent=2,
+                sort_keys=True,
+                default=str,
+            ),
+        )
+        for artifact in (
+            leaderboard_path,
+            results_path,
+            manifest_path,
+            output_path / "model_bundle.pkl",
+            output_path / "model_bundle_manifest.json",
+            output_path / "quality_decision.json",
+        ):
+            if not artifact.is_file() or artifact.stat().st_size <= 0:
+                raise RuntimeError(f"Required Phase B artifact missing: {artifact}")
         try:
-            mlflow.log_artifact(str(leaderboard_path), "phase_b_outputs")
-            print(f"\n☁️  Logged to MLflow: phase_b_outputs/leaderboard.csv")
-        except Exception as e:
-            print(f"⚠️  Could not log leaderboard to MLflow: {e}")
-        
-        print(f"\n✅ Phase B Variant Runner completed successfully!")
-        print(f"   Total valid results: {len(valid_results)}")
-        print(f"   Skipped: {skipped_count} | Failed: {failed_count}")
-        print(f"   Leakage Risk: {champion_manifest.leakage_risk}")
-        print(f"   Data Fingerprint: {data_fingerprint['hash'][:12]}...")
-        print(f"   Code Version: {code_version}")
-        
-        # V3-Proposed: Log cache stats
-        if preprocessing_cache.enabled:
-            cache_stats = preprocessing_cache.get_stats()
-            print(f"\n🗄️  PREPROCESSING CACHE STATS:")
-            print(f"   Hits: {cache_stats['hits']} | Misses: {cache_stats['misses']}")
-            print(f"   Hit Rate: {cache_stats['hit_rate']:.1%}")
-            print(f"   Stores: {cache_stats['stores']} | Evictions: {cache_stats['evictions']}")
-            
-            # Log to MLflow
-            try:
-                mlflow.log_metrics({
-                    "cache_hits": cache_stats['hits'],
-                    "cache_misses": cache_stats['misses'],
-                    "cache_hit_rate": cache_stats['hit_rate'],
-                    "cache_stores": cache_stats['stores']
-                })
-            except Exception as e:
-                print(f"   ⚠️  Could not log cache stats to MLflow: {e}")
-        
-        # V3-Proposed: Log planner metrics if enabled
-        if args.planner_enabled and variant_plan:
-            print(f"\n📋 PLANNER METRICS:")
-            print(f"   Original variants: {variant_plan.round0_summary.get('total_variants', 'N/A') if hasattr(variant_plan, 'round0_summary') else 'N/A'}")
-            print(f"   Selected for training: {len(variant_paths)}")
-            try:
-                mlflow.log_artifact(str(output_path / "variant_plan.json"), "phase_b_outputs")
-                print(f"   ☁️  Logged variant_plan.json to MLflow")
-            except Exception as e:
-                print(f"   ⚠️  Could not log variant_plan.json: {e}")
-        
-        print()
-    
+            for artifact in (
+                output_path / "model_bundle.pkl",
+                output_path / "model_bundle_manifest.json",
+                output_path / "quality_decision.json",
+            ):
+                mlflow.log_artifact(str(artifact), "phase_b_outputs")
+        except Exception as exc:
+            logger.warning("Phase B artifact logging failed: %s", exc)
+        publication_map = {
+            args.leaderboard_out: leaderboard_path,
+            args.all_results_out: results_path,
+            args.champion_manifest_out: manifest_path,
+            args.execution_manifest_out: (
+                output_path / "execution_manifest.json"
+            ),
+            args.split_manifest_out: output_path / "split_manifest.json",
+            args.quality_decision_out: (
+                output_path / "quality_decision.json"
+            ),
+        }
+        for destination, source in publication_map.items():
+            if destination:
+                require_phase_b_budget(
+                    final_deadline,
+                    f"before_publish_{source.name}",
+                )
+                atomic_copy_file(source, destination)
+        print(
+            "✅ Phase B completed at the selection boundary; locked final-test "
+            "evaluation remains pending in S10."
+        )
+        return
     finally:
         # End parent run only if we created it (not in Azure ML pipeline context)
         # Azure ML pipeline will close the step run automatically
@@ -3302,4 +4330,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(run_phase_b_cli())

@@ -51,6 +51,16 @@ def load_json(path: str):
         return None
 
 
+def has_exact_model_bundle(path: Path) -> bool:
+    return (
+        path.is_dir()
+        and (path / "model_bundle.pkl").is_file()
+        and (path / "model_bundle.pkl").stat().st_size > 0
+        and (path / "model_bundle_manifest.json").is_file()
+        and (path / "model_bundle_manifest.json").stat().st_size > 0
+    )
+
+
 def main():
     _t0 = time.time()
     parser = argparse.ArgumentParser()
@@ -108,7 +118,7 @@ def main():
     src = Path(args.optimized_model)
     print(f"🏆 Phase C Aggregate: HPO best_score={metrics.get('best_score')}")
     
-    if src.exists():
+    if metrics.get("status") == "success" and has_exact_model_bundle(src):
         import shutil
         try:
             # Azure ML-safe copy with absolute path resolution
@@ -137,6 +147,50 @@ def main():
             
             report["model_copied"] = True
             report["files_copied"] = copied_count
+            (output_path / "selection_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2,
+                        "status": metrics.get("status", "success"),
+                        "phase": "phasec",
+                        "candidate_id": (
+                            metrics.get("candidate_id")
+                            or (metrics.get("model_bundle") or {}).get("candidate_id")
+                        ),
+                        "algorithm": metrics.get("algorithm"),
+                        "selection_score": metrics.get("best_score"),
+                        "metric_name": metrics.get("selection_metric"),
+                        "selection_evidence": metrics.get("selection_evidence"),
+                        "split_fingerprint": metrics.get(
+                            "split_fingerprint"
+                        ),
+                        "total_folds": metrics.get("total_folds"),
+                        "same_family": metrics.get("same_family"),
+                        "execution_id": metrics.get("execution_id"),
+                        "mlflow_parent_run_id": metrics.get(
+                            "mlflow_parent_run_id"
+                        ),
+                        "mlflow_child_run_id": metrics.get(
+                            "mlflow_child_run_id"
+                        ),
+                        "lineage": (
+                            (metrics.get("model_bundle") or {}).get("lineage")
+                            or {
+                                "execution_id": metrics.get("execution_id"),
+                                "parent_run_id": metrics.get(
+                                    "mlflow_parent_run_id"
+                                ),
+                                "candidate_run_id": metrics.get(
+                                    "mlflow_child_run_id"
+                                ),
+                            }
+                        ),
+                    },
+                    indent=2,
+                    default=str,
+                ),
+                encoding="utf-8",
+            )
             
             # Validate outputs immediately after copying
             print("\n🔍 Validating champion model output...")
@@ -149,10 +203,11 @@ def main():
                 print(f"  ❌ Output validation failed:")
                 for err in validation["errors"]:
                     print(f"     - {err}")
-            # T4: Verify model.pkl specifically exists (not just .error or other files)
-            if not (output_path / "model.pkl").exists():
-                (output_path / ".no_model").write_text("Source had no model.pkl (only .error or other files)")
-                print(f"  ⚠️  No model.pkl in copied files — wrote .no_model sentinel")
+            if not has_exact_model_bundle(output_path):
+                (output_path / ".no_model").write_text(
+                    "Source had no exact ModelBundle"
+                )
+                print("  ⚠️  No exact ModelBundle — wrote .no_model sentinel")
                 report["model_copied"] = False
         except Exception as e:
             print(f"  ❌ Error copying model: {e}")
@@ -163,8 +218,13 @@ def main():
         # T4: Create output folder with sentinel file so downstream knows no model was produced
         output_path = Path(args.champion_out).resolve()
         output_path.mkdir(parents=True, exist_ok=True)
-        (output_path / ".no_model").write_text("HPO produced no model artifact")
-        print(f"  ⚠️  HPO model path missing: {src} — wrote .no_model sentinel")
+        (output_path / ".no_model").write_text(
+            "HPO produced no exact successful ModelBundle"
+        )
+        print(
+            f"  ⚠️  HPO output is skipped/incomplete: {src} "
+            "— wrote .no_model sentinel"
+        )
     
     # Update report with final status (absolute path)
     with open(report_path, "w") as f:

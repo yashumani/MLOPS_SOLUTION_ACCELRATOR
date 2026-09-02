@@ -19,6 +19,17 @@ from utils.candidate_ledger import (
 )
 from utils.model_universe import get_model_list, build_coverage_report, write_model_coverage
 from utils.model_universe import build_pycaret_breakdown, write_model_breakdown
+from utils.common_evaluator import EvaluationSpec, evaluate_candidate
+from utils.phasea_model_bundle import (
+    PhaseABundleError,
+    build_phasea_evaluation_pipeline,
+    fit_discovery_preprocessor,
+    fit_save_phasea_bundle,
+    load_baseline_recipe,
+    load_phasea_split_manifest,
+    phasea_candidate_id,
+    split_raw_training_frame,
+)
 
 import os
 
@@ -50,17 +61,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--dataset_in", required=True)
+    parser.add_argument("--split_manifest", required=True)
     parser.add_argument("--metrics_out", required=True)
     parser.add_argument("--manifest_out", required=True)
     parser.add_argument("--model_out", required=True)
     args = parser.parse_args()
-
-    # 🔥 FIX: Convert azureml:// to https:// to avoid model registry errors
-    _mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "")
-    if _mlflow_uri.startswith("azureml://"):
-        import mlflow
-        mlflow.set_tracking_uri(_mlflow_uri.replace("azureml://", "https://"))
-        print("🔗 MLflow tracking URI converted to HTTPS")
 
     # Load config
     import yaml
@@ -69,17 +74,50 @@ def main():
     task_type = cfg.get("task_type") or cfg.get("dataset", {}).get("task_type") or "classification"
     target_col = cfg.get("dataset", {}).get("target_column")
     delimiter = cfg.get("dataset", {}).get("delimiter", ",")
+    _baseline_cfg = cfg.get("phases", {}).get("phase_a_baseline", {}) or {}
+    _cv_folds = int(_baseline_cfg.get("cv_folds", 5))
+    _candidate_timeout = min(
+        600.0,
+        float(_baseline_cfg.get("candidate_engine_timeout_seconds", 600)),
+    )
+    _execution_id = (
+        os.getenv("MLOPS_EXECUTION_ID")
+        or os.getenv("AZUREML_ROOT_RUN_ID")
+        or os.getenv("AZUREML_RUN_ID")
+    )
+    _seed = int(cfg.get("random_seed", 42))
 
-    # 🔥 Agent 1: prefer sibling train.csv (holdout-leak-safe). Falls back to
-    # the combined dataset for backward compatibility with older artifacts.
-    _ds_path = Path(args.dataset_in)
-    _train_sibling = _ds_path.parent / "train.csv"
-    if _train_sibling.exists() and _train_sibling.stat().st_size > 0:
-        df = pd.read_csv(_train_sibling, sep=delimiter)
-        print(f"   ✅ Loaded sibling train.csv ({len(df):,} rows) — holdout isolated")
-    else:
-        df = pd.read_csv(args.dataset_in, sep=delimiter)
-        print(f"   ⚠️ No sibling train.csv — using combined dataset ({len(df):,} rows)")
+    # Stage 2 owns the locked-test boundary. Phase A consumes only its declared
+    # raw training output and binds it to the exact SplitManifest.
+    _raw_df = pd.read_csv(args.dataset_in, sep=delimiter)
+    _split_manifest = load_phasea_split_manifest(
+        args.split_manifest,
+        task_type=task_type,
+        train_count=len(_raw_df),
+        random_seed=_seed,
+    )
+    _phasea_recipe = load_baseline_recipe(
+        Path(__file__).resolve().parents[2],
+        task_type,
+    )
+    _raw_features, _raw_target = split_raw_training_frame(
+        _raw_df,
+        task_type=task_type,
+        target_column=target_col,
+    )
+    _discovery_features, _ = fit_discovery_preprocessor(
+        _raw_features,
+        _raw_target,
+        recipe=_phasea_recipe,
+        random_seed=_seed,
+    )
+    df = _discovery_features.copy()
+    if _raw_target is not None:
+        df[target_col] = _raw_target.to_numpy()
+    print(
+        f"   Loaded Stage 2 raw train ({len(_raw_df):,} rows); "
+        f"split_id={_split_manifest.split_id[:12]}"
+    )
 
     # Validate target column (required for classification/regression)
     if task_type != "clustering":
@@ -95,7 +133,15 @@ def main():
 
     # Train via PyCaret
     metrics = {}
-    manifest = {"engine": "pycaret", "models": []}
+    manifest = {
+        "schema_version": 2,
+        "engine": "pycaret",
+        "task_type": task_type,
+        "models": [],
+        "split_id": _split_manifest.split_id,
+        "raw_input_bundle_eligible": False,
+        "status": "pending",
+    }
 
     try:
         if task_type == "classification":
@@ -114,27 +160,30 @@ def main():
             print(f"   Target distribution: {target_counts.to_dict()}")
             print(f"   Imbalance ratio: {imbalance_ratio:.3f}")
 
-            # 🔥 FIX (A3): Double-SMOTE guard
-            # If an upstream recipe (Stage 3) already applied SMOTE, the target distribution
-            # will be near-balanced (ratio ~1.0) and this threshold naturally prevents double-SMOTE.
-            # Explicit guard: if ratio >= 0.8 AND we'd normally expect imbalance, SMOTE was already applied.
-            use_fix_imbalance = imbalance_ratio < 0.35
+            imbalance_method = str(
+                _phasea_recipe["stage3_preprocessing"]
+                ["imbalance_handling"].get("method", "none")
+            )
+            use_fix_imbalance = imbalance_method in {
+                "smote",
+                "adasyn",
+                "smoteenn",
+                "smotetomek",
+            }
             sort_metric = "AUC"
 
             if use_fix_imbalance:
-                if imbalance_ratio >= 0.8:
-                    # Data looks balanced despite originating from an imbalanced dataset —
-                    # upstream recipe likely applied SMOTE already. Skip PyCaret's SMOTE.
-                    print(f"   ⚠️  Ratio {imbalance_ratio:.3f} ≥ 0.8 — likely upstream SMOTE already applied, skipping fix_imbalance")
-                    use_fix_imbalance = False
-                else:
-                    print(f"   Imbalance detected (ratio {imbalance_ratio:.3f} < 0.35) -> fix_imbalance=True (SMOTE)")
+                print(
+                    "   Baseline recipe requests imbalance handling "
+                    f"({imbalance_method}); enabling PyCaret discovery resampling"
+                )
             else:
-                print(f"   Balanced enough (ratio {imbalance_ratio:.3f}) -> no SMOTE")
+                print("   Baseline recipe specifies no imbalance resampling")
 
-            # Adaptive fold count: 3 for large datasets, 5 for small
-            _n_folds = 3 if df.shape[0] > 50_000 else 5
-            print(f"   CV folds: {_n_folds} (adaptive; rows={df.shape[0]:,})")
+            _n_folds = min(_cv_folds, int(target_counts.min()))
+            if _n_folds < 2:
+                raise ValueError("Classification baseline requires two rows per class")
+            print(f"   Discovery CV folds: {_n_folds}")
 
             _include = get_model_list("classification", "pycaret") or None
             print(f"   Models : {len(_include) if _include else 'ALL'} from MODEL_UNIVERSE")
@@ -142,7 +191,7 @@ def main():
             setup(
                 data=df,
                 target=target_col,
-                session_id=int(cfg.get("random_seed", 42)),
+                session_id=_seed,
                 verbose=False,
                 log_experiment=False,
                 fix_imbalance=use_fix_imbalance,
@@ -158,7 +207,8 @@ def main():
             )
 
             best = compare_models(sort=sort_metric, n_select=1,
-                                  include=_include, turbo=True)
+                                  include=_include, turbo=True,
+                                  budget_time=_candidate_timeout / 60.0)
             leaderboard = pull()
 
             # ── Extract ALL CV metrics from PyCaret leaderboard ──
@@ -172,45 +222,10 @@ def main():
                     metrics[_cv_key] = round(float(leaderboard[_pc_col].iloc[0]), 4)
             print(f"   CV metrics extracted: {[k for k in metrics if k.startswith('cv_')]}")
 
-            # --- Threshold tuning for imbalanced classification ---
-            try:
-                preds_df = predict_model(best, data=df)
-                score_col = "prediction_score" if "prediction_score" in preds_df.columns else "Score"
-                y_true = df[target_col]
-                y_proba = preds_df[score_col] if score_col in preds_df.columns else None
-                label_col = "prediction_label" if "prediction_label" in preds_df.columns else "Label"
-
-                if label_col in preds_df.columns:
-                    metrics["balanced_accuracy"] = round(
-                        float(balanced_accuracy_score(y_true, preds_df[label_col])), 4
-                    )
-
-                if y_proba is not None:
-                    pos_label = target_counts.idxmin()
-                    auc = roc_auc_score(y_true, y_proba)
-                    pr_auc = average_precision_score(y_true, y_proba, pos_label=pos_label)
-                    opt_thresh, opt_f1 = _optimal_threshold_f1(y_true, y_proba, pos_label)
-
-                    y_pred_tuned = (y_proba >= opt_thresh).astype(int)
-                    cr = classification_report(y_true, y_pred_tuned, output_dict=True, zero_division=0)
-                    cm = confusion_matrix(y_true, y_pred_tuned)
-
-                    metrics["auc"] = round(auc, 4)
-                    metrics["pr_auc"] = round(pr_auc, 4)
-                    metrics["optimal_threshold"] = opt_thresh
-                    metrics["f1_at_optimal_threshold"] = opt_f1
-                    pos_report = cr.get(str(pos_label), cr.get("weighted avg", {}))
-                    metrics["recall"] = round(float(pos_report.get("recall", 0)), 4)
-                    metrics["precision"] = round(float(pos_report.get("precision", 0)), 4)
-                    metrics["confusion_matrix"] = cm.tolist()
-
-                    print(f"   AUC: {auc:.4f} | PR-AUC: {pr_auc:.4f}")
-                    print(f"   Optimal threshold: {opt_thresh} -> F1={opt_f1:.4f}")
-                    print(f"   Confusion matrix (threshold={opt_thresh}):\n{cm}")
-                else:
-                    print("   prediction_score column not found; skipping threshold tuning")
-            except Exception as thr_err:
-                print(f"   Threshold tuning failed (non-fatal): {thr_err}")
+            # Thresholds are not tuned on the training frame.  Candidate
+            # comparison below uses one shared out-of-fold evaluator; any
+            # threshold policy is frozen before the one locked-test audit.
+            metrics["optimal_threshold"] = None
 
             metrics["imbalance_ratio"] = round(imbalance_ratio, 4)
             metrics["fix_imbalance_applied"] = use_fix_imbalance
@@ -219,7 +234,9 @@ def main():
         elif task_type == "regression":
             from pycaret.regression import setup, compare_models, pull, save_model
 
-            _n_folds = 3 if df.shape[0] > 50_000 else 5
+            _n_folds = min(_cv_folds, len(df))
+            if _n_folds < 2:
+                raise ValueError("Regression baseline requires at least two rows")
             _include = get_model_list("regression", "pycaret") or None
             print(f"\nPyCaret Regression Baseline")
             print(f"   Dataset : {df.shape[0]:,} rows × {df.shape[1]} cols")
@@ -227,13 +244,14 @@ def main():
             print(f"   CV folds: {_n_folds} (adaptive)")
             # K5: preprocess=False prevents PyCaret from re-encoding/re-scaling
             # data that stage 3 has already preprocessed via the recipe.
-            setup(data=df, target=target_col, session_id=int(cfg.get("random_seed", 42)), verbose=False,
+            setup(data=df, target=target_col, session_id=_seed, verbose=False,
                   log_experiment=False, fold=_n_folds,
                   preprocess=False, normalize=False, transformation=False)
             # T19: Guard against empty leaderboard from compare_models
             try:
                 best = compare_models(sort="R2", n_select=1,
-                                      include=_include, turbo=True)
+                                      include=_include, turbo=True,
+                                      budget_time=_candidate_timeout / 60.0)
                 leaderboard = pull()
             except Exception as _cmp_err:
                 print(f"  ⚠️  T19: compare_models failed: {_cmp_err}")
@@ -262,19 +280,113 @@ def main():
             
             # K5: preprocess=False prevents PyCaret from re-scaling clustering
             # features. Stage 3 has already standardized them per the recipe.
-            setup(data=df, session_id=int(cfg.get("random_seed", 42)), verbose=False, log_experiment=False,
+            setup(data=df, session_id=_seed, verbose=False, log_experiment=False,
                   preprocess=False, normalize=False, transformation=False)
             best = create_model("kmeans")
             leaderboard = pull()
 
             predictions = best.predict(df)
-            sil = silhouette_score(df.select_dtypes(include=[np.number]).astype(np.float64), predictions)
-            db = davies_bouldin_score(df.select_dtypes(include=[np.number]).astype(np.float64), predictions)
+            numeric_frame = df.select_dtypes(include=[np.number]).astype(np.float64)
+            sil = silhouette_score(
+                numeric_frame,
+                predictions,
+                sample_size=min(len(numeric_frame), 10_000),
+                random_state=_seed,
+            )
+            db = davies_bouldin_score(numeric_frame, predictions)
             metrics["silhouette_score"] = round(sil, 4)
             metrics["davies_bouldin_score"] = round(db, 4)
             print(f"   silhouette={sil:.4f}, davies_bouldin={db:.4f}")
         else:
             raise ValueError(f"Unknown task_type: {task_type}")
+
+        _candidate_id = phasea_candidate_id("pycaret", best, _phasea_recipe)
+        _evaluation_model = build_phasea_evaluation_pipeline(
+            best,
+            recipe=_phasea_recipe,
+            task_type=task_type,
+            random_seed=_seed,
+        )
+        _evidence = evaluate_candidate(
+            _evaluation_model,
+            _raw_features,
+            _raw_target,
+            candidate_id=_candidate_id,
+            engine="pycaret",
+            spec=EvaluationSpec(
+                task_type=task_type,
+                seed=_seed,
+                folds=_cv_folds,
+                timeout_seconds=_candidate_timeout,
+                execution_id=_execution_id,
+            ),
+            mlflow_parent_run_id=_execution_id,
+            mlflow_child_run_id=os.getenv("AZUREML_RUN_ID"),
+        )
+        metrics["evaluation"] = _evidence.to_dict()
+        metrics["selection_score"] = _evidence.selection_score
+        metrics["metric_name"] = _evidence.primary_metric
+        metrics.update(_evidence.metrics)
+        manifest.update(
+            {
+                "schema_version": 2,
+                "candidate_id": _candidate_id,
+                "status": _evidence.status,
+                "evaluation": _evidence.to_dict(),
+                "selection_score": _evidence.selection_score,
+                "metric_name": _evidence.primary_metric,
+                "execution_id": _execution_id,
+                "mlflow_parent_run_id": _execution_id,
+                "mlflow_child_run_id": os.getenv("AZUREML_RUN_ID"),
+            }
+        )
+        if _evidence.status == "success" and _evidence.selection_score is not None:
+            try:
+                _bundle_artifact = fit_save_phasea_bundle(
+                    best,
+                    _raw_features,
+                    _raw_target,
+                    task_type=task_type,
+                    engine="pycaret",
+                    candidate_id=_candidate_id,
+                    recipe=_phasea_recipe,
+                    evidence=_evidence,
+                    split_manifest=_split_manifest,
+                    output_dir=model_dir,
+                    random_seed=_seed,
+                    execution_id=_execution_id,
+                    mlflow_parent_run_id=_execution_id,
+                    mlflow_child_run_id=os.getenv("AZUREML_RUN_ID"),
+                    threshold=metrics.get("optimal_threshold"),
+                )
+                manifest.update(
+                    {
+                        "status": "success",
+                        "raw_input_bundle_eligible": True,
+                        "eligibility_reason": "verified_raw_input_bundle",
+                        "model_bundle": dict(_bundle_artifact.manifest),
+                        "bundle_smoke_test": dict(_bundle_artifact.smoke_test),
+                    }
+                )
+            except PhaseABundleError as bundle_error:
+                manifest.update(
+                    {
+                        "status": "ineligible_raw_bundle",
+                        "raw_input_bundle_eligible": False,
+                        "eligibility_reason": str(bundle_error),
+                    }
+                )
+        else:
+            manifest.update(
+                {
+                    "status": _evidence.status,
+                    "raw_input_bundle_eligible": False,
+                    "eligibility_reason": (
+                        _evidence.failure_reason
+                        or "common_evaluator_evidence_not_selectable"
+                    ),
+                }
+            )
 
         # Common metadata
         metrics["best_model"] = str(best)
@@ -287,7 +399,6 @@ def main():
         model_path = model_dir / "model"
         save_model(best, str(model_path))
         print(f"\nModel saved: {model_path}")
-
         # Save threshold info alongside model for downstream steps (s10)
         if task_type == "classification" and metrics.get("optimal_threshold") is not None:
             threshold_info = {
@@ -388,6 +499,10 @@ def main():
         print(f"\nPyCaret training error: {e}")
         metrics["error"] = str(e)
         manifest["error"] = str(e)
+        if manifest.get("raw_input_bundle_eligible") is not True:
+            manifest["status"] = "failure"
+            manifest["raw_input_bundle_eligible"] = False
+            manifest["eligibility_reason"] = f"phasea_training_failed: {e}"
         (model_dir / ".error").write_text(str(e))
         safe_write_json(outputs_dir / "stage5a_error.json", {"error": str(e)})
 
@@ -401,7 +516,12 @@ def main():
     # MLflow logging (metrics/params only - artifacts already in outputs/)
     logger = create_metrics_logger(
         run_name="s05a_baseline_pycaret",
-        tags={"pipeline": "v3_mlops", "phase": "baseline", "step": "s05a"},
+        tags={
+            "pipeline": "v3_mlops",
+            "phase": "baseline",
+            "step": "s05a",
+            "execution_id": str(_execution_id or ""),
+        },
     )
     try:
         logger.log_param("task_type", task_type)
@@ -436,7 +556,11 @@ def main():
     try:
         _elapsed = _time_mod.time() - _t0
         _norm = normalize_metrics(task_type, metrics)
-        _status = "failed" if "error" in metrics else "ok"
+        _status = (
+            "ok"
+            if manifest.get("raw_input_bundle_eligible") is True
+            else "failed"
+        )
         row = make_row(
             stage="baseline", step_name="s05a", engine="pycaret",
             candidate_id=f"pycaret_{metrics.get('best_model', 'unknown')}",

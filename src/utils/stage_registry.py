@@ -152,6 +152,14 @@ STAGE_REGISTRY: Dict[str, Dict[str, Any]] = {
         "script": "src/steps/s13_drift_monitor.py",
         "description": "Generate drift report and baseline artifacts for monitoring",
     },
+    "s14": {
+        "canonical_name": "retrain_decision",
+        "canonical_id": "S14",
+        "order": 15,
+        "phase": "auto_retrain",
+        "script": "src/steps/s14_retrain_decision.py",
+        "description": "Evaluate drift signals and emit an auditable retrain decision artifact",
+    },
 }
 
 

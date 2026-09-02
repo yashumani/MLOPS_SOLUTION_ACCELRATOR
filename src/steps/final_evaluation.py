@@ -33,6 +33,16 @@ from utils.candidate_ledger import (
 )
 from utils.aim_tournament import run_aim_tournament
 from utils.model_universe import build_coverage_report, write_model_coverage
+from utils.holdout_partition import ROW_ID_COLUMN
+from utils.model_bundle import (
+    ModelBundle,
+    capture_input_schema,
+    find_model_bundle,
+    load_model_bundle,
+    save_model_bundle,
+)
+from orchestration.contracts import QualityDecision, SplitManifest, canonical_hash
+from orchestration.execution_identity import validate_execution_manifest_binding
 
 # Module-level logger for diagnostic/debug messages (does not shadow the
 # per-run MetricsLogger created inside main()).
@@ -57,7 +67,7 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 def _safe_disable_autolog():
-    """Disable MLflow autologging and fix tracking URI for Azure ML compatibility."""
+    """Disable autologging without mutating workspace tracking/registry URIs."""
     # Suppression is expected: Azure ML's azureml:// tracking URI is not fully
     # compatible with mlflow.sklearn.autolog / mlflow.autolog model registry
     # calls. We log at debug to retain forensic visibility without noise.
@@ -69,28 +79,16 @@ def _safe_disable_autolog():
         mlflow.autolog(disable=True)
     except Exception as e:
         logger.debug(f"MLflow autolog disable suppression (Azure ML tracking URI incompatibility): {e}")
-    # Fix: Convert azureml:// to https:// to avoid model registry errors
-    import os as _os
-    _mlflow_uri = _os.getenv("MLFLOW_TRACKING_URI", "")
-    if _mlflow_uri.startswith("azureml://"):
-        mlflow.set_tracking_uri(_mlflow_uri.replace("azureml://", "https://"))
-    # Set local model registry as fallback
-    _os.makedirs("/tmp/mlflow-registry", exist_ok=True)
-    mlflow.set_registry_uri("file:///tmp/mlflow-registry")
+    # The Azure ML workspace-provided azureml:// URI is canonical and must stay
+    # unchanged so parent/child run lineage remains execution-scoped.
 
 
-def collect_all_stage_metrics(experiment_name: str) -> dict:
-    """
-    Collect metrics from all 15 pipeline stages by scanning MLflow runs.
-    Returns: {
-        'preprocessing_stages': {s01_ingestion: {...}, s02_preparation: {...}, ...},
-        'baseline_models': {pycaret: {...}, flaml: {...}},
-        'phaseb_recipes': {recipe1_pycaret: {...}, recipe1_flaml: {...}, ...},
-        'phasec_hpo': {trial1: {...}, trial2: {...}, ...},
-        'aggregates': {baseline: {...}, phaseb: {...}, phasec: {...}}
-    }
-    """
-    print("📊 Collecting metrics from all pipeline stages...")
+def collect_all_stage_metrics(
+    exact_run_ids: dict[str, str],
+    execution_id: str | None,
+) -> dict:
+    """Collect only manifest-bound candidate runs; never scan recent runs."""
+    print("📊 Collecting exact manifest-bound MLflow metrics...")
     all_metrics = {
         'preprocessing_stages': {},
         'baseline_models': {},
@@ -98,59 +96,38 @@ def collect_all_stage_metrics(experiment_name: str) -> dict:
         'phasec_hpo': {},
         'aggregates': {}
     }
-    
-    try:
-        # Search for runs in the experiment
-        client = mlflow.tracking.MlflowClient()
-        
-        # Get experiment
-        try:
-            exp = client.get_experiment_by_name(experiment_name)
-            if not exp:
-                print(f"  ⚠️ Experiment not found: {experiment_name}")
-                return all_metrics
-            exp_id = exp.experiment_id
-        except Exception as e:
-            print(f"  ⚠️ Could not get experiment: {e}")
-            return all_metrics
-        
-        # Search for runs
-        runs = client.search_runs(
-            experiment_ids=[exp_id],
-            max_results=500,
-            order_by=["start_time DESC"]
-        )
-        
-        print(f"  Found {len(runs)} runs in experiment '{experiment_name}'")
-        
-        for run in runs:
-            run_name = run.data.tags.get('mlflow.runName', 'unknown')
-            
-            # Extract metrics and params
-            metrics = {k: v for k, v in run.data.metrics.items()}
-            params = {k: v for k, v in run.data.params.items()}
-            
-            # Categorize by run name pattern
-            if 's01_ingestion' in run_name or 's02_preparation' in run_name or 's03_preprocessing' in run_name or 's04_feature_engineering' in run_name:
-                all_metrics['preprocessing_stages'][run_name] = {'metrics': metrics, 'params': params}
-            elif 's05a_baseline_pycaret' in run_name or 's05b_baseline_flaml' in run_name:
-                engine = 'pycaret' if 'pycaret' in run_name else 'flaml'
-                all_metrics['baseline_models'][engine] = {'metrics': metrics, 'params': params}
-            elif 'phaseb' in run_name.lower() and 'aggregate' not in run_name.lower():
-                all_metrics['phaseb_recipes'][run_name] = {'metrics': metrics, 'params': params}
-            elif ('phasec' in run_name.lower() or 'optuna' in run_name.lower()) and 'aggregate' not in run_name.lower():
-                all_metrics['phasec_hpo'][run_name] = {'metrics': metrics, 'params': params}
-            elif 'aggregate' in run_name.lower():
-                phase = 'baseline' if 'baseline' in run_name.lower() else ('phaseb' if 'phaseb' in run_name.lower() else 'phasec')
-                all_metrics['aggregates'][phase] = {'metrics': metrics, 'params': params}
-        
-        print(f"  ✅ Collected: {len(all_metrics['preprocessing_stages'])} preprocessing, {len(all_metrics['baseline_models'])} baseline models")
-        print(f"               {len(all_metrics['phaseb_recipes'])} Phase B recipes, {len(all_metrics['phasec_hpo'])} HPO trials")
-        print(f"               {len(all_metrics['aggregates'])} aggregate summaries")
-        
-    except Exception as e:
-        print(f"  ⚠️ Error collecting MLflow metrics: {e}")
-    
+    if not execution_id:
+        raise RuntimeError("Exact MLflow collection requires execution_id")
+    if not exact_run_ids:
+        raise RuntimeError("Exact MLflow collection requires candidate run IDs")
+
+    client = mlflow.tracking.MlflowClient()
+    for phase, run_id in sorted(exact_run_ids.items()):
+        if not run_id:
+            raise RuntimeError(f"Missing exact MLflow run ID for {phase}")
+        run = client.get_run(run_id)
+        tags = dict(run.data.tags)
+        actual_execution_id = tags.get("execution_id")
+        if actual_execution_id != execution_id:
+            raise RuntimeError(
+                f"MLflow run {run_id} for {phase} belongs to execution "
+                f"{actual_execution_id!r}, expected {execution_id!r}"
+            )
+        row = {
+            "run_id": run_id,
+            "metrics": dict(run.data.metrics),
+            "params": dict(run.data.params),
+            "tags": tags,
+        }
+        if phase == "baseline":
+            all_metrics["baseline_models"][phase] = row
+        elif phase == "phaseb":
+            all_metrics["phaseb_recipes"][phase] = row
+        elif phase == "phasec":
+            all_metrics["phasec_hpo"][phase] = row
+        all_metrics["aggregates"][phase] = row
+
+    print(f"  ✅ Collected {len(exact_run_ids)} exact candidate runs")
     return all_metrics
 
 
@@ -331,6 +308,35 @@ def validate_input_paths(args) -> dict:
         except Exception as e:
             validation["errors"].append(f"Cannot read dataset: {e}")
             validation["valid"] = False
+
+    if not Path(args.holdout_in).exists():
+        validation["errors"].append(f"Holdout dataset missing: {args.holdout_in}")
+        validation["valid"] = False
+    else:
+        try:
+            holdout_df = pd.read_csv(args.holdout_in)
+            if holdout_df.empty:
+                validation["errors"].append(
+                    f"Holdout dataset is empty: {args.holdout_in}"
+                )
+                validation["valid"] = False
+        except Exception as e:
+            validation["errors"].append(f"Cannot read holdout dataset: {e}")
+            validation["valid"] = False
+
+    if not Path(args.split_manifest_in).is_file():
+        validation["errors"].append(
+            f"Stage 2 SplitManifest missing: {args.split_manifest_in}"
+        )
+        validation["valid"] = False
+    else:
+        try:
+            load_split_manifest(args.split_manifest_in)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            validation["errors"].append(
+                f"Cannot read Stage 2 SplitManifest: {exc}"
+            )
+            validation["valid"] = False
     
     # Check model paths (can be files or folders)
     model_paths = {
@@ -344,10 +350,11 @@ def validate_input_paths(args) -> dict:
         if not path.exists():
             validation["warnings"].append(f"{phase_name} model missing: {model_path}")
         elif path.is_dir():
-            # Check if folder contains model.pkl
-            model_pkl = path / "model.pkl"
-            if not model_pkl.exists():
-                validation["warnings"].append(f"{phase_name} model folder missing model.pkl: {model_path}")
+            if find_model_bundle(path) is None:
+                validation["warnings"].append(
+                    f"{phase_name} model folder has no unique exact "
+                    f"ModelBundle: {model_path}"
+                )
         elif path.suffix != ".pkl":
             validation["warnings"].append(f"{phase_name} model not a .pkl file: {model_path}")
     
@@ -361,54 +368,18 @@ def ensure_output_dirs(args):
 
 
 def load_model_and_encoder(path: str):
-    """Load model from file or folder path, label encoder, and optimal threshold if exists.
+    """Load only the canonical ModelBundle and its embedded inference policy.
     
     Returns:
         (model, label_encoder, threshold) — threshold is None if not found.
     """
     try:
-        import joblib
-        from pathlib import Path
-        path_obj = Path(path)
-        
-        model = None
-        label_encoder = None
-        threshold = None
-        
-        # If path is a folder, look for model.pkl and label_encoder.pkl inside
-        if path_obj.is_dir():
-            model_file = path_obj / "model.pkl"
-            encoder_file = path_obj / "label_encoder.pkl"
-            threshold_file = path_obj / "threshold_info.json"
-            
-            if model_file.exists():
-                model = joblib.load(str(model_file))
-            else:
-                print(f"  ⚠️  Model folder exists but model.pkl missing: {path}")
-                return None, None, None
-            
-            # Try to load label encoder (optional, only exists for classification with string labels)
-            if encoder_file.exists():
-                label_encoder = joblib.load(str(encoder_file))
-                print(f"  ✅ Loaded label encoder from {path}")
-            
-            # Try to load optimal threshold (saved by s5a baseline)
-            if threshold_file.exists():
-                import json
-                with open(threshold_file) as f:
-                    tinfo = json.load(f)
-                threshold = tinfo.get("optimal_threshold")
-                if threshold is not None:
-                    print(f"  🎯 Loaded threshold={threshold:.4f} from {threshold_file.name}")
-        
-        # If path is a file, load it directly (no encoder/threshold in this case)
-        elif path_obj.exists() and path_obj.suffix == ".pkl":
-            model = joblib.load(path)
-        else:
-            print(f"  ⚠️  Model path not found or invalid: {path}")
+        bundle_path = find_model_bundle(path)
+        if bundle_path is None:
+            print(f"  ⚠️  Exact ModelBundle missing or ambiguous: {path}")
             return None, None, None
-        
-        return model, label_encoder, threshold
+        bundle = load_model_bundle(bundle_path)
+        return bundle, None, bundle.threshold
     except Exception as e:
         print(f"  ❌ Error loading model from {path}: {e}")
         return None, None, None
@@ -431,6 +402,299 @@ def get_primary_metric(task_type: str) -> str:
         return "balanced_accuracy"  # default fallback
 
 
+def load_selection_evidence(model_dir: str | Path, phase: str) -> dict:
+    """Load training-CV/validation evidence without opening locked-test data."""
+    root = Path(model_dir)
+    names = (
+        ("selection_manifest.json", "model_bundle_manifest.json")
+        if phase != "phaseb"
+        else ("champion_manifest.json", "selection_manifest.json")
+    )
+    payload = None
+    source_name = None
+    for name in names:
+        candidate = root / name
+        if candidate.is_file():
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+            source_name = name
+            break
+    if not isinstance(payload, dict):
+        return {"phase": phase, "status": "missing", "selection_score": None}
+    if payload.get("status") == "skipped_unsupported":
+        return {
+            "phase": phase,
+            "status": "skipped_unsupported",
+            "selection_score": None,
+            "reason": payload.get("reason"),
+        }
+    selection_metrics = payload.get("selection_metrics") or {}
+    result_metrics = payload.get("metrics") or {}
+    evaluation = (
+        payload.get("evaluation")
+        or result_metrics.get("common_evaluator")
+        or {}
+    )
+    bundle_lineage = (payload.get("model_bundle") or {}).get("lineage") or {}
+    bundle_manifest = payload.get("model_bundle") or {}
+    raw_lineage = payload.get("lineage") or {}
+    execution_manifest = {}
+    execution_manifest_path = root / "execution_manifest.json"
+    if execution_manifest_path.is_file():
+        execution_manifest = json.loads(
+            execution_manifest_path.read_text(encoding="utf-8")
+        )
+
+    def first(*values):
+        return next(
+            (
+                value
+                for value in values
+                if value is not None and str(value).strip()
+            ),
+            None,
+        )
+
+    lineage = {
+        "execution_id": first(
+            payload.get("execution_id"),
+            execution_manifest.get("execution_id"),
+            raw_lineage.get("execution_id"),
+            evaluation.get("execution_id"),
+            bundle_lineage.get("execution_id"),
+        ),
+        "parent_run_id": first(
+            payload.get("mlflow_parent_run_id"),
+            payload.get("parent_mlflow_run_id"),
+            raw_lineage.get("parent_run_id"),
+            raw_lineage.get("mlflow_parent_run_id"),
+            raw_lineage.get("parent_mlflow_run_id"),
+            evaluation.get("mlflow_parent_run_id"),
+            bundle_lineage.get("parent_run_id"),
+        ),
+        "candidate_run_id": first(
+            payload.get("mlflow_child_run_id"),
+            payload.get("candidate_mlflow_run_id"),
+            raw_lineage.get("candidate_run_id"),
+            raw_lineage.get("mlflow_child_run_id"),
+            raw_lineage.get("candidate_mlflow_run_id"),
+            evaluation.get("mlflow_child_run_id"),
+            bundle_lineage.get("candidate_run_id"),
+        ),
+    }
+    score = payload.get("selection_score")
+    if score is None:
+        score = payload.get("primary_metric_value")
+    for key in (
+        "selection_score",
+        "balanced_accuracy",
+        "r2",
+        "silhouette_score",
+    ):
+        if score is None:
+            score = selection_metrics.get(key)
+    return {
+        "phase": phase,
+        "status": payload.get("status", "success"),
+        "selection_score": float(score) if score is not None else None,
+        "candidate_id": payload.get("candidate_id") or payload.get("variant_id"),
+        "model_bundle_id": payload.get("model_bundle_id")
+        or payload.get("bundle_id")
+        or bundle_manifest.get("bundle_id"),
+        "algorithm": payload.get("algorithm")
+        or (payload.get("recipe") or {}).get("algorithm_family"),
+        "metric_name": payload.get("metric_name")
+        or payload.get("primary_metric_name")
+        or selection_metrics.get("primary_metric"),
+        "split_fingerprint": payload.get("split_fingerprint")
+        or evaluation.get("split_fingerprint")
+        or selection_metrics.get("split_fingerprint"),
+        "total_folds": payload.get("total_folds")
+        or evaluation.get("total_folds")
+        or selection_metrics.get("total_folds"),
+        "lineage": lineage,
+        "source_manifest": source_name,
+    }
+
+
+def validate_selection_lineage(
+    evidence: dict[str, dict],
+    expected_execution_id: str | None = None,
+) -> tuple[str, dict[str, str]]:
+    """Fail closed unless every selectable candidate has exact same-run lineage."""
+    exact_run_ids: dict[str, str] = {}
+    execution_ids: set[str] = set()
+    for phase, row in evidence.items():
+        score = row.get("selection_score")
+        selectable = (
+            row.get("status") in {"success", "ok", None}
+            and score is not None
+            and np.isfinite(float(score))
+        )
+        if not selectable:
+            continue
+        lineage = row.get("lineage") or {}
+        execution_id = lineage.get("execution_id")
+        candidate_run_id = lineage.get("candidate_run_id")
+        parent_run_id = lineage.get("parent_run_id")
+        missing = [
+            name
+            for name, value in (
+                ("execution_id", execution_id),
+                ("parent_run_id", parent_run_id),
+                ("candidate_run_id", candidate_run_id),
+            )
+            if value is None or not str(value).strip()
+        ]
+        if missing:
+            raise RuntimeError(
+                f"{phase} selection evidence lacks exact lineage: "
+                + ", ".join(missing)
+            )
+        execution_ids.add(str(execution_id))
+        exact_run_ids[phase] = str(candidate_run_id)
+
+    if not exact_run_ids:
+        raise RuntimeError("No selectable candidates have exact MLflow lineage")
+    if len(execution_ids) != 1:
+        raise RuntimeError(
+            f"Selection evidence mixes execution IDs: {sorted(execution_ids)}"
+        )
+    execution_id = next(iter(execution_ids))
+    if expected_execution_id and execution_id != str(expected_execution_id):
+        raise RuntimeError(
+            f"Manifest execution {execution_id!r} does not match current "
+            f"execution {expected_execution_id!r}"
+        )
+    if len(set(exact_run_ids.values())) != len(exact_run_ids):
+        raise RuntimeError("Distinct candidates cannot share one child MLflow run")
+    return execution_id, exact_run_ids
+
+
+def validate_selection_comparability(
+    evidence: dict[str, dict],
+    *,
+    expected_metric: str,
+    expected_folds: int,
+    minimum_candidates: int = 2,
+) -> None:
+    """Fail closed unless selectable phases use one exact CV contract."""
+
+    if minimum_candidates < 1:
+        raise ValueError("minimum_candidates must be at least 1")
+
+    expected_metric_normalized = str(expected_metric).strip().lower().replace(
+        " ", "_"
+    )
+    fingerprints: set[str] = set()
+    selectable_count = 0
+    for phase, row in evidence.items():
+        score = row.get("selection_score")
+        selectable = (
+            row.get("status") in {"success", "ok", None}
+            and score is not None
+            and np.isfinite(float(score))
+        )
+        if not selectable:
+            continue
+        selectable_count += 1
+        metric = str(row.get("metric_name") or "").strip().lower().replace(
+            " ", "_"
+        )
+        if metric != expected_metric_normalized:
+            raise RuntimeError(
+                f"{phase} selection metric {metric!r} does not match compiled "
+                f"metric {expected_metric_normalized!r}"
+            )
+        try:
+            folds = int(row.get("total_folds"))
+        except (TypeError, ValueError):
+            raise RuntimeError(
+                f"{phase} selection evidence lacks a valid total_folds"
+            ) from None
+        if folds != int(expected_folds):
+            raise RuntimeError(
+                f"{phase} selection folds {folds} do not match compiled "
+                f"fold count {int(expected_folds)}"
+            )
+        fingerprint = str(row.get("split_fingerprint") or "").strip()
+        if not fingerprint:
+            raise RuntimeError(
+                f"{phase} selection evidence lacks split_fingerprint"
+            )
+        fingerprints.add(fingerprint)
+    if selectable_count < minimum_candidates:
+        raise RuntimeError(
+            f"Only {selectable_count} selectable candidate(s) have comparable CV "
+            f"evidence; at least {minimum_candidates} are required"
+        )
+    if len(fingerprints) != 1:
+        raise RuntimeError(
+            "Selectable candidates used different deterministic fold assignments"
+        )
+
+
+def select_champion_from_selection_evidence(
+    evidence: dict[str, dict],
+) -> tuple[str | None, float | None]:
+    """Freeze one champion before any locked-test prediction is made."""
+    candidates = []
+    for phase, row in evidence.items():
+        if row.get("status") not in {"success", "ok", None}:
+            continue
+        score = row.get("selection_score")
+        if score is None or not np.isfinite(float(score)):
+            continue
+        candidates.append((phase, float(score)))
+    if not candidates:
+        return None, None
+    return max(candidates, key=lambda item: item[1])
+
+
+def make_quality_decision(
+    *,
+    champion_valid: bool,
+    observed_value: float | None,
+    threshold: float,
+    metric_name: str,
+    block_on_quality_fail: bool,
+    candidate_id: str,
+    evaluated_bundle_hash: str,
+) -> dict:
+    finite = observed_value is not None and np.isfinite(float(observed_value))
+    passed = bool(champion_valid and finite and float(observed_value) >= threshold)
+    decision = (
+        "pass"
+        if passed
+        else "block"
+        if (not champion_valid or block_on_quality_fail)
+        else "warn"
+    )
+    reasons = []
+    if not champion_valid:
+        reasons.append("no_valid_champion")
+    elif not finite:
+        reasons.append("non_finite_locked_test_metric")
+    elif not passed:
+        reasons.append("locked_test_metric_below_threshold")
+    return QualityDecision(
+        decision=decision,
+        candidate_id=candidate_id,
+        evaluated_bundle_hash=evaluated_bundle_hash,
+        metric_name=metric_name,
+        metric_value=float(observed_value) if finite else None,
+        threshold=float(threshold),
+        registration_allowed=decision in {"pass", "warn"},
+        promotion_aliases=(),
+        registration_tags={
+            "promotion_allowed": str(decision == "pass").lower(),
+            "block_on_quality_fail": str(
+                bool(block_on_quality_fail)
+            ).lower(),
+        },
+        reasons=tuple(reasons),
+    ).to_dict()
+
+
 def eval_model(model, X_test, y_test, task: str, label_encoder=None, threshold=None):
     """Evaluate model and return comprehensive metrics.
     
@@ -449,6 +713,9 @@ def eval_model(model, X_test, y_test, task: str, label_encoder=None, threshold=N
                 # Binary: use column 1 (positive class probability)
                 if proba.shape[1] == 2:
                     preds = (proba[:, 1] >= threshold).astype(int)
+                    target_decoder = getattr(model, "target_decoder", None)
+                    if target_decoder is not None:
+                        preds = target_decoder.inverse_transform(preds)
                     print(f"  🎯 Using optimal threshold={threshold:.4f} (predict_proba)")
                 else:
                     # Multiclass: threshold not applicable, fall back to argmax
@@ -457,25 +724,27 @@ def eval_model(model, X_test, y_test, task: str, label_encoder=None, threshold=N
             else:
                 preds = model.predict(X_test)
             
-            # 🔥 FIX: Handle label encoding mismatch
-            # If model predicts numeric (0, 1) but y_test has strings ('no', 'yes'), encode y_test
+            # Compare in the original target domain when the immutable bundle
+            # owns a decoder. Legacy numeric-output models may still provide a
+            # separate encoder, in which case only y_test is transformed.
             y_test_encoded = y_test
-            if label_encoder is not None:
+            target_decoder = getattr(model, "target_decoder", None)
+            if target_decoder is not None:
+                y_test_encoded = np.asarray(y_test)
+            elif label_encoder is not None:
                 # Model was trained with encoded labels, encode y_test for comparison
                 y_test_encoded = label_encoder.transform(y_test)
                 print(f"  ✅ Encoded y_test using saved label encoder")
-            elif pd.api.types.is_string_dtype(y_test) or y_test.dtype == 'object':
-                # y_test is string but no encoder provided - create one from model's classes
+            elif (
+                (pd.api.types.is_string_dtype(y_test) or y_test.dtype == "object")
+                and np.asarray(preds).dtype.kind not in {"O", "U", "S"}
+            ):
+                # Legacy numeric predictions with original-domain test labels.
                 from sklearn.preprocessing import LabelEncoder
+
                 temp_encoder = LabelEncoder()
-                if hasattr(model, 'classes_'):
-                    # Use model's training classes to ensure consistent label mapping
-                    temp_encoder.classes_ = np.array(model.classes_)
-                    y_test_encoded = temp_encoder.transform(y_test)
-                    print(f"  ⚠️  Created label encoder from model.classes_: {list(model.classes_)}")
-                else:
-                    y_test_encoded = temp_encoder.fit_transform(y_test)
-                    print(f"  ⚠️  Created temporary label encoder (no model.classes_ available)")
+                y_test_encoded = temp_encoder.fit_transform(y_test)
+                print("  ⚠️  Encoded original labels for legacy numeric predictions")
             
             metrics = {
                 "accuracy": float(accuracy_score(y_test_encoded, preds)),
@@ -484,7 +753,11 @@ def eval_model(model, X_test, y_test, task: str, label_encoder=None, threshold=N
             
             # Detect binary vs multiclass for correct averaging
             n_classes = len(np.unique(y_test_encoded))
-            avg_strategy = 'binary' if n_classes == 2 else 'weighted'
+            numeric_binary = (
+                n_classes == 2
+                and set(np.unique(y_test_encoded)).issubset({0, 1})
+            )
+            avg_strategy = "binary" if numeric_binary else "weighted"
             
             metrics["precision"] = float(precision_score(y_test_encoded, preds, zero_division=0, average=avg_strategy))
             metrics["recall"] = float(recall_score(y_test_encoded, preds, zero_division=0, average=avg_strategy))
@@ -676,26 +949,136 @@ def validate_champion_output(champion_out: str) -> dict:
         validation["errors"].append(f"Champion output directory not created: {champion_out}")
         return validation
     
-    # Check for model.pkl
-    model_pkl = champion_path / "model.pkl"
-    if model_pkl.exists() and model_pkl.is_file():
-        size = model_pkl.stat().st_size
+    bundle_path = find_model_bundle(champion_path)
+    if bundle_path is not None:
+        size = bundle_path.stat().st_size
         if size > 0:
             validation["valid"] = True
-            validation["model_path"] = str(model_pkl)
+            validation["model_path"] = str(bundle_path)
             validation["size_bytes"] = size
         else:
-            validation["errors"].append(f"Champion model.pkl exists but is empty (0 bytes)")
+            validation["errors"].append(
+                "Champion ModelBundle exists but is empty"
+            )
     else:
-        validation["errors"].append(f"Champion model.pkl not found in {champion_out}")
+        validation["errors"].append(
+            f"Exact champion ModelBundle not found in {champion_out}"
+        )
     
     return validation
+
+
+def enforce_input_validation(args, validation: dict) -> None:
+    """Write diagnostics and fail the component when required inputs are invalid."""
+    if validation["valid"]:
+        return
+    ensure_output_dirs(args)
+    error_report = {
+        "status": "failed",
+        "validation_errors": validation["errors"],
+        "validation_warnings": validation["warnings"],
+    }
+    with open(args.report_out, "w") as report_file:
+        json.dump(error_report, report_file, indent=2, cls=NumpyEncoder)
+    raise RuntimeError("Input validation failed; final evaluation was not performed")
+
+
+def assert_matching_row_identity(
+    candidate: pd.Series,
+    canonical: pd.Series,
+) -> None:
+    """Require exact canonical holdout row identity and ordering."""
+    if candidate.isna().any():
+        raise ValueError("Phase B evaluation row identities are incomplete")
+    candidate_text = candidate.astype(str).reset_index(drop=True)
+    canonical_text = canonical.astype(str).reset_index(drop=True)
+    pd.testing.assert_series_equal(
+        candidate_text,
+        canonical_text,
+        check_names=False,
+    )
+
+
+def load_split_manifest(path: str | Path) -> SplitManifest:
+    """Load and validate the exact immutable Stage 2 split contract."""
+    return SplitManifest.from_json(Path(path).read_text(encoding="utf-8"))
+
+
+def validate_locked_holdout_identity(
+    split_manifest: SplitManifest,
+    holdout_row_ids: pd.Series,
+    *,
+    task_type: str,
+) -> dict:
+    """Fail closed unless the S10 holdout is the Stage 2 locked partition."""
+    if split_manifest.task_type != task_type:
+        raise ValueError(
+            "Stage 2 SplitManifest task type does not match final evaluation: "
+            f"{split_manifest.task_type!r} != {task_type!r}"
+        )
+    if holdout_row_ids.isna().any():
+        raise ValueError("Declared holdout row identities must be complete")
+    canonical_ids = holdout_row_ids.astype(str).reset_index(drop=True)
+    if not canonical_ids.is_unique:
+        raise ValueError("Declared holdout row identities must be unique")
+    if len(canonical_ids) != split_manifest.test_count:
+        raise ValueError(
+            "Declared holdout row count does not match Stage 2 SplitManifest: "
+            f"{len(canonical_ids)} != {split_manifest.test_count}"
+        )
+    actual_test_ids_hash = canonical_hash(canonical_ids.tolist())
+    if actual_test_ids_hash != split_manifest.test_ids_hash:
+        raise ValueError(
+            "Declared holdout identity hash does not match Stage 2 SplitManifest"
+        )
+    return {
+        "split_id": split_manifest.split_id,
+        "data_version": split_manifest.data_version,
+        "test_count": split_manifest.test_count,
+        "test_ids_hash": split_manifest.test_ids_hash,
+    }
+
+
+def bind_selected_candidate_to_source_bundle(
+    selection_evidence: dict,
+    source_bundle: ModelBundle,
+) -> dict:
+    """Prove that the selected manifest names the exact loaded source bundle."""
+    selected_candidate_id = str(
+        selection_evidence.get("candidate_id") or ""
+    ).strip()
+    if not selected_candidate_id:
+        raise RuntimeError("Selected candidate manifest lacks candidate_id")
+    source_candidate_id = str(source_bundle.candidate_id).strip()
+    if selected_candidate_id != source_candidate_id:
+        raise RuntimeError(
+            "Selected candidate manifest candidate_id does not match source "
+            f"ModelBundle: {selected_candidate_id!r} != {source_candidate_id!r}"
+        )
+
+    source_bundle_id = source_bundle.bundle_id
+    declared_bundle_id = str(
+        selection_evidence.get("model_bundle_id") or ""
+    ).strip()
+    if declared_bundle_id and declared_bundle_id != source_bundle_id:
+        raise RuntimeError(
+            "Selected candidate manifest bundle identity does not match source "
+            f"ModelBundle: {declared_bundle_id!r} != {source_bundle_id!r}"
+        )
+    return {
+        "candidate_id": source_candidate_id,
+        "source_bundle_id": source_bundle_id,
+        "declared_bundle_id": declared_bundle_id or None,
+    }
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--dataset_in", required=True)
+    parser.add_argument("--holdout_in", required=True)
+    parser.add_argument("--split_manifest_in", required=True)
+    parser.add_argument("--execution_manifest_in", required=True)
     parser.add_argument("--baseline_model", required=True)
     parser.add_argument("--phaseb_model", required=True)
     parser.add_argument("--phasec_model", required=True)
@@ -727,16 +1110,7 @@ def main():
     
     if not validation["valid"]:
         print("\n❌ Input validation failed. Cannot proceed with final evaluation.")
-        # Still create minimal outputs to prevent pipeline failure
-        ensure_output_dirs(args)
-        error_report = {
-            "status": "failed",
-            "validation_errors": validation["errors"],
-            "validation_warnings": validation["warnings"]
-        }
-        with open(args.report_out, "w") as f:
-            json.dump(error_report, f, indent=2, cls=NumpyEncoder)
-        return
+        enforce_input_validation(args, validation)
     
     print("  ✅ Input validation passed")
 
@@ -747,54 +1121,54 @@ def main():
     print("\n📦 Loading config and dataset...")
     import yaml
     with open(args.config, "r") as f:
-        cfg = yaml.safe_load(f)
+        raw_cfg = yaml.safe_load(f) or {}
+    from orchestration.config_compiler import compile_config
+
+    cfg = compile_config(raw_cfg, source_name=Path(args.config).name)
+    execution_manifest = validate_execution_manifest_binding(
+        args.execution_manifest_in,
+        cfg,
+    )
     task_type = cfg.get("task_type") or cfg.get("dataset", {}).get("task_type") or "classification"
     target_col = cfg.get("dataset", {}).get("target_column")
     delimiter = cfg.get("dataset", {}).get("delimiter", ",")  # 🔥 CRITICAL FIX
 
-    # 🔥 Agent 1: read sibling holdout.csv if present (honest evaluation,
-    # zero leakage). Only fall back to a stratified split of the combined
-    # dataset for legacy artifacts that lack the sibling file.
-    _ds_path = Path(args.dataset_in)
-    _holdout_sibling = _ds_path.parent / "holdout.csv"
-    _train_sibling = _ds_path.parent / "train.csv"
-    _holdout_source = "combined_split_fallback"
-
-    if _holdout_sibling.exists() and _holdout_sibling.stat().st_size > 0:
-        df_holdout = pd.read_csv(_holdout_sibling, sep=delimiter)
-        df = pd.read_csv(_train_sibling, sep=delimiter) if _train_sibling.exists() else df_holdout.copy()
-        _holdout_source = "holdout_sibling"
-        print(f"   ✅ Loaded sibling holdout.csv ({len(df_holdout):,} rows) — honest evaluation")
-    else:
-        df = pd.read_csv(args.dataset_in, sep=delimiter)
-        df_holdout = None
-        print(f"   ⚠️ No sibling holdout.csv — falling back to internal split (LEAKAGE RISK)")
+    df = pd.read_csv(args.dataset_in, sep=delimiter)
+    df_holdout = pd.read_csv(args.holdout_in, sep=delimiter)
+    split_manifest = load_split_manifest(args.split_manifest_in)
+    if df.empty or df_holdout.empty:
+        raise ValueError("Training and holdout datasets must both contain rows")
+    if ROW_ID_COLUMN not in df_holdout.columns:
+        raise ValueError("Declared holdout is missing canonical row identities")
+    canonical_identity_raw = df_holdout.pop(ROW_ID_COLUMN)
+    if canonical_identity_raw.isna().any():
+        raise ValueError("Declared holdout row identities must be complete")
+    canonical_holdout_identity = canonical_identity_raw.astype(str)
+    if not canonical_holdout_identity.is_unique:
+        raise ValueError("Declared holdout row identities must be complete and unique")
+    if list(df.columns) != list(df_holdout.columns):
+        raise ValueError("Training and holdout dataset schemas must match exactly")
+    split_binding = validate_locked_holdout_identity(
+        split_manifest,
+        canonical_holdout_identity,
+        task_type=task_type,
+    )
+    _holdout_source = "stage2_split_manifest_bound_component_input"
+    print(
+        f"   ✅ Loaded declared holdout input ({len(df_holdout):,} rows) "
+        "for honest evaluation"
+    )
     
     print(f"  Task: {task_type}")
     print(f"  Target: {target_col}")
     if task_type == "clustering":
         print(f"  ⚠️ Clustering task - label encoders not applicable")
     
-    # 🎯 NEW: COLLECT ALL STAGE METRICS FROM MLFLOW
-    print("\n📈 Collecting comprehensive metrics from all pipeline stages...")
-    # Fixed: Use correct config key 'azureml.experiment_name' with fallback
-    experiment_name = cfg.get("azureml", {}).get("experiment_name") or cfg.get("azure_ml", {}).get("experiment_name_pattern", "mlops_experiment")
-    all_stage_metrics = collect_all_stage_metrics(experiment_name)
-    
-    # Save all collected metrics to outputs/ folder
+    _current_execution_id = execution_manifest.execution_id
     outputs_dir = Path("outputs")
     outputs_dir.mkdir(parents=True, exist_ok=True)
     
-    all_metrics_path = outputs_dir / "all_stages_metrics.json"
-    with open(all_metrics_path, "w") as f:
-        json.dump(all_stage_metrics, f, indent=2, cls=NumpyEncoder)
-    print(f"  ✅ All stage metrics saved: {all_metrics_path}")
-    
-    # 🎯 NEW: GENERATE PERFORMANCE VISUALIZATIONS
-    print("\n📊 Generating performance visualizations...")
-    generate_performance_visualizations(all_stage_metrics, outputs_dir, task_type)
-    
-    # 🎯 NEW: GENERATE FINAL SWEETVIZ REPORT
+    # Training/reference data is safe for diagnostics; the locked test is not.
     print("\n📊 Generating final comprehensive EDA report...")
     generate_comprehensive_sweetviz_report(df, outputs_dir, target_col, task_type)
     
@@ -803,30 +1177,18 @@ def main():
         if not target_col or target_col not in df.columns:
             raise ValueError(f"Target column '{target_col}' required but not found in dataset")
 
-        if df_holdout is not None:
-            # 🔥 Agent 1: honest holdout from stage4 sibling — no leakage
-            X_test = df_holdout.drop(columns=[target_col])
-            y_test = df_holdout[target_col]
-            X_train = df.drop(columns=[target_col])
-            y_train = df[target_col]
-            print(f"  ✅ Test set (sibling holdout.csv): {len(X_test):,} samples — honest")
-        else:
-            # Fallback: combined dataset, internal split (LEGACY — leakage risk)
-            X = df.drop(columns=[target_col])
-            y = df[target_col]
-            from sklearn.model_selection import train_test_split
-            stratify_param = y if task_type == "classification" else None
-            seed = int(cfg.get("random_seed", 42))
-            holdout_fraction = float(cfg.get("holdout_fraction", 0.2))
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=holdout_fraction, random_state=seed, stratify=stratify_param
-            )
-            print(f"  ⚠️ Test set (internal split, seed={seed}): {len(X_test):,} samples — leakage risk")
+        X_test = df_holdout.drop(columns=[target_col])
+        y_test = df_holdout[target_col]
+        X_train = df.drop(columns=[target_col])
+        y_train = df[target_col]
+        print(f"  ✅ Test set (declared holdout): {len(X_test):,} samples — honest")
     else:
         # Clustering: no target column
-        X_test = (df_holdout if df_holdout is not None else df).copy()
+        X_test = df_holdout.copy()
         y_test = None
-        print(f"  Clustering mode: using {'holdout' if df_holdout is not None else 'full'} dataset ({len(X_test):,} samples)")
+        X_train = df.copy()
+        y_train = None
+        print(f"  Clustering mode: using holdout dataset ({len(X_test):,} samples)")
     
     # 4. LOAD MODELS AND LABEL ENCODERS
     print("\n🔧 Loading models from all phases...")
@@ -852,34 +1214,81 @@ def main():
     print(f"  Baseline: {'✅ Loaded' if baseline else '❌ Failed'}")
     print(f"  Phase B:  {'✅ Loaded' if phaseb else '❌ Failed'}")
     print(f"  Phase C:  {'✅ Loaded' if phasec else '❌ Failed'}")
+    # Freeze the champion from CV/validation evidence before touching the
+    # locked test. Only the frozen bundle receives one final evaluation.
+    selection_evidence = {
+        "baseline": load_selection_evidence(args.baseline_model, "baseline"),
+        "phaseb": load_selection_evidence(args.phaseb_model, "phaseb"),
+        "phasec": load_selection_evidence(args.phasec_model, "phasec"),
+    }
+    _execution_id, exact_candidate_run_ids = validate_selection_lineage(
+        selection_evidence,
+        expected_execution_id=_current_execution_id,
+    )
+    validate_selection_comparability(
+        selection_evidence,
+        expected_metric=get_primary_metric(task_type),
+        expected_folds=(
+            1 if task_type == "clustering" else int(cfg["split"]["cv_folds"])
+        ),
+        minimum_candidates=int(
+            cfg["metrics"]["min_comparable_candidates"]
+        ),
+    )
+    all_stage_metrics = collect_all_stage_metrics(
+        exact_candidate_run_ids,
+        _execution_id,
+    )
+    all_metrics_path = outputs_dir / "all_stages_metrics.json"
+    with open(all_metrics_path, "w") as f:
+        json.dump(all_stage_metrics, f, indent=2, cls=NumpyEncoder)
+    print(f"  ✅ Exact stage metrics saved: {all_metrics_path}")
+    generate_performance_visualizations(
+        all_stage_metrics,
+        outputs_dir,
+        task_type,
+    )
+    best_key, best_val = select_champion_from_selection_evidence(
+        selection_evidence
+    )
+    champion_valid = best_key is not None and best_val is not None
+    if not champion_valid:
+        raise RuntimeError("No candidate has complete CV/validation evidence")
+    model_by_phase = {
+        "baseline": (baseline, baseline_encoder, baseline_threshold),
+        "phaseb": (phaseb, phaseb_encoder, phaseb_threshold),
+        "phasec": (phasec, phasec_encoder, phasec_threshold),
+    }
+    champion_model, champion_encoder, champion_threshold = model_by_phase[best_key]
+    if champion_model is None:
+        raise RuntimeError(f"Frozen {best_key} champion model could not be loaded")
+    source_bundle_binding = bind_selected_candidate_to_source_bundle(
+        selection_evidence[best_key],
+        champion_model,
+    )
 
-    # 5. EVALUATE ALL MODELS
-    print("\n📊 Evaluating all models...")
-    mb = eval_model(baseline, X_test, y_test, task_type, baseline_encoder, threshold=baseline_threshold)
-
-    # Phase B: use variant-preprocessed holdout data if available.
-    # s06 saves phaseb_eval_data.csv alongside the champion model — this data
-    # was preprocessed with the winning variant's recipe and column-aligned to
-    # the model's feature_names_in_.  Using s4 data (baseline-preprocessed)
-    # would cause a feature-space mismatch → garbage predictions.
-    phaseb_eval_path = Path(args.phaseb_model) / "phaseb_eval_data.csv" if args.phaseb_model else None
-    if phaseb_eval_path and phaseb_eval_path.exists() and phaseb is not None:
-        try:
-            phaseb_eval_df = pd.read_csv(phaseb_eval_path)
-            X_test_pb = phaseb_eval_df.drop(columns=[target_col], errors="ignore")
-            y_test_pb = phaseb_eval_df[target_col] if target_col in phaseb_eval_df.columns else y_test
-            # Safety: align to model expectations
-            if hasattr(phaseb, 'feature_names_in_'):
-                X_test_pb = X_test_pb.reindex(columns=phaseb.feature_names_in_, fill_value=0)
-            pb = eval_model(phaseb, X_test_pb, y_test_pb, task_type, phaseb_encoder, threshold=phaseb_threshold)
-            print(f"  ✅ Phase B evaluated on variant-preprocessed holdout ({len(X_test_pb):,} samples)")
-        except Exception as _pb_err:
-            print(f"  ⚠️  Phase B preprocessed eval failed, falling back to s4 data: {_pb_err}")
-            pb = eval_model(phaseb, X_test, y_test, task_type, phaseb_encoder, threshold=phaseb_threshold)
-    else:
-        pb = eval_model(phaseb, X_test, y_test, task_type, phaseb_encoder, threshold=phaseb_threshold)
-
-    pc = eval_model(phasec, X_test, y_test, task_type, phasec_encoder, threshold=phasec_threshold)
+    print(
+        f"\n🔒 Champion frozen before locked test: {best_key} "
+        f"(selection_score={best_val:.4f})"
+    )
+    # Every phase exposes the same raw-input ModelBundle contract.  The locked
+    # test therefore enters the frozen champion exactly once, here.
+    locked_test_metrics = eval_model(
+        champion_model,
+        X_test,
+        y_test,
+        task_type,
+        champion_encoder,
+        threshold=champion_threshold,
+    )
+    if locked_test_metrics is None:
+        raise RuntimeError("Frozen champion failed locked-test evaluation")
+    mb = selection_evidence["baseline"]
+    pb = selection_evidence["phaseb"]
+    pc = selection_evidence["phasec"]
+    {"baseline": mb, "phaseb": pb, "phasec": pc}[best_key][
+        "locked_test_metrics"
+    ] = locked_test_metrics
     
     primary_metric = get_primary_metric(task_type)
     if mb and primary_metric in mb:
@@ -929,8 +1338,8 @@ def main():
     except Exception as _vr_err:
         print(f"⚠️  Could not load variant results (non-fatal): {_vr_err}")
 
-    # 6. SELECT CHAMPION
-    print("\n🏆 Selecting champion model...")
+    # 6. CHAMPION IS ALREADY FROZEN FROM SELECTION EVIDENCE
+    print("\n🏆 Using frozen champion model...")
     primary_metric = get_primary_metric(task_type)
     
     def primary_score(m):
@@ -949,20 +1358,7 @@ def main():
         "phaseb": (pb, args.phaseb_model),
         "phasec": (pc, args.phasec_model)
     }
-    best_key = None
-    best_val = -np.inf
-    for k, (metrics, path) in candidates.items():
-        val = primary_score(metrics)
-        if val > best_val:
-            best_key, best_val = k, val
-    
-    # T1: Guard against "all models failed" — no valid champion
-    champion_valid = np.isfinite(best_val) and best_key is not None
-    if not champion_valid:
-        print("  ⚠️  ALL MODELS FAILED — no valid champion (all scores non-finite)")
-        print("  ⚠️  Model registration will be skipped downstream")
-    else:
-        print(f"  ✅ Champion: {best_key} (score={best_val:.4f})")
+    print(f"  ✅ Champion: {best_key} (selection_score={best_val:.4f})")
 
     # T17: Quality gate — configurable thresholds via cfg["registry"]["min_quality"].
     # By default warn-only (block_on_quality_fail=False); set to true in config
@@ -976,15 +1372,31 @@ def main():
     _min_q = _registry_cfg.get("min_quality", {}) or {}
     quality_threshold = float(_min_q.get(task_type, DEFAULT_QUALITY_THRESHOLDS.get(task_type, 0.0)))
     block_on_quality_fail = bool(_registry_cfg.get("block_on_quality_fail", False))
-    quality_gate_passed = bool(champion_valid and np.isfinite(best_val) and best_val >= quality_threshold)
-    if not quality_gate_passed:
+    final_test_score = locked_test_metrics.get(primary_metric)
+    _finite_quality_value = (
+        final_test_score is not None
+        and np.isfinite(float(final_test_score))
+    )
+    quality_gate_passed = bool(
+        champion_valid
+        and _finite_quality_value
+        and float(final_test_score) >= quality_threshold
+    )
+    quality_decision = (
+        "pass"
+        if quality_gate_passed
+        else "block"
+        if (not champion_valid or block_on_quality_fail)
+        else "warn"
+    )
+    if quality_decision != "pass":
         if not champion_valid:
             print(f"  ❌ T17 QUALITY GATE FAIL: no valid champion (registration will be blocked)")
         else:
-            print(f"  ❌ T17 QUALITY GATE FAIL: champion score {best_val:.4f} < threshold "
+            print(f"  ⚠️ T17 QUALITY {quality_decision.upper()}: locked-test score {final_test_score} < threshold "
                   f"{quality_threshold} for {task_type}")
     else:
-        print(f"  ✅ T17 QUALITY GATE PASS: champion score {best_val:.4f} ≥ threshold {quality_threshold}")
+        print(f"  ✅ T17 QUALITY GATE PASS: locked-test score {final_test_score:.4f} ≥ threshold {quality_threshold}")
 
     # ── 6b. SHAP EXPLAINABILITY ─────────────────────────────────
     shap_summary = None
@@ -994,7 +1406,10 @@ def main():
         if champion_model_obj is not None and task_type != "clustering":
             print("\n🔍 Computing SHAP feature importance for champion...")
             # Use a sample to keep computation tractable
-            _shap_sample = X_test.sample(n=min(200, len(X_test)), random_state=42)
+            _shap_sample = X_train.sample(
+                n=min(200, len(X_train)),
+                random_state=42,
+            )
             try:
                 explainer = shap.TreeExplainer(champion_model_obj)
                 shap_values = explainer.shap_values(_shap_sample)
@@ -1055,18 +1470,53 @@ def main():
             _variant_rankings_list.append(_row.to_dict())
 
     report = {
+        "schema_version": 2,
         "task": task_type,
         "target_column": target_col,
         "test_samples": len(X_test),
         "champion_valid": champion_valid,
         "quality_gate_passed": quality_gate_passed,
+        # Bound to the evaluated bundle below before the component succeeds.
+        "quality_decision": None,
         "quality_threshold": quality_threshold,
         "block_on_quality_fail": block_on_quality_fail,
         "holdout_source": _holdout_source,
+        "split_manifest": split_binding,
+        "source_model_bundle": source_bundle_binding,
+        "execution_manifest": execution_manifest.to_dict(),
         "baseline_metrics": mb,
         "phaseb_metrics": pb,
         "phasec_metrics": pc,
-        "selection": {"key": best_key, "score": float(best_val) if np.isfinite(best_val) else None},
+        "selection_evidence": selection_evidence,
+        "selection": {
+            "key": best_key,
+            "score": float(best_val) if np.isfinite(best_val) else None,
+            "source": "cross_validation_or_validation",
+            "locked_test_used_for_selection": False,
+            "candidate_id": source_bundle_binding["candidate_id"],
+            "source_bundle_id": source_bundle_binding["source_bundle_id"],
+        },
+        "final_test": {
+            "evaluated_once": True,
+            "candidate_phase": best_key,
+            "candidate_id": source_bundle_binding["candidate_id"],
+            "source_bundle_id": source_bundle_binding["source_bundle_id"],
+            "metrics": locked_test_metrics,
+            "row_count": len(X_test),
+        },
+        "lineage": {
+            "execution_id": _execution_id,
+            "config_hash": execution_manifest.config_hash,
+            "code_sha": execution_manifest.code_sha,
+            "split_id": split_binding["split_id"],
+            "source_bundle_id": source_bundle_binding["source_bundle_id"],
+            "source_candidate_id": source_bundle_binding["candidate_id"],
+            "parent_run_id": selection_evidence[best_key]
+            .get("lineage", {})
+            .get("parent_run_id"),
+            "final_evaluation_run_id": os.getenv("AZUREML_RUN_ID"),
+            "candidate_lineage": selection_evidence[best_key].get("lineage", {}),
+        },
         "validation": validation,
         "variant_rankings": _variant_rankings_list,
         "variant_count": {
@@ -1152,99 +1602,100 @@ def main():
     shutil.copy2(report_path, outputs_dir / "final_evaluation_report.json")
     print(f"  ✅ Report copied to outputs: final_evaluation_report.json")
     
-    # 4. Copy champion model to outputs/ for easy download
-    print(f"\n📦 Copying champion model to outputs/ folder...")
+    # 4. Copy only the exact bundle artifacts for operator visibility.
+    print("\n📦 Copying exact champion bundle to outputs/ folder...")
     chosen_path = candidates.get(best_key, (None, None))[1]
-    if chosen_path:
-        src_model = Path(chosen_path)
-        if src_model.exists():
-            try:
-                if src_model.is_file():
-                    shutil.copy2(src_model, outputs_dir / f"final_champion_model_{best_key}.pkl")
-                    print(f"  ✅ Champion model copied: final_champion_model_{best_key}.pkl")
-                elif src_model.is_dir():
-                    # Copy all files from model directory
-                    model_files_copied = 0
-                    for src_file in src_model.rglob('*'):
-                        if src_file.is_file():
-                            dest_file = outputs_dir / src_file.name
-                            shutil.copy2(src_file, dest_file)
-                            model_files_copied += 1
-                    print(f"  ✅ Copied {model_files_copied} champion model files to outputs/")
-            except Exception as copy_err:
-                print(f"  ⚠️  Failed to copy champion model to outputs/: {copy_err}")
-        else:
-            print(f"  ⚠️  Champion model path does not exist: {src_model}")
-    else:
-        print(f"  ⚠️  No champion model path available")
+    source_bundle_path = (
+        find_model_bundle(chosen_path) if chosen_path else None
+    )
+    if source_bundle_path is None:
+        raise RuntimeError("Frozen champion has no unique exact ModelBundle")
+    source_manifest_path = (
+        source_bundle_path.parent / "model_bundle_manifest.json"
+    )
+    shutil.copy2(
+        source_bundle_path,
+        outputs_dir / f"{best_key}_model_bundle.pkl",
+    )
+    if source_manifest_path.is_file():
+        shutil.copy2(
+            source_manifest_path,
+            outputs_dir / f"{best_key}_model_bundle_manifest.json",
+        )
 
-    # 8. COPY CHAMPION MODEL AND LABEL ENCODER TO OFFICIAL OUTPUT
-    # T2: When no valid champion, create output dir with sentinel file
+    # 8. Materialize one evaluated ModelBundle as the official output.
+    out_dir = Path(args.champion_out).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
     if not champion_valid:
-        out_dir = Path(args.champion_out).resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / ".no_champion").write_text(json.dumps({
             "reason": "all_models_failed", "best_val": str(best_val), "task_type": task_type,
         }))
         print(f"\n⚠️  No valid champion — wrote .no_champion sentinel to {out_dir}")
-        chosen_path = None
-        chosen_encoder = None
-    else:
-        print("\n💾 Copying champion model to official output...")
-        chosen_path = candidates.get(best_key, (None, None))[1]
-        chosen_encoder = None
-    
-        # Determine which encoder to use based on champion
-        if best_key == "baseline":
-            chosen_encoder = baseline_encoder
-        elif best_key == "phaseb":
-            chosen_encoder = phaseb_encoder
-        elif best_key == "phasec":
-            chosen_encoder = phasec_encoder
-    
-    if chosen_path:
-        src = Path(chosen_path)
-        out_dir = Path(args.champion_out).resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
-        print(f"  📂 Champion output path: {out_dir}")
-        
-        import shutil
-        
-        # If source is a folder, copy model.pkl and label_encoder.pkl from it
-        if src.is_dir():
-            model_file = src / "model.pkl"
-            encoder_file = src / "label_encoder.pkl"
-            
-            if model_file.exists():
-                shutil.copy(str(model_file), str(out_dir / "model.pkl"))
-                print(f"  ✅ Copied model.pkl from folder: {src} ({model_file.stat().st_size:,} bytes)")
-            
-            # Copy label encoder if it exists
-            if encoder_file.exists():
-                shutil.copy(str(encoder_file), str(out_dir / "label_encoder.pkl"))
-                print(f"  ✅ Copied label_encoder.pkl from folder: {src} ({encoder_file.stat().st_size:,} bytes)")
-            elif chosen_encoder is not None:
-                # Encoder exists in memory but not in folder, save it
-                import joblib
-                encoder_path = out_dir / "label_encoder.pkl"
-                joblib.dump(chosen_encoder, str(encoder_path))
-                print(f"  ✅ Saved label encoder from memory ({encoder_path.stat().st_size:,} bytes)")
-        
-        # If source is a file, copy it directly (legacy support)
-        elif src.exists() and src.suffix == ".pkl":
-            shutil.copy(str(src), str(out_dir / "model.pkl"))
-            print(f"  ✅ Copied from file: {src} ({src.stat().st_size:,} bytes)")
-            
-            # Save encoder if available
-            if chosen_encoder is not None:
-                import joblib
-                encoder_path = out_dir / "label_encoder.pkl"
-                joblib.dump(chosen_encoder, str(encoder_path))
-                print(f"  ✅ Saved label encoder ({encoder_path.stat().st_size:,} bytes)")
-    else:
-        out_dir = Path(args.champion_out).resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
-        print(f"  ⚠️  No valid champion model to copy: {out_dir}")
+
+    if champion_valid:
+        source_bundle = load_model_bundle(source_bundle_path)
+        reloaded_source_binding = bind_selected_candidate_to_source_bundle(
+            selection_evidence[best_key],
+            source_bundle,
+        )
+        if reloaded_source_binding != source_bundle_binding:
+            raise RuntimeError(
+                "Source ModelBundle identity changed during final evaluation"
+            )
+        evaluated_lineage = {
+            **dict(source_bundle.lineage),
+            **report["lineage"],
+        }
+        evaluated_bundle = ModelBundle(
+            estimator=source_bundle.estimator,
+            preprocessing=source_bundle.preprocessing,
+            target_decoder=source_bundle.target_decoder,
+            task_type=task_type,
+            candidate_id=source_bundle.candidate_id,
+            input_schema=source_bundle.input_schema,
+            recipe=source_bundle.recipe,
+            selection_metrics={
+                "metric_name": primary_metric,
+                "selection_score": best_val,
+                "source": "cross_validation_or_validation",
+            },
+            final_test_metrics=locked_test_metrics,
+            environment={
+                **dict(source_bundle.environment),
+                "code_sha": execution_manifest.code_sha,
+                "environment_hashes": dict(
+                    execution_manifest.environment_hashes
+                ),
+            },
+            lineage=evaluated_lineage,
+            dependencies=source_bundle.dependencies,
+            threshold=champion_threshold,
+            labels=source_bundle.labels,
+            signature=source_bundle.signature
+            or {
+                "inputs": list(capture_input_schema(X_train)["column_order"]),
+                "outputs": ["prediction"],
+            },
+            input_example=(
+                source_bundle.input_example
+                if source_bundle.input_example is not None
+                else X_train.head(1).to_dict(orient="records")
+            ),
+        )
+        report["model_bundle"] = save_model_bundle(
+            evaluated_bundle,
+            out_dir,
+        )
+        quality_decision_record = make_quality_decision(
+            champion_valid=champion_valid,
+            observed_value=final_test_score,
+            threshold=quality_threshold,
+            metric_name=primary_metric,
+            block_on_quality_fail=block_on_quality_fail,
+            candidate_id=evaluated_bundle.candidate_id,
+            evaluated_bundle_hash=report["model_bundle"]["bundle_id"],
+        )
+        report["quality_decision"] = quality_decision_record
 
     # 9. VALIDATE CHAMPION OUTPUT
     print("\n🔍 Validating champion output...")
@@ -1267,7 +1718,12 @@ def main():
     print("\n📈 Creating MLflow logger and logging metrics...")
     logger = create_metrics_logger(
         run_name="s10_final_evaluation",
-        tags={"pipeline": "v3_mlops", "phase": "evaluation", "step": "s10"}
+        tags={
+            "pipeline": "v3_mlops",
+            "phase": "evaluation",
+            "step": "s10",
+            "execution_id": str(_execution_id or ""),
+        }
     )
     log_metrics_to_mlflow(report, task_type, logger)
 
@@ -1281,6 +1737,7 @@ def main():
     # 11. SAVE FINAL REPORT WITH OUTPUT VALIDATION
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2, cls=NumpyEncoder)
+    shutil.copy2(report_path, outputs_dir / "final_evaluation_report.json")
     print(f"  ✅ Final report updated: {report_path}")
     
     print("\n" + "=" * 80)

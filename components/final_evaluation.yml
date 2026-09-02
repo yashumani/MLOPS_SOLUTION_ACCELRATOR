@@ -1,12 +1,19 @@
 name: v3_final_evaluation
-version: 9
+version: 15
 display_name: s10 - V3 Final Evaluation
+description: Freezes one CV-selected champion then audits it once on locked test.
 type: command
 is_deterministic: false
 inputs:
   config_name:
     type: string
   dataset_in:
+    type: uri_file
+  holdout_in:
+    type: uri_file
+  split_manifest_in:
+    type: uri_file
+  execution_manifest_in:
     type: uri_file
   baseline_champion:
     type: uri_folder
@@ -24,11 +31,14 @@ command: >-
   python src/steps/final_evaluation.py
   --config configs/${{inputs.config_name}}
   --dataset_in ${{inputs.dataset_in}}
+  --holdout_in ${{inputs.holdout_in}}
+  --split_manifest_in ${{inputs.split_manifest_in}}
+  --execution_manifest_in ${{inputs.execution_manifest_in}}
   --baseline_model ${{inputs.baseline_champion}}
   --phaseb_model ${{inputs.phaseb_champion}}
   --phasec_model ${{inputs.phasec_champion}}
   --report_out ${{outputs.final_report}}
   --champion_out ${{outputs.final_champion_model}}
-environment: azureml:mlops-v3-unified:23
+environment: azureml:mlops-v3-unified:32
 history:
   enableMLflowTracking: true

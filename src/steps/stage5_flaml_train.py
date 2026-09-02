@@ -7,7 +7,6 @@ import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,17 @@ from utils.candidate_ledger import (
 )
 from utils.model_universe import get_model_list
 from utils.model_universe import build_flaml_breakdown, write_model_breakdown
+from utils.common_evaluator import EvaluationSpec, evaluate_candidate
+from utils.phasea_model_bundle import (
+    PhaseABundleError,
+    build_phasea_evaluation_pipeline,
+    fit_discovery_preprocessor,
+    fit_save_phasea_bundle,
+    load_baseline_recipe,
+    load_phasea_split_manifest,
+    phasea_candidate_id,
+    split_raw_training_frame,
+)
 import os
 
 
@@ -30,17 +40,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--dataset_in", required=True)
+    parser.add_argument("--split_manifest", required=True)
     parser.add_argument("--metrics_out", required=True)
     parser.add_argument("--manifest_out", required=True)
     parser.add_argument("--model_out", required=True)
     args = parser.parse_args()
-
-    # 🔥 FIX: Convert azureml:// to https:// to avoid model registry errors
-    _mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "")
-    if _mlflow_uri.startswith("azureml://"):
-        import mlflow
-        mlflow.set_tracking_uri(_mlflow_uri.replace("azureml://", "https://"))
-        print("🔗 MLflow tracking URI converted to HTTPS")
 
     print("=" * 80)
     print("STEP S05b: BASELINE — FLAML")
@@ -52,30 +56,68 @@ def main():
     task_type = cfg.get("task_type") or cfg.get("dataset", {}).get("task_type") or "classification"
     target_col = cfg.get("dataset", {}).get("target_column")
     delimiter = cfg.get("dataset", {}).get("delimiter", ",")  # 🔥 CRITICAL FIX
-    time_budget = cfg.get("phases", {}).get("phase_a_baseline", {}).get("flaml_config", {}).get("time_budget", 120)
+    _baseline_cfg = cfg.get("phases", {}).get("phase_a_baseline", {}) or {}
+    time_budget = min(
+        600.0,
+        float(
+            _baseline_cfg.get("flaml_config", {}).get(
+                "time_budget",
+                _baseline_cfg.get("candidate_engine_timeout_seconds", 600),
+            )
+        ),
+    )
+    _cv_folds = int(_baseline_cfg.get("cv_folds", 5))
+    _execution_id = (
+        os.getenv("MLOPS_EXECUTION_ID")
+        or os.getenv("AZUREML_ROOT_RUN_ID")
+        or os.getenv("AZUREML_RUN_ID")
+    )
+    _seed = int(cfg.get("random_seed", 42))
 
-    # 🔥 Agent 1: prefer sibling train.csv (holdout-leak-safe).
-    _ds_path = Path(args.dataset_in)
-    _train_sibling = _ds_path.parent / "train.csv"
-    if _train_sibling.exists() and _train_sibling.stat().st_size > 0:
-        df = pd.read_csv(_train_sibling, sep=delimiter)
-        print(f"   ✅ Loaded sibling train.csv ({len(df):,} rows) — holdout isolated")
-    else:
-        df = pd.read_csv(args.dataset_in, sep=delimiter)
-        print(f"   ⚠️ No sibling train.csv — using combined dataset ({len(df):,} rows)")
+    _raw_df = pd.read_csv(args.dataset_in, sep=delimiter)
+    _split_manifest = load_phasea_split_manifest(
+        args.split_manifest,
+        task_type=task_type,
+        train_count=len(_raw_df),
+        random_seed=_seed,
+    )
+    _phasea_recipe = load_baseline_recipe(
+        Path(__file__).resolve().parents[2],
+        task_type,
+    )
+    _raw_features, _raw_target = split_raw_training_frame(
+        _raw_df,
+        task_type=task_type,
+        target_column=target_col,
+    )
+    print(
+        f"   Loaded Stage 2 raw train ({len(_raw_df):,} rows); "
+        f"split_id={_split_manifest.split_id[:12]}"
+    )
 
     outputs_dir = ensure_outputs_dir()
+    model_dir = Path(args.model_out).resolve()
+    model_dir.mkdir(parents=True, exist_ok=True)
 
     metrics = {}
-    manifest = {"engine": "flaml", "models": []}
+    manifest = {
+        "schema_version": 2,
+        "engine": "flaml",
+        "task_type": task_type,
+        "models": [],
+        "split_id": _split_manifest.split_id,
+        "raw_input_bundle_eligible": False,
+        "status": "pending",
+    }
 
     # Skip FLAML for clustering (not supported by FLAML AutoML)
     if task_type == "clustering":
         print("FLAML AutoML does not support clustering task type; skipping s05b_baseline_flaml")
         metrics["status"] = "skipped"
         metrics["reason"] = "FLAML does not support clustering"
-        manifest["status"] = "skipped"
+        manifest["status"] = "skipped_unsupported"
         manifest["reason"] = "FLAML does not support clustering; use PyCaret clustering only"
+        manifest["eligibility_reason"] = "clustering_is_pycaret_only"
 
         # Write valid outputs
         Path(args.metrics_out).parent.mkdir(parents=True, exist_ok=True)
@@ -85,8 +127,6 @@ def main():
             json.dump(manifest, f)
 
         # Create empty model folder
-        model_dir = Path(args.model_out)
-        model_dir.mkdir(parents=True, exist_ok=True)
         (model_dir / ".skipped").write_text("FLAML does not support clustering")
 
         safe_write_json(outputs_dir / "stage5b_skipped.json",
@@ -95,7 +135,12 @@ def main():
         # Create logger for this early exit and log skip
         _logger = create_metrics_logger(
             run_name="s05b_baseline_flaml",
-            tags={"pipeline": "v3_mlops", "phase": "baseline", "step": "s05b"},
+            tags={
+                "pipeline": "v3_mlops",
+                "phase": "baseline",
+                "step": "s05b",
+                "execution_id": str(_execution_id or ""),
+            },
         )
         try:
             _logger.log_param("task_type", task_type)
@@ -105,19 +150,13 @@ def main():
         _logger.end_run()
         return  # Exit early for clustering
 
-    # Classification/Regression: validate target column
-    if target_col not in df.columns:
-        raise ValueError(f"Target column '{target_col}' missing in dataset for FLAML training")
-    
-    X = df.drop(columns=[target_col])
-    y = df[target_col]
-
-    # Hold out 20% for honest evaluation (avoid train=eval leak)
-    stratify_col = y if task_type == "classification" else None
-    _seed = int(cfg.get("random_seed", 42))
-    X_train, X_holdout, y_train, y_holdout = train_test_split(
-        X, y, test_size=0.2, random_state=_seed, stratify=stratify_col
+    X, _ = fit_discovery_preprocessor(
+        _raw_features,
+        _raw_target,
+        recipe=_phasea_recipe,
+        random_seed=_seed,
     )
+    y = _raw_target
 
     try:
         from flaml import AutoML
@@ -140,64 +179,54 @@ def main():
         print(f"\nFLAML {task} baseline  metric={metric}  budget={time_budget}s")
         _flaml_models = get_model_list(task_type, "flaml")
         automl.fit(
-            X_train=X_train, y_train=y_train,
+            X_train=X, y_train=y,
             task=task, metric=metric,
             time_budget=time_budget,
             log_file_name="flaml.log",
             estimator_list=_flaml_models if _flaml_models else None,
+            seed=_seed,
         )
 
         best_estimator = automl.best_estimator
         best_config = automl.best_config
 
-        # Compute explicit evaluation metrics on HOLDOUT (not training data)
-        preds = automl.predict(X_holdout)
-        if task == "classification":
-            acc = float(accuracy_score(y_holdout, preds))
-            bal_acc = float(balanced_accuracy_score(y_holdout, preds))
-            f1 = float(f1_score(y_holdout, preds, average="weighted", zero_division=0))
-            prec = float(precision_score(y_holdout, preds, average="weighted", zero_division=0))
-            rec = float(recall_score(y_holdout, preds, average="weighted", zero_division=0))
-            cm = confusion_matrix(y_holdout, preds).tolist()
-            metrics["accuracy"] = round(acc, 4)
-            metrics["balanced_accuracy"] = round(bal_acc, 4)
-            metrics["f1"] = round(f1, 4)
-            metrics["precision"] = round(prec, 4)
-            metrics["recall"] = round(rec, 4)
-            metrics["kappa"] = round(float(cohen_kappa_score(y_holdout, preds)), 4)
-            metrics["mcc"] = round(float(matthews_corrcoef(y_holdout, preds)), 4)
-            metrics["confusion_matrix"] = cm
-
-            # Try to get AUC / PR-AUC from predict_proba
-            try:
-                proba = automl.predict_proba(X_holdout)
-                if proba.ndim == 2 and proba.shape[1] == 2:
-                    auc = float(roc_auc_score(y_holdout, proba[:, 1]))
-                    pr_auc = float(average_precision_score(y_holdout, proba[:, 1]))
-                else:
-                    auc = float(roc_auc_score(y_holdout, proba, multi_class="ovr", average="weighted"))
-                    pr_auc = None
-                metrics["auc"] = round(auc, 4)
-                if pr_auc is not None:
-                    metrics["pr_auc"] = round(pr_auc, 4)
-            except Exception as e:
-                logger.warning("FLAML predict_proba/AUC computation failed: %s", e)
-
-            score = bal_acc
-            metric_name = "balanced_accuracy"
-            print(f"   AUC={metrics.get('auc','N/A')} | F1={f1:.4f} | Acc={acc:.4f} | BalancedAcc={bal_acc:.4f}")
-        else:
-            from sklearn.metrics import mean_squared_error, mean_absolute_error
-            score = float(r2_score(y_holdout, preds))
-            mse_val = float(mean_squared_error(y_holdout, preds))
-            rmse_val = float(np.sqrt(mse_val))
-            mae_val = float(mean_absolute_error(y_holdout, preds))
-            metric_name = "r2"
-            metrics["r2"] = round(score, 4)
-            metrics["rmse"] = round(rmse_val, 4)
-            metrics["mae"] = round(mae_val, 4)
-            metrics["mse"] = round(mse_val, 4)
-            print(f"   R2={score:.4f} | RMSE={rmse_val:.4f} | MAE={mae_val:.4f}")
+        # Refit/evaluate the selected estimator on the same deterministic folds
+        # used for PyCaret.  No holdout or locked-test rows enter selection.
+        _candidate_model = getattr(automl.model, "estimator", automl.model)
+        _candidate_id = phasea_candidate_id(
+            "flaml",
+            _candidate_model,
+            _phasea_recipe,
+        )
+        _evaluation_model = build_phasea_evaluation_pipeline(
+            _candidate_model,
+            recipe=_phasea_recipe,
+            task_type=task_type,
+            random_seed=_seed,
+        )
+        _evidence = evaluate_candidate(
+            _evaluation_model,
+            _raw_features,
+            _raw_target,
+            candidate_id=_candidate_id,
+            engine="flaml",
+            spec=EvaluationSpec(
+                task_type=task_type,
+                seed=_seed,
+                folds=_cv_folds,
+                timeout_seconds=time_budget,
+                execution_id=_execution_id,
+            ),
+            mlflow_parent_run_id=_execution_id,
+            mlflow_child_run_id=os.getenv("AZUREML_RUN_ID"),
+        )
+        metrics["evaluation"] = _evidence.to_dict()
+        metrics["status"] = _evidence.status
+        metrics["selection_score"] = _evidence.selection_score
+        metrics["metric_name"] = _evidence.primary_metric
+        metrics.update(_evidence.metrics)
+        score = _evidence.selection_score
+        metric_name = _evidence.primary_metric
 
         metrics["best_estimator"] = best_estimator
         metrics["best_config"] = best_config
@@ -207,14 +236,70 @@ def main():
         manifest["best_config"] = best_config
         manifest["best_metric"] = round(score, 4) if score is not None else None
         manifest["metric_name"] = metric_name
+        manifest.update(
+            {
+                "schema_version": 2,
+                "candidate_id": _candidate_id,
+                "status": _evidence.status,
+                "evaluation": _evidence.to_dict(),
+                "selection_score": _evidence.selection_score,
+                "execution_id": _execution_id,
+                "mlflow_parent_run_id": _execution_id,
+                "mlflow_child_run_id": os.getenv("AZUREML_RUN_ID"),
+            }
+        )
+        if _evidence.status == "success" and _evidence.selection_score is not None:
+            try:
+                _bundle_artifact = fit_save_phasea_bundle(
+                    _candidate_model,
+                    _raw_features,
+                    _raw_target,
+                    task_type=task_type,
+                    engine="flaml",
+                    candidate_id=_candidate_id,
+                    recipe=_phasea_recipe,
+                    evidence=_evidence,
+                    split_manifest=_split_manifest,
+                    output_dir=model_dir,
+                    random_seed=_seed,
+                    execution_id=_execution_id,
+                    mlflow_parent_run_id=_execution_id,
+                    mlflow_child_run_id=os.getenv("AZUREML_RUN_ID"),
+                )
+                manifest.update(
+                    {
+                        "status": "success",
+                        "raw_input_bundle_eligible": True,
+                        "eligibility_reason": "verified_raw_input_bundle",
+                        "model_bundle": dict(_bundle_artifact.manifest),
+                        "bundle_smoke_test": dict(_bundle_artifact.smoke_test),
+                    }
+                )
+            except PhaseABundleError as bundle_error:
+                manifest.update(
+                    {
+                        "status": "ineligible_raw_bundle",
+                        "raw_input_bundle_eligible": False,
+                        "eligibility_reason": str(bundle_error),
+                    }
+                )
+        else:
+            manifest.update(
+                {
+                    "status": _evidence.status,
+                    "raw_input_bundle_eligible": False,
+                    "eligibility_reason": (
+                        _evidence.failure_reason
+                        or "common_evaluator_evidence_not_selectable"
+                    ),
+                }
+            )
         # Store primary metric separately for normalized cross-engine comparison
         if task == "classification" and metrics.get("balanced_accuracy") is not None:
-            manifest["accuracy"] = round(acc, 4)
+            manifest["accuracy"] = metrics.get("accuracy")
             manifest["balanced_accuracy"] = metrics["balanced_accuracy"]
 
         # Save model
-        model_dir = Path(args.model_out).resolve()
-        model_dir.mkdir(parents=True, exist_ok=True)
         model_path = model_dir / "model.pkl"
 
         try:
@@ -260,7 +345,7 @@ def main():
                 "total_iterations": len(iterations_data),
                 "best_estimator": best_estimator,
                 "best_metric_value": metrics.get("best_metric"),
-                "dataset_shape": list(df.shape),
+                "dataset_shape": list(_raw_df.shape),
             }
             if task_type == "classification":
                 summary["auc"] = metrics.get("auc")
@@ -293,8 +378,10 @@ def main():
         print(f"\nFLAML training error: {e}")
         metrics["error"] = str(e)
         manifest["error"] = str(e)
-        model_dir = Path(args.model_out).resolve()
-        model_dir.mkdir(parents=True, exist_ok=True)
+        if manifest.get("raw_input_bundle_eligible") is not True:
+            manifest["status"] = "failure"
+            manifest["raw_input_bundle_eligible"] = False
+            manifest["eligibility_reason"] = f"phasea_training_failed: {e}"
         (model_dir / ".error").write_text(str(e))
         safe_write_json(outputs_dir / "stage5b_error.json", {"error": str(e)})
 
@@ -308,14 +395,19 @@ def main():
     # MLflow logging (metrics/params only)
     logger = create_metrics_logger(
         run_name="s05b_baseline_flaml",
-        tags={"pipeline": "v3_mlops", "phase": "baseline", "step": "s05b"},
+        tags={
+            "pipeline": "v3_mlops",
+            "phase": "baseline",
+            "step": "s05b",
+            "execution_id": str(_execution_id or ""),
+        },
     )
     try:
         logger.log_param("task_type", task_type)
         logger.log_param("target_column", str(target_col))
         logger.log_param("metric_optimized", metric if "error" not in metrics else "N/A")
-        logger.log_metric("dataset_rows", int(df.shape[0]))
-        logger.log_metric("dataset_cols", int(df.shape[1] - 1))
+        logger.log_metric("dataset_rows", int(_raw_df.shape[0]))
+        logger.log_metric("dataset_cols", int(_raw_features.shape[1]))
 
         if "best_estimator" in metrics:
             logger.log_param("best_estimator", str(metrics["best_estimator"])[:500])
@@ -341,7 +433,15 @@ def main():
     # ── Candidate Ledger ──────────────────────────────────────────────────
     try:
         _elapsed = _time_mod.time() - _t0
-        _status = "skipped" if metrics.get("status") == "skipped" else ("failed" if "error" in metrics else "ok")
+        _status = (
+            "skipped"
+            if metrics.get("status") == "skipped"
+            else (
+                "ok"
+                if manifest.get("raw_input_bundle_eligible") is True
+                else "failed"
+            )
+        )
         _norm = normalize_metrics(task_type, metrics)
         row = make_row(
             stage="baseline", step_name="s05b", engine="flaml",

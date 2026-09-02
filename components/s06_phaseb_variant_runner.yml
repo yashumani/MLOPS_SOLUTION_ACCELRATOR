@@ -1,6 +1,6 @@
 # FORCE RE-REGISTRATION: 2026-02-08 - V3-Proposed Planner Mode (v7)
 name: v3_phaseb_variant_runner
-version: 7
+version: 13
 display_name: s06 - V3 Phase B - Variant Runner - Planner Mode
 type: command
 is_deterministic: false
@@ -11,22 +11,38 @@ inputs:
     description: Config YAML filename
   variants_list:
     type: string
-    description: Comma-separated list of variant paths
+    optional: true
+    default: ""
+    description: Bounded compatibility list for older direct callers
+  candidate_catalog:
+    type: uri_file
+    optional: true
+    description: Immutable complete recipe and CandidateRecord catalog
+  execution_manifest:
+    type: uri_file
+    description: Immutable schema-v2 execution manifest from the submitter
+  split_manifest:
+    type: uri_file
+    description: Immutable Stage 2 train/locked-test split evidence
   engine_list:
     type: string
     default: "pycaret,flaml"
     description: Comma-separated list of engines to run
   dataset_in:
     type: uri_file
-    description: Processed dataset from Stage 4
+    description: Raw training partition from Stage 2; locked test excluded
   time_budget_per_variant:
     type: integer
     default: 300
     description: Time budget per variant in seconds
   flaml_min_budget:
     type: integer
-    default: 120
-    description: Minimum FLAML time budget (floor to prevent 100%% timeout)
+    default: 1
+    description: Deprecated compatibility input; no budget floor is applied
+  phaseb_time_budget_sec:
+    type: integer
+    default: 10800
+    description: Hard Phase B wall-clock ceiling
   # V3-Proposed Planner inputs
   planner_enabled:
     type: boolean
@@ -38,7 +54,7 @@ inputs:
     description: Max variants for Round 1 proxy training
   round2_max_variants:
     type: integer
-    default: 10
+    default: 8
     description: Max variants for Round 2 full training
   proxy_prune_threshold:
     type: number
@@ -62,28 +78,43 @@ outputs:
   champion_model:
     type: uri_folder
     description: Champion model artifacts
+  execution_manifest_out:
+    type: uri_file
+    description: Validated immutable execution manifest
+  split_manifest_out:
+    type: uri_file
+    description: Validated immutable split evidence
+  quality_decision_out:
+    type: uri_file
+    description: Selection-only block decision pending locked final evaluation
 
 code: ../
 
 command: >-
   python src/steps/s06_phaseb_variant_runner.py
   --config_path configs/${{inputs.config_name}}
-  --variants_list "${{inputs.variants_list}}"
+  $[[--candidate_catalog ${{inputs.candidate_catalog}}]]
+  $[[--variants_list "${{inputs.variants_list}}"]]
+  --execution_manifest ${{inputs.execution_manifest}}
+  --split_manifest ${{inputs.split_manifest}}
   --engine_list ${{inputs.engine_list}}
   --dataset_in ${{inputs.dataset_in}}
   --output_dir ${{outputs.champion_model}}
+  --leaderboard_out ${{outputs.leaderboard_csv}}
+  --all_results_out ${{outputs.all_results_json}}
+  --champion_manifest_out ${{outputs.champion_manifest}}
+  --execution_manifest_out ${{outputs.execution_manifest_out}}
+  --split_manifest_out ${{outputs.split_manifest_out}}
+  --quality_decision_out ${{outputs.quality_decision_out}}
   --time_budget_per_variant ${{inputs.time_budget_per_variant}}
   --flaml_min_budget ${{inputs.flaml_min_budget}}
+  --phaseb_time_budget_sec ${{inputs.phaseb_time_budget_sec}}
   $[[--planner_enabled]]
   --round1_max_variants ${{inputs.round1_max_variants}}
   --round2_max_variants ${{inputs.round2_max_variants}}
   --proxy_prune_threshold ${{inputs.proxy_prune_threshold}}
   --cache_enabled ${{inputs.cache_enabled}}
-  && echo "Creating output files (handles zero results case)"
-  && (test -f ${{outputs.champion_model}}/leaderboard.csv && cp ${{outputs.champion_model}}/leaderboard.csv ${{outputs.leaderboard_csv}} || echo "variant_id,engine,metric" > ${{outputs.leaderboard_csv}})
-  && (test -f ${{outputs.champion_model}}/all_results.json && cp ${{outputs.champion_model}}/all_results.json ${{outputs.all_results_json}} || echo "[]" > ${{outputs.all_results_json}})
-  && (test -f ${{outputs.champion_model}}/champion_manifest.json && cp ${{outputs.champion_model}}/champion_manifest.json ${{outputs.champion_manifest}} || echo "{}" > ${{outputs.champion_manifest}})
-environment: azureml:mlops-v3-unified:23
+environment: azureml:mlops-v3-unified:32
 
 history:
   enableMLflowTracking: true

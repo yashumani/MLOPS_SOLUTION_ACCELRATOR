@@ -1,12 +1,12 @@
 name: v3_s12_model_registration
-version: 1
+version: 12
 display_name: V3 Stage 12 - Model Registry
 type: command
 is_deterministic: false
 description: |
-  Registers champion model to MLflow Model Registry with metadata and lineage.
-  Creates versioned model artifact with experiment tracking, data signature,
-  and promotes to "Staging" stage for downstream validation/deployment.
+  Registers the exact champion model version with metadata and run lineage.
+  QualityDecision=warn registers without aliases or promotion; only pass may
+  receive a Staging lifecycle marker. QualityDecision=block never registers.
 
 inputs:
   champion_manifest:
@@ -18,6 +18,9 @@ inputs:
   config_name:
     type: string
     description: "Config file name for metadata tagging"
+  execution_manifest:
+    type: uri_file
+    description: "Validated immutable execution identity from Phase B"
 
 outputs:
   registry_info:
@@ -31,9 +34,10 @@ command: >
   --champion_manifest ${{inputs.champion_manifest}}
   --champion_model ${{inputs.champion_model}}
   --config_name ${{inputs.config_name}}
+  --execution_manifest ${{inputs.execution_manifest}}
   --registry_info ${{outputs.registry_info}}
 
-environment: azureml:mlops-v3-unified:23
+environment: azureml:mlops-v3-registration:2
 
 history:
   enableMLflowTracking: true

@@ -1,5 +1,5 @@
 name: stage3_preprocessing
-version: 5
+version: 7
 display_name: V3 Stage 3 - Preprocessing
 type: command
 is_deterministic: false
@@ -27,6 +27,6 @@ command: >-
   $[[--recipe_name "${{inputs.recipe_name}}"]]
   --report_dir ${{outputs.prep3_report}}
   --dataset_out ${{outputs.dataset_out}}
-environment: azureml:mlops-v3-unified:23
+environment: azureml:mlops-v3-unified:32
 history:
   enableMLflowTracking: true

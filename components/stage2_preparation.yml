@@ -1,5 +1,5 @@
 name: stage2_preparation
-version: 7
+version: 11
 display_name: V3 Stage 2 - Preparation
 type: command
 is_deterministic: false
@@ -16,6 +16,18 @@ outputs:
     type: uri_folder
   dataset_out:
     type: uri_file
+  train_out:
+    type: uri_file
+    description: Prepared training partition only; locked holdout excluded
+  raw_train_out:
+    type: uri_file
+    description: Pre-transform training partition for raw-input model bundles
+  raw_holdout_out:
+    type: uri_file
+    description: Locked pre-transform test partition with canonical row identity
+  split_manifest_out:
+    type: uri_file
+    description: Immutable canonical train/locked-test split evidence
 code: ../
 command: >-
   python src/steps/stage2_preparation.py
@@ -23,7 +35,11 @@ command: >-
   --dataset_in ${{inputs.dataset_in}}
   --report_dir ${{outputs.prep_report}}
   --dataset_out ${{outputs.dataset_out}}
+  --train_out ${{outputs.train_out}}
+  --raw_train_out ${{outputs.raw_train_out}}
+  --raw_holdout_out ${{outputs.raw_holdout_out}}
+  --split_manifest_out ${{outputs.split_manifest_out}}
   $[[--eda_dir ${{inputs.eda_report}}]]
-environment: azureml:mlops-v3-unified:23
+environment: azureml:mlops-v3-unified:32
 history:
   enableMLflowTracking: true
