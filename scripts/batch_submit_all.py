@@ -1,148 +1,316 @@
 #!/usr/bin/env python3
-"""Batch submit all V3 pipeline configs to Azure ML.
+"""Submit the governed 15-scenario qualification matrix through one entrypoint."""
 
-Usage:
-    python batch_submit_all.py [--force_rerun] [--dry_run]
-"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
 import subprocess
 import sys
-import time
+import tempfile
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Iterable
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _azure_ctx import load_azure_context, MissingAzureContextError  # noqa: E402
+from _azure_ctx import (  # noqa: E402
+    MissingAzureContextError,
+    get_state_dir,
+    load_azure_context,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIGS_DIR = ROOT / "configs"
-PIPELINES_DIR = ROOT / "pipelines"
-
-# Azure ML connection — fail closed if env vars missing
-try:
-    _ctx = load_azure_context()
-except MissingAzureContextError as _exc:
-    print(f"❌ {_exc}", file=sys.stderr)
-    sys.exit(2)
-SUB = _ctx.subscription_id
-RG = _ctx.resource_group
-WS = _ctx.workspace_name
-COMPUTE = _ctx.compute
-
-# Baseline job for classification telecom churn (has drift_baseline output)
-BASELINE_JOB = "jovial_animal_l93wygps2h"
-
-# All configs to submit (order: classification first, then regression)
-CONFIGS = [
-    # Classification (5)
-    "config_classification_telecom_churn_azureml.yml",
-    "config_classification_telco_churn_azureml.yml",
-    "config_classification_credit_default_azureml.yml",
-    "config_classification_titanic_azureml.yml",
-    "config_classification_cardiac_arrest_azureml.yml",
-    # Regression (5)
-    "config_regression_college_azureml.yml",
-    "config_regression_insurance_azureml.yml",
-    "config_regression_house_sales_azureml.yml",
-    "config_regression_length_of_stay_azureml.yml",
-    "config_regression_medical_charges_azureml.yml",
-]
+DEFAULT_CATALOG = ROOT / "configs" / "qualification" / "industry_matrix_execution_catalog.yml"
+SUBMITTER = ROOT / "pipelines" / "submit_pipeline.py"
+TASK_TYPES = ("classification", "regression", "clustering")
+MATRIX_ID = "industry-qualification-20260902"
 
 
-def submit_one(config_name: str, force_rerun: bool = True, baseline_job: str = None):
-    """Submit a single pipeline job and return (config, job_name, success)."""
-    config_path = CONFIGS_DIR / config_name
-    if not config_path.exists():
-        print(f"  SKIP: {config_name} not found")
-        return config_name, None, False
+@dataclass(frozen=True)
+class Scenario:
+    scenario_id: str
+    task_type: str
+    industry: str
+    config_path: str
+    dataset_content_sha256: str
+    dataset_schema_sha256: str
 
-    cmd = [
-        sys.executable, str(PIPELINES_DIR / "submit_pipeline.py"),
-        "--config", str(config_path),
-        "--subscription_id", SUB,
-        "--resource_group", RG,
-        "--workspace_name", WS,
-        "--compute", COMPUTE,
+
+def _is_sha256(value: object) -> bool:
+    text = str(value or "")
+    return len(text) == 64 and all(char in "0123456789abcdef" for char in text.lower())
+
+
+def _scenario_from_record(record: dict[str, Any]) -> Scenario:
+    required = (
+        "scenario_id",
+        "task_type",
+        "industry",
+        "config_path",
+        "dataset_content_sha256",
+        "dataset_schema_sha256",
+    )
+    missing = [name for name in required if not str(record.get(name) or "").strip()]
+    if missing:
+        raise ValueError(f"Qualification scenario is missing fields: {', '.join(missing)}")
+    scenario = Scenario(**{name: str(record[name]).strip() for name in required})
+    if scenario.task_type not in TASK_TYPES:
+        raise ValueError(
+            f"Unsupported task type {scenario.task_type!r} for {scenario.scenario_id}"
+        )
+    for name, value in (
+        ("dataset_content_sha256", scenario.dataset_content_sha256),
+        ("dataset_schema_sha256", scenario.dataset_schema_sha256),
+    ):
+        if not _is_sha256(value):
+            raise ValueError(f"{scenario.scenario_id} has invalid {name}")
+    return scenario
+
+
+def load_execution_catalog(path: Path = DEFAULT_CATALOG) -> list[Scenario]:
+    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    records = payload.get("configs")
+    if not isinstance(records, list):
+        raise ValueError("Qualification execution catalog must contain a configs list")
+
+    scenarios = [_scenario_from_record(record) for record in records]
+    if len(scenarios) != 15 or payload.get("scenario_count") != 15:
+        raise ValueError("Qualification execution catalog must contain exactly 15 scenarios")
+    identifiers = [scenario.scenario_id for scenario in scenarios]
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("Qualification execution catalog contains duplicate scenario IDs")
+
+    actual_counts: dict[str, int] = {}
+    for task_type in TASK_TYPES:
+        task_scenarios = [item for item in scenarios if item.task_type == task_type]
+        actual_counts[task_type] = len(task_scenarios)
+        industries = {item.industry for item in task_scenarios}
+        if len(task_scenarios) != 5 or len(industries) != 5:
+            raise ValueError(
+                f"{task_type} must contain five scenarios from five distinct industries"
+            )
+    if payload.get("task_counts") != actual_counts:
+        raise ValueError("Qualification catalog task_counts do not match its scenarios")
+
+    for scenario in scenarios:
+        config_path = (ROOT / scenario.config_path).resolve()
+        try:
+            config_path.relative_to((ROOT / "configs").resolve())
+        except ValueError as exc:
+            raise ValueError(
+                f"Scenario config escapes the repository configs root: {scenario.config_path}"
+            ) from exc
+        if not config_path.is_file():
+            raise ValueError(f"Scenario config does not exist: {scenario.config_path}")
+    return scenarios
+
+
+def select_scenarios(
+    scenarios: Iterable[Scenario],
+    *,
+    task_types: set[str] | None = None,
+    scenario_ids: set[str] | None = None,
+) -> list[Scenario]:
+    selected = [
+        scenario
+        for scenario in scenarios
+        if (not task_types or scenario.task_type in task_types)
+        and (not scenario_ids or scenario.scenario_id in scenario_ids)
     ]
-    if force_rerun:
-        cmd.append("--force_rerun")
-    if baseline_job:
-        cmd.extend(["--baseline_job", baseline_job])
+    if scenario_ids:
+        missing = sorted(scenario_ids - {item.scenario_id for item in selected})
+        if missing:
+            raise ValueError(f"Unknown qualification scenarios: {', '.join(missing)}")
+    if not selected:
+        raise ValueError("No qualification scenarios matched the requested filters")
+    return selected
 
-    print(f"\n{'='*70}")
-    print(f"  SUBMITTING: {config_name}")
-    print(f"{'='*70}")
+
+def build_submission_command(
+    scenario: Scenario,
+    *,
+    result_path: Path,
+    context: Any,
+    wait: bool = False,
+    force_rerun: bool = False,
+) -> list[str]:
+    tags = {
+        "qualification_matrix": MATRIX_ID,
+        "qualification_scenario": scenario.scenario_id,
+        "qualification_industry": scenario.industry,
+    }
+    command = [
+        sys.executable,
+        str(SUBMITTER),
+        "--config",
+        str(ROOT / scenario.config_path),
+        *context.as_cli_args(),
+        "--tags_json",
+        json.dumps(tags, sort_keys=True),
+        "--result_json",
+        str(result_path),
+    ]
+    if wait:
+        command.append("--wait")
+    if force_rerun:
+        command.append("--force_rerun")
+    return command
+
+
+def _git_identity() -> dict[str, Any]:
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    status = run("status", "--porcelain")
+    return {
+        "commit": run("rev-parse", "HEAD"),
+        "branch": run("branch", "--show-current"),
+        "dirty": bool(status),
+    }
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def _default_result_path() -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return get_state_dir() / "qualification_submissions" / f"{stamp}.json"
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Plan or submit the exact 15-scenario qualification catalog. "
+            "The default is read-only; --execute is required to submit."
+        )
+    )
+    parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+    parser.add_argument("--task-type", action="append", choices=TASK_TYPES)
+    parser.add_argument("--scenario", action="append", dest="scenario_ids")
+    parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--wait", action="store_true")
+    parser.add_argument(
+        "--force-rerun",
+        action="store_true",
+        help="Disable component reuse without bypassing duplicate-submission guards.",
+    )
+    parser.add_argument("--continue-on-submission-error", action="store_true")
+    parser.add_argument("--result-json", type=Path)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    try:
+        catalog_path = args.catalog.resolve()
+        scenarios = select_scenarios(
+            load_execution_catalog(catalog_path),
+            task_types=set(args.task_type or []),
+            scenario_ids=set(args.scenario_ids or []),
+        )
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        print(f"Qualification catalog error: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"Qualification matrix: {len(scenarios)} governed scenario(s)")
+    for index, scenario in enumerate(scenarios, start=1):
+        print(
+            f"  [{index:02d}] {scenario.task_type:<14} "
+            f"{scenario.industry:<24} {scenario.scenario_id}"
+        )
+    if not args.execute:
+        print("Read-only plan complete. Pass --execute to submit through the canonical guard.")
+        return 0
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-        output = result.stdout + result.stderr
-        
-        # Extract job name from output
-        job_name = None
-        for line in output.split("\n"):
-            if "Submitted job:" in line:
-                job_name = line.split("Submitted job:")[-1].strip()
-            elif "Web View:" in line:
-                print(f"  {line.strip()}")
+        context = load_azure_context()
+        git_identity = _git_identity()
+    except (MissingAzureContextError, OSError, subprocess.SubprocessError) as exc:
+        print(f"Submission preflight failed: {exc}", file=sys.stderr)
+        return 2
+    if git_identity["dirty"]:
+        print(
+            "Submission preflight failed: qualification requires a clean Git worktree",
+            file=sys.stderr,
+        )
+        return 2
 
-        if job_name:
-            print(f"  OK: {job_name}")
-            return config_name, job_name, True
-        else:
-            print(f"  FAILED - no job name in output")
-            # Print last 10 lines for debugging
-            for line in output.strip().split("\n")[-10:]:
-                print(f"    {line}")
-            return config_name, None, False
-    except subprocess.TimeoutExpired:
-        print(f"  TIMEOUT after 900s")
-        return config_name, None, False
-    except Exception as e:
-        print(f"  ERROR: {e}")
-        return config_name, None, False
+    result_path = (args.result_json or _default_result_path()).resolve()
+    summary: dict[str, Any] = {
+        "schema_version": "1.0",
+        "matrix_id": MATRIX_ID,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "catalog_path": str(catalog_path),
+        "catalog_sha256": hashlib.sha256(catalog_path.read_bytes()).hexdigest(),
+        "git": git_identity,
+        "azure": {
+            "subscription_id": context.subscription_id,
+            "resource_group": context.resource_group,
+            "workspace_name": context.workspace_name,
+            "compute": context.compute,
+        },
+        "requested_count": len(scenarios),
+        "submissions": [],
+    }
 
+    exit_code = 0
+    with tempfile.TemporaryDirectory(prefix="mlops-qualification-matrix-") as tmp:
+        temporary_root = Path(tmp)
+        for index, scenario in enumerate(scenarios, start=1):
+            submission_result = temporary_root / f"{index:02d}.json"
+            command = build_submission_command(
+                scenario,
+                result_path=submission_result,
+                context=context,
+                wait=args.wait,
+                force_rerun=args.force_rerun,
+            )
+            print(f"[{index:02d}/{len(scenarios):02d}] submitting {scenario.scenario_id}")
+            completed = subprocess.run(command, cwd=ROOT, check=False)
+            payload: dict[str, Any] = {}
+            if submission_result.is_file():
+                payload = json.loads(submission_result.read_text(encoding="utf-8"))
+            accepted = completed.returncode == 0 and bool(payload.get("job_name"))
+            record = {
+                **asdict(scenario),
+                "accepted": accepted,
+                "submit_exit_code": completed.returncode,
+                "job": payload,
+            }
+            summary["submissions"].append(record)
+            _write_json_atomic(result_path, summary)
+            if not accepted:
+                exit_code = 1
+                print(f"Submission failed for {scenario.scenario_id}", file=sys.stderr)
+                if not args.continue_on_submission_error:
+                    break
 
-def main():
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--force_rerun", action="store_true", default=True)
-    parser.add_argument("--dry_run", action="store_true")
-    args = parser.parse_args()
-
-    print(f"Batch submitting {len(CONFIGS)} pipeline jobs")
-    print(f"  Compute: {COMPUTE}")
-    print(f"  Force rerun: {args.force_rerun}")
-    
-    if args.dry_run:
-        for c in CONFIGS:
-            exists = (CONFIGS_DIR / c).exists()
-            print(f"  {'OK' if exists else 'MISSING'}: {c}")
-        return
-
-    results = []
-    for i, config_name in enumerate(CONFIGS):
-        # Only use baseline for the original telecom churn config
-        baseline = BASELINE_JOB if config_name == "config_classification_telecom_churn_azureml.yml" else None
-        
-        config, job, ok = submit_one(config_name, args.force_rerun, baseline)
-        results.append((config, job, ok))
-        
-        # Small delay between submissions to avoid throttling
-        if i < len(CONFIGS) - 1:
-            time.sleep(5)
-
-    # Summary
-    print(f"\n{'='*70}")
-    print("BATCH SUBMISSION SUMMARY")
-    print(f"{'='*70}")
-    success = sum(1 for _, _, ok in results if ok)
-    print(f"  Submitted: {success}/{len(CONFIGS)}")
-    print()
-    for config, job, ok in results:
-        status = f"OK: {job}" if ok else "FAILED"
-        print(f"  {config:<55} {status}")
-    
-    if success > 0:
-        print(f"\n  Monitor at: https://ml.azure.com/experiments?wsid=/subscriptions/{SUB}/resourcegroups/{RG}/workspaces/{WS}")
+    summary["completed_at_utc"] = datetime.now(timezone.utc).isoformat()
+    summary["accepted_count"] = sum(
+        1 for item in summary["submissions"] if item["accepted"]
+    )
+    summary["complete"] = (
+        summary["accepted_count"] == summary["requested_count"] and exit_code == 0
+    )
+    _write_json_atomic(result_path, summary)
+    print(f"Submission evidence: {result_path}")
+    return exit_code
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -101,3 +101,9 @@ def test_legacy_operator_scripts_delegate_to_canonical_submitter() -> None:
     )
     assert "pipelines" in helper
     assert "submit_pipeline.py" in helper
+
+    qualification_runner = (root / "scripts/batch_submit_all.py").read_text(
+        encoding="utf-8"
+    )
+    assert "industry_matrix_execution_catalog.yml" in qualification_runner
+    assert '"--force"' not in qualification_runner
