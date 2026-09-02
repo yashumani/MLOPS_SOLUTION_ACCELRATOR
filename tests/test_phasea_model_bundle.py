@@ -431,9 +431,13 @@ def test_phasea_components_and_both_graphs_bind_stage2_contracts() -> None:
     for component in (pycaret_component, flaml_component):
         assert "split_manifest:" in component
         assert "--split_manifest ${{inputs.split_manifest}}" in component
-    assert "version: 8" in pycaret_component
+        assert "execution_manifest:" in component
+        assert "--execution_manifest ${{inputs.execution_manifest}}" in component
+    assert "version: 9" in pycaret_component
+    assert "version: 10" in flaml_component
     assert pipeline_source.count("dataset_in=s2.outputs.raw_train_out") >= 4
     assert pipeline_source.count("split_manifest=s2.outputs.split_manifest_out") >= 4
+    assert pipeline_source.count("execution_manifest=execution_manifest") >= 4
 
 
 def test_flaml_clustering_remains_explicitly_skipped() -> None:

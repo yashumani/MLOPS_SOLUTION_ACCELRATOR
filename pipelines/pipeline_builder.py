@@ -124,6 +124,7 @@ def full_pipeline(
         config_name=config_name,
         dataset_in=s2.outputs.raw_train_out,
         split_manifest=s2.outputs.split_manifest_out,
+        execution_manifest=execution_manifest,
     )
     s5a.outputs.metrics_json = Output(type="uri_file")
     s5a.outputs.manifest_json = Output(type="uri_file")
@@ -133,6 +134,7 @@ def full_pipeline(
         config_name=config_name,
         dataset_in=s2.outputs.raw_train_out,
         split_manifest=s2.outputs.split_manifest_out,
+        execution_manifest=execution_manifest,
     )
     s5b.outputs.metrics_json = Output(type="uri_file")
     s5b.outputs.manifest_json = Output(type="uri_file")
@@ -334,6 +336,7 @@ def full_pipeline_v2(
         config_name=config_name,
         dataset_in=s2.outputs.raw_train_out,
         split_manifest=s2.outputs.split_manifest_out,
+        execution_manifest=execution_manifest,
     )
     s5a.outputs.metrics_json = Output(type="uri_file")
     s5a.outputs.manifest_json = Output(type="uri_file")
@@ -343,6 +346,7 @@ def full_pipeline_v2(
         config_name=config_name,
         dataset_in=s2.outputs.raw_train_out,
         split_manifest=s2.outputs.split_manifest_out,
+        execution_manifest=execution_manifest,
     )
     s5b.outputs.metrics_json = Output(type="uri_file")
     s5b.outputs.manifest_json = Output(type="uri_file")

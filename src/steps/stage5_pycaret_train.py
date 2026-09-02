@@ -10,6 +10,8 @@ import numpy as np
 
 # Add src to path for imports (single canonical insertion at front of sys.path)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from orchestration.config_compiler import compile_config
+from orchestration.execution_identity import validate_execution_manifest_binding
 from utils.azureml_metrics_logger import (
     create_metrics_logger, ensure_outputs_dir, safe_write_json, safe_copy
 )
@@ -122,6 +124,7 @@ def main():
     parser.add_argument("--config", required=True)
     parser.add_argument("--dataset_in", required=True)
     parser.add_argument("--split_manifest", required=True)
+    parser.add_argument("--execution_manifest", required=True)
     parser.add_argument("--metrics_out", required=True)
     parser.add_argument("--manifest_out", required=True)
     parser.add_argument("--model_out", required=True)
@@ -130,7 +133,14 @@ def main():
     # Load config
     import yaml
     with open(args.config, "r") as f:
-        cfg = yaml.safe_load(f)
+        cfg = compile_config(
+            yaml.safe_load(f) or {},
+            source_name=Path(args.config).name,
+        )
+    _execution_manifest = validate_execution_manifest_binding(
+        args.execution_manifest,
+        cfg,
+    )
     task_type = cfg.get("task_type") or cfg.get("dataset", {}).get("task_type") or "classification"
     target_col = cfg.get("dataset", {}).get("target_column")
     delimiter = cfg.get("dataset", {}).get("delimiter", ",")
@@ -140,11 +150,7 @@ def main():
         600.0,
         float(_baseline_cfg.get("candidate_engine_timeout_seconds", 600)),
     )
-    _execution_id = (
-        os.getenv("MLOPS_EXECUTION_ID")
-        or os.getenv("AZUREML_ROOT_RUN_ID")
-        or os.getenv("AZUREML_RUN_ID")
-    )
+    _execution_id = _execution_manifest.execution_id
     _seed = int(cfg.get("random_seed", 42))
 
     # Stage 2 owns the locked-test boundary. Phase A consumes only its declared

@@ -1,5 +1,5 @@
 name: v3_stage5_pycaret_train
-version: 8
+version: 9
 display_name: V3 Stage 5a - Baseline PyCaret
 description: Raw-input baseline bundle with fold-local common evaluation.
 type: command
@@ -13,6 +13,9 @@ inputs:
   split_manifest:
     type: uri_file
     description: Exact Stage 2 split identity bound to this candidate
+  execution_manifest:
+    type: uri_file
+    description: Immutable submission identity bound to MLflow and bundle lineage
 outputs:
   metrics_json:
     type: uri_file
@@ -26,6 +29,7 @@ command: >-
   --config configs/${{inputs.config_name}}
   --dataset_in ${{inputs.dataset_in}}
   --split_manifest ${{inputs.split_manifest}}
+  --execution_manifest ${{inputs.execution_manifest}}
   --metrics_out ${{outputs.metrics_json}}
   --manifest_out ${{outputs.manifest_json}}
   --model_out ${{outputs.best_model}}
