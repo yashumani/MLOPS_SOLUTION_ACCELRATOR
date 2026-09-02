@@ -68,6 +68,10 @@ def test_execution_manifest_tolerates_runtime_candidate_enrichment() -> None:
     payload = manifest.to_dict()
     payload["candidate_records"] = [{"candidate_id": "submitted"}]
     payload["realized_candidate_records"] = [{"candidate_id": "realized"}]
+    payload["runtime_candidate_ids"] = ["runtime-candidate"]
+    payload["runtime_candidate_records"] = [{"candidate_id": "runtime-candidate"}]
+    payload["runtime_split_id"] = "runtime-split"
+    payload["split_manifest"] = {"split_id": "runtime-split"}
 
     loaded = ExecutionManifest.from_dict(payload)
 

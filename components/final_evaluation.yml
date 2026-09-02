@@ -1,5 +1,5 @@
 name: v3_final_evaluation
-version: 15
+version: 16
 display_name: s10 - V3 Final Evaluation
 description: Freezes one CV-selected champion then audits it once on locked test.
 type: command

@@ -474,10 +474,18 @@ class ExecutionManifest:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "ExecutionManifest":
         payload = dict(value)
-        # Candidate records may be co-located for tolerant handoff to the
-        # evaluator lane but are not part of the manifest dataclass itself.
-        payload.pop("candidate_records", None)
-        payload.pop("realized_candidate_records", None)
+        # Runtime split and candidate evidence is co-located with the frozen
+        # submission identity for downstream handoff, but is not part of the
+        # manifest dataclass or its execution_id calculation.
+        for name in (
+            "candidate_records",
+            "realized_candidate_records",
+            "runtime_candidate_ids",
+            "runtime_candidate_records",
+            "runtime_split_id",
+            "split_manifest",
+        ):
+            payload.pop(name, None)
         for name in ("engines", "recipe_paths", "recipe_ids", "candidate_ids"):
             payload[name] = tuple(payload.get(name) or ())
         return cls(**payload)

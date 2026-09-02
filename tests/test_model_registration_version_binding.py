@@ -944,7 +944,7 @@ def test_s12_environment_uses_hashed_lock_and_build_smoke_checks() -> None:
         if "==" in line
     }
 
-    assert component["version"] == 12
+    assert component["version"] == 13
     assert component["environment"] == "azureml:mlops-v3-registration:2"
     assert requirements
     assert all("==" in requirement for requirement in requirements)

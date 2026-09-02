@@ -56,6 +56,10 @@ def test_downstream_manifest_binds_exact_compiled_config(tmp_path: Path) -> None
     path = tmp_path / "execution_manifest.json"
     enriched = manifest.to_dict()
     enriched["realized_candidate_records"] = [{"candidate_id": "realized"}]
+    enriched["runtime_candidate_ids"] = ["runtime-candidate"]
+    enriched["runtime_candidate_records"] = [{"candidate_id": "runtime-candidate"}]
+    enriched["runtime_split_id"] = "runtime-split"
+    enriched["split_manifest"] = {"split_id": "runtime-split"}
     path.write_text(json.dumps(enriched), encoding="utf-8")
 
     assert validate_execution_manifest_binding(path, config) == manifest
@@ -91,7 +95,7 @@ def test_execution_manifest_is_wired_through_all_downstream_components() -> None
     phasec = yaml.safe_load(
         (root / "components/phasec_optuna_hpo.yml").read_text(encoding="utf-8")
     )
-    assert phasec["version"] == 13
+    assert phasec["version"] == 14
     final = yaml.safe_load(
         (root / "components/final_evaluation.yml").read_text(encoding="utf-8")
     )
@@ -105,7 +109,9 @@ def test_execution_manifest_is_wired_through_all_downstream_components() -> None
     )
 
     assert phasec["inputs"]["execution_manifest"]["type"] == "uri_file"
+    assert final["version"] == 16
     assert final["inputs"]["execution_manifest_in"]["type"] == "uri_file"
+    assert registration["version"] == 13
     assert registration["inputs"]["execution_manifest"]["type"] == "uri_file"
     assert builder.count(
         "execution_manifest=s06.outputs.execution_manifest_out"

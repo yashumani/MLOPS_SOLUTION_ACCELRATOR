@@ -1,5 +1,5 @@
 name: v3_s12_model_registration
-version: 12
+version: 13
 display_name: V3 Stage 12 - Model Registry
 type: command
 is_deterministic: false

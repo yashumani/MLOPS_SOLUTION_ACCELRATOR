@@ -1,5 +1,5 @@
 name: v3_phasec_optuna_hpo
-version: 13
+version: 14
 display_name: s08 - V3 Phase C - Optuna HPO
 description: Same-family HPO only; maximum 50 trials and 3600 seconds.
 type: command
