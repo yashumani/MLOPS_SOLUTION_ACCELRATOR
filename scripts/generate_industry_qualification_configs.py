@@ -28,6 +28,13 @@ PRIMARY_METRICS = {
 }
 
 
+def _candidate_timeout_seconds(profile: dict[str, Any]) -> int:
+    """Size qualification candidate budgets from the immutable data profile."""
+
+    row_count = int(profile.get("row_count") or 0)
+    return 300 if row_count >= 250_000 else 120
+
+
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
 
@@ -70,6 +77,7 @@ def _build_config(
 
     engines = ["pycaret"] if task_type == "clustering" else ["pycaret", "flaml"]
     split_strategy = "stratified" if task_type == "classification" else "random"
+    candidate_timeout_seconds = _candidate_timeout_seconds(profile)
     config: dict[str, Any] = {
         "schema_version": "2.0",
         "experiment_name": f"qual-{_slug(scenario_id)}",
@@ -110,8 +118,8 @@ def _build_config(
         "phases": {
             "phase_a_baseline": {
                 "cv_folds": 3,
-                "candidate_engine_timeout_seconds": 120,
-                "flaml_config": {"time_budget": 120},
+                "candidate_engine_timeout_seconds": candidate_timeout_seconds,
+                "flaml_config": {"time_budget": candidate_timeout_seconds},
             },
             "phase_b": {
                 "enable_profiling": True,
@@ -121,8 +129,8 @@ def _build_config(
                 "tier": "progressive",
                 "max_variants": 4,
                 "selection_strategy": "scored",
-                "runtime_budget_sec": 120,
-                "time_budget_per_variant": 120,
+                "runtime_budget_sec": candidate_timeout_seconds,
+                "time_budget_per_variant": candidate_timeout_seconds,
                 "phase_timeout_seconds": 1800,
                 "safety_net_review_required": True,
                 "engines": engines,

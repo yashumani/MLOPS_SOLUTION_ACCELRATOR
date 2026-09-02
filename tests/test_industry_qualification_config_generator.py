@@ -48,6 +48,7 @@ def test_build_clustering_config_uses_pycaret_only() -> None:
         "privacy_review_status": "approved_for_nonproduction_qualification",
         "content_sha256": "a" * 64,
         "schema_sha256": "b" * 64,
+        "row_count": 541_909,
     }
 
     config = _build_config(
@@ -58,4 +59,6 @@ def test_build_clustering_config_uses_pycaret_only() -> None:
     )
 
     assert config["phases"]["phase_b"]["engines"] == ["pycaret"]
+    assert config["phases"]["phase_a_baseline"]["candidate_engine_timeout_seconds"] == 300
+    assert config["phases"]["phase_b"]["time_budget_per_variant"] == 300
     assert "target_column" not in config["dataset"]
