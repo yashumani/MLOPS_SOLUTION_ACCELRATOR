@@ -1,0 +1,36 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: stage-openml-release-sources-v1
+experiment_name: mlops-v3-data-qualification
+description: Validate and stage the existing CC0 OpenML sources under an immutable qualification path.
+code: ../..
+command: >-
+  python scripts/stage_openml_release_sources.py
+  --credit-input ${{inputs.credit_default}}
+  --workers-comp-input ${{inputs.workers_compensation}}
+  --output-dir ${{outputs.datasets}}
+inputs:
+  credit_default:
+    type: uri_file
+    path: azureml://datastores/mlops_blob/paths/default-of-credit-card-clients.csv
+    mode: download
+  workers_compensation:
+    type: uri_file
+    path: azureml://datastores/mlops_blob/paths/WorkersCompensation.csv
+    mode: download
+outputs:
+  datasets:
+    type: uri_folder
+    path: azureml://datastores/mlops_blob/paths/qualification/source-data/openml-release-matrix-v1-20260902/
+    mode: upload
+environment: azureml:mlops-v3-unified:32
+compute: azureml:mlopsv2computecluster
+limits:
+  timeout: 1200
+tags:
+  evidence_scope: qualification
+  source_repository: openml
+  source_dataset_count: "2"
+  source_license: CC0
+  staging_schema_version: "1"
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c

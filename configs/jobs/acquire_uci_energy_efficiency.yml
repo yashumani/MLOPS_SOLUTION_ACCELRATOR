@@ -1,0 +1,27 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: acquire-uci-energy-efficiency-v1
+experiment_name: mlops-v3-data-qualification
+description: Acquire, normalize, validate, fingerprint, and stage UCI Energy Efficiency for regression qualification.
+code: ../..
+command: >-
+  python -m pip install --disable-pip-version-check --no-cache-dir openpyxl==3.1.5
+  && python scripts/acquire_uci_release_matrix.py
+  --output-dir ${{outputs.dataset}}
+  --dataset-key energy-efficiency
+outputs:
+  dataset:
+    type: uri_folder
+    path: azureml://datastores/mlops_blob/paths/qualification/source-data/uci-energy-efficiency-v1-20260902/
+    mode: upload
+environment: azureml:mlops-v3-unified:23
+compute: azureml:mlopsv2computecluster
+limits:
+  timeout: 1800
+tags:
+  evidence_scope: qualification
+  source_repository: uci
+  source_dataset_id: "242"
+  source_license: CC-BY-4.0
+  acquisition_openpyxl_version: "3.1.5"
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c

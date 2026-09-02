@@ -1,6 +1,7 @@
 recipe_name: knn_onehot_minmax
 version: 1.0
 description: KNN imputation + OneHot encoding + MinMax scaling
+task_type: regression
 stage3_preprocessing:
   imputation:
     method: knn
@@ -14,3 +15,9 @@ stage3_preprocessing:
 stage4_feature_engineering:
   feature_selection:
     method: variance
+
+variant_metadata:
+  variant_id: knn_onehot_minmax
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: manual

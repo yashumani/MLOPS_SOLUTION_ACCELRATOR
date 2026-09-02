@@ -35,6 +35,11 @@ from pathlib import Path
 from typing import List, Optional, Dict
 import random
 
+from src.utils.recipe_catalog import (
+    compile_recipe_catalog,
+    select_catalog_entries,
+)
+
 
 class RecipeSelector:
     """Select recipes based on tier, task type, and runtime constraints."""
@@ -65,9 +70,7 @@ class RecipeSelector:
             if tier_lower in [a.replace("-", "_") for a in aliases]:
                 return canonical
         
-        # Default to balanced if unknown
-        print(f"⚠️ Unknown tier '{tier}', defaulting to 'balanced_performance'")
-        return "balanced_performance"
+        raise ValueError(f"Unknown recipe tier: {tier!r}")
     
     def _get_recipes_in_tier(
         self,
@@ -173,41 +176,31 @@ class RecipeSelector:
         Returns:
             List of recipe paths relative to configs/recipes/ (e.g., "classification/v1_generated/balanced_performance/recipe_0001.yml")
         """
+        if random_selection:
+            raise ValueError(
+                "Random recipe selection is not supported by the canonical funnel"
+            )
+        if task_type not in {"classification", "regression", "clustering"}:
+            raise ValueError(f"Unsupported task_type: {task_type!r}")
+
         # Normalize tier (ignored for variant_search)
         tier_normalized = self._normalize_tier(tier) if library == "v1_generated" else tier
-        
-        # Get recipes in tier
-        recipe_paths = self._get_recipes_in_tier(task_type, tier_normalized, library)
-        
-        if not recipe_paths:
-            if library == "variant_search":
-                print(f"❌ No variants found for {task_type} in variant_search library")
-                print(f"   Run: python configs/generate_variant_library.py --task_type {task_type} --max_variants {count}")
-                print(f"   Falling back to v1_generated...")
-                # Fallback to v1_generated
-                return self.select_recipes(task_type, tier, count, "v1_generated", max_runtime_sec, random_selection)
-            else:
-                print(f"❌ No recipes found for {task_type}/{tier_normalized} in library '{library}'")
-                print(f"   Falling back to manual recipes...")
-                # Fallback to manual recipes
-                return self._get_manual_fallback(task_type, count)
-        
-        # Filter by runtime if specified
-        if max_runtime_sec:
-            recipe_paths = self._filter_by_runtime(recipe_paths, max_runtime_sec)
-            print(f"🔍 Filtered to {len(recipe_paths)} recipes under {max_runtime_sec}s runtime")
-        
-        # Select count recipes
-        if random_selection:
-            selected = random.sample(recipe_paths, min(count, len(recipe_paths)))
-        else:
-            selected = recipe_paths[:count]  # Top-K by alphabetical order
-        
-        # Convert to relative paths from configs/recipes/
-        relative_paths = []
-        for recipe_path in selected:
-            rel_path = recipe_path.relative_to(self.recipes_base_dir)
-            relative_paths.append(str(rel_path).replace("\\", "/"))  # Normalize path separators
+
+        catalog = compile_recipe_catalog(self.recipes_base_dir, task_type)
+        selected = select_catalog_entries(
+            catalog,
+            library=library,
+            tier=tier_normalized,
+            max_variants=count,
+            runtime_budget_sec=max_runtime_sec,
+        )
+        relative_paths = [entry.path for entry in selected]
+        print(
+            "🧾 Catalog compile: "
+            f"checked={catalog.checked_count}, valid={catalog.valid_count}, "
+            f"unique={catalog.unique_count}, "
+            f"quarantined={len(catalog.quarantined)}"
+        )
         
         if library == "variant_search":
             print(f"🚀 Selected {len(relative_paths)} Pipeline Variants:")
@@ -235,9 +228,9 @@ class RecipeSelector:
             ],
         }
         
-        fallback = manual_recipes.get(task_type, [])[:count]
-        print(f"⚠️ Using manual fallback recipes: {fallback}")
-        return fallback
+        raise ValueError(
+            "Manual fallback is disabled; compile and select an explicit catalog"
+        )
 
 
 def select_recipes_for_tier(

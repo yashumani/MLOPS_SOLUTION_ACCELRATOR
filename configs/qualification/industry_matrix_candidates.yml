@@ -1,0 +1,272 @@
+schema_version: "1.0"
+matrix_name: mlops-v3-release-industry-matrix
+
+privacy_review:
+  scope: Public-data, non-production Azure ML release qualification only.
+  reviewed_at: "2026-09-02"
+  restrictions:
+    - Do not use these qualification datasets or resulting models for production decisions.
+    - Keep row-level data inside the authorized Azure ML workspace and datastore.
+    - Enforce configured feature exclusions before preprocessing or training.
+    - Publish aggregate metrics and lineage only; do not export row-level report samples.
+  scenario_dispositions:
+    classification-healthcare-heart-disease:
+      status: approved_for_nonproduction_qualification
+      rationale: Public UCI clinical measurements contain age and sex as quasi-identifiers but no direct identifier; restricted to non-production testing.
+    classification-financial-services-credit-default:
+      status: approved_for_nonproduction_qualification
+      rationale: The versioned CC0 file is coded and the upstream identifier column was removed before staging.
+    classification-telecommunications-customer-churn:
+      status: approved_for_nonproduction_qualification
+      rationale: Public UCI service-behavior data contains age attributes but no customer identifier; restricted to non-production testing.
+    classification-manufacturing-machine-failure:
+      status: approved_for_nonproduction_qualification
+      rationale: Industrial sensor data is non-personal, and UDI plus Product ID are excluded from model features.
+    classification-insurance-policy-interest:
+      status: approved_for_nonproduction_qualification
+      rationale: Public UCI demographic aggregates contain no direct customer identifier and are restricted to non-production testing.
+    regression-education-final-grade:
+      status: approved_for_nonproduction_qualification
+      rationale: UCI defines address as the categorical urban-or-rural residence type, not a street address; age and sex remain quasi-identifiers and use is non-production only.
+    regression-real-estate-unit-price:
+      status: approved_for_nonproduction_qualification
+      rationale: Public property observations contain coordinates but no person identifier; record_id is excluded and use is non-production only.
+    regression-insurance-claim-cost:
+      status: approved_for_nonproduction_qualification
+      rationale: The CC0 file has ClaimNumber removed; age, gender, and claim text remain restricted to in-workspace non-production testing with no row-level export.
+    regression-energy-building-heating-load:
+      status: approved_for_nonproduction_qualification
+      rationale: Building geometry and energy-response data contains no personal or direct identifier.
+    regression-aviation-airfoil-noise:
+      status: approved_for_nonproduction_qualification
+      rationale: NASA airfoil test measurements contain no personal or direct identifier.
+    clustering-healthcare-heart-cohorts:
+      status: approved_for_nonproduction_qualification
+      rationale: Public UCI clinical measurements contain age and sex as quasi-identifiers; the diagnosis outcome is excluded and use is non-production only.
+    clustering-financial-services-risk-segments:
+      status: approved_for_nonproduction_qualification
+      rationale: The upstream identifier is absent and the default outcome is excluded, leaving coded CC0 behavior fields for non-production testing.
+    clustering-telecommunications-behavior-segments:
+      status: approved_for_nonproduction_qualification
+      rationale: The churn outcome is excluded; age attributes remain quasi-identifiers and use is restricted to non-production testing.
+    clustering-retail-transaction-segments:
+      status: approved_for_nonproduction_qualification
+      rationale: CustomerID, InvoiceNo, StockCode, and Description are excluded before modeling; remaining public transaction fields are non-production only.
+    clustering-education-student-segments:
+      status: approved_for_nonproduction_qualification
+      rationale: Grade outcomes are excluded and UCI address is an urban-or-rural category rather than a street address; age and sex remain quasi-identifiers.
+
+scenarios:
+  - id: classification-healthcare-heart-disease
+    task_type: classification
+    industry: healthcare
+    objective: Predict the presence of heart disease from deidentified clinical measurements.
+    blob_path: qualification/source-data/uci-release-matrix-v3-20260902/heart-disease/heart_disease_cleveland.csv
+    target_column: heart_disease
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/45/heart+disease
+      license: CC BY 4.0
+      source_dataset_id: uci-45
+      doi: 10.24432/C52P4X
+      retrieval_run_id: stoic_seal_zjvcw3fnn5
+      raw_source_sha256: b17cd273da9ce1caa4710fce80227ea454d4dbf9fcbc8e6a9121672751563adc
+
+  - id: classification-financial-services-credit-default
+    task_type: classification
+    industry: financial_services
+    objective: Predict credit-card payment default.
+    blob_path: qualification/source-data/openml-release-matrix-v1-20260902/openml-42477-credit-default/default_of_credit_card_clients.csv
+    target_column: y
+    provenance:
+      source_url: https://www.openml.org/d/42477
+      license: CC0
+      source_dataset_id: openml-42477-v1
+      staging_run_id: orange_napkin_g1rv43xlwc
+      source_file_sha256: 39dbf34a3530f4fae130c35e28cf2021af417247c1bc4d8ca23f4febfb2173b4
+      pre_normalized_identifier_columns: [id]
+
+  - id: classification-telecommunications-customer-churn
+    task_type: classification
+    industry: telecommunications
+    objective: Predict customer churn from pre-outcome service behavior.
+    blob_path: qualification/source-data/uci-release-matrix-v3-20260902/iranian-churn/iranian_churn.csv
+    target_column: Churn
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/563/iranian+churn+dataset
+      license: CC BY 4.0
+      source_dataset_id: uci-563
+      doi: 10.24432/C5JW3Z
+      retrieval_run_id: stoic_seal_zjvcw3fnn5
+      raw_source_sha256: 696c3a1812267980751f30d19193a1b430ac4ad76172bb089e664c96813ead66
+
+  - id: classification-manufacturing-machine-failure
+    task_type: classification
+    industry: manufacturing
+    objective: Predict machine failure from operating conditions without failure-mode labels.
+    blob_path: qualification/source-data/uci-release-matrix-v3-20260902/ai4i-predictive-maintenance/ai4i2020.csv
+    target_column: Machine failure
+    exclude_columns: [UDI, Product ID, TWF, HDF, PWF, OSF, RNF]
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/601/ai4i+2020+predictive+maintenance+dataset
+      license: CC BY 4.0
+      source_dataset_id: uci-601
+      doi: 10.24432/C5HS5C
+      retrieval_run_id: stoic_seal_zjvcw3fnn5
+      raw_source_sha256: f601f14294bcf190f9d720676b7f0aea46a26cde9ab8ebc7b4f8174d9d26b252
+
+  - id: classification-insurance-policy-interest
+    task_type: classification
+    industry: insurance
+    objective: Predict customer interest in a caravan insurance policy.
+    blob_path: qualification/source-data/uci-coil2000-v1-20260902/coil2000.csv
+    target_column: CARAVAN
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/125
+      license: CC BY 4.0
+      source_dataset_id: uci-125
+      doi: 10.24432/C5630S
+      retrieval_run_id: lemon_drawer_48dh5r17f3
+      raw_source_sha256: 5d5bdca1be0b9a6c012b93a8c8104761201bd70f7e08764fa67f2cfb26243723
+
+  - id: regression-education-final-grade
+    task_type: regression
+    industry: education
+    objective: Predict the final Portuguese-language grade without earlier-period grades.
+    blob_path: qualification/source-data/uci-release-matrix-v3-20260902/student-performance/student_performance_portuguese.csv
+    target_column: G3
+    exclude_columns: [G1, G2]
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/320/student+performance
+      license: CC BY 4.0
+      source_dataset_id: uci-320
+      doi: 10.24432/C5TG7T
+      retrieval_run_id: stoic_seal_zjvcw3fnn5
+      raw_source_sha256: 82ae9d66437b9808df42e8c89d2bb179c46e9cfbcf06f38abc1d20b3b747e177
+
+  - id: regression-real-estate-unit-price
+    task_type: regression
+    industry: real_estate
+    objective: Predict residential unit-area sale price.
+    blob_path: qualification/source-data/uci-release-matrix-v3-20260902/real-estate-valuation/real_estate_valuation.csv
+    target_column: house_price_unit_area
+    exclude_columns: [record_id]
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/477/real+estate+valuation+data+set
+      license: CC BY 4.0
+      source_dataset_id: uci-477
+      doi: 10.24432/C5J30W
+      retrieval_run_id: stoic_seal_zjvcw3fnn5
+      raw_source_sha256: aa437bdac3ca23200258a0a58d251c0af90651aeaf7c7a07aaa714f0f9f25e2c
+
+  - id: regression-insurance-claim-cost
+    task_type: regression
+    industry: insurance
+    objective: Predict ultimate workers compensation claim cost.
+    blob_path: qualification/source-data/openml-release-matrix-v1-20260902/openml-42876-workers-compensation/workers_compensation.csv
+    target_column: UltimateIncurredClaimCost
+    provenance:
+      source_url: https://www.openml.org/d/42876
+      license: CC0
+      source_dataset_id: openml-42876-v1
+      staging_run_id: orange_napkin_g1rv43xlwc
+      source_file_sha256: a974d8945c27560a4ea62e46734fffc292f8f0654b8e502063fa9851cc122636
+      pre_normalized_identifier_columns: [ClaimNumber]
+
+  - id: regression-energy-building-heating-load
+    task_type: regression
+    industry: energy
+    objective: Predict building heating load without using the alternate cooling-load target.
+    blob_path: qualification/source-data/uci-energy-efficiency-v1-20260902/energy-efficiency/energy_efficiency.csv
+    target_column: Y1
+    exclude_columns: [Y2]
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/242/energy+efficiency
+      license: CC BY 4.0
+      source_dataset_id: uci-242
+      doi: 10.24432/C51307
+      retrieval_run_id: lemon_sponge_v739j66ls0
+      raw_source_sha256: 499441eee27929a4b00417f58fd8c63c9cc14b8a71520cd0dd27fcb626738351
+
+  - id: regression-aviation-airfoil-noise
+    task_type: regression
+    industry: aviation
+    objective: Predict scaled sound pressure from NASA airfoil test conditions.
+    blob_path: qualification/source-data/uci-airfoil-self-noise-v1-20260902/airfoil-self-noise/airfoil_self_noise.csv
+    target_column: scaled_sound_pressure
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/291/airfoil+self+noise
+      license: CC BY 4.0
+      source_dataset_id: uci-291
+      doi: 10.24432/C5VW2C
+      retrieval_run_id: calm_nutmeg_b7nyrj9wpd
+      raw_source_sha256: 5c7767ba53ad827d3f48ba1eb9434117f4892df8f10bc4c99e118a9e8a7ae07c
+
+  - id: clustering-healthcare-heart-cohorts
+    task_type: clustering
+    industry: healthcare
+    objective: Discover cohorts from deidentified heart-disease measurements.
+    blob_path: qualification/source-data/uci-release-matrix-v3-20260902/heart-disease/heart_disease_cleveland.csv
+    exclude_columns: [heart_disease]
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/45/heart+disease
+      license: CC BY 4.0
+      source_dataset_id: uci-45
+      doi: 10.24432/C52P4X
+      retrieval_run_id: stoic_seal_zjvcw3fnn5
+      raw_source_sha256: b17cd273da9ce1caa4710fce80227ea454d4dbf9fcbc8e6a9121672751563adc
+
+  - id: clustering-financial-services-risk-segments
+    task_type: clustering
+    industry: financial_services
+    objective: Segment credit-card customers by payment behavior without identifiers or outcomes.
+    blob_path: qualification/source-data/openml-release-matrix-v1-20260902/openml-42477-credit-default/default_of_credit_card_clients.csv
+    exclude_columns: [y]
+    provenance:
+      source_url: https://www.openml.org/d/42477
+      license: CC0
+      source_dataset_id: openml-42477-v1
+      staging_run_id: orange_napkin_g1rv43xlwc
+      source_file_sha256: 39dbf34a3530f4fae130c35e28cf2021af417247c1bc4d8ca23f4febfb2173b4
+      pre_normalized_identifier_columns: [id]
+
+  - id: clustering-telecommunications-behavior-segments
+    task_type: clustering
+    industry: telecommunications
+    objective: Segment telecom customers by service behavior without the churn outcome.
+    blob_path: qualification/source-data/uci-release-matrix-v3-20260902/iranian-churn/iranian_churn.csv
+    exclude_columns: [Churn]
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/563/iranian+churn+dataset
+      license: CC BY 4.0
+      source_dataset_id: uci-563
+      doi: 10.24432/C5JW3Z
+      retrieval_run_id: stoic_seal_zjvcw3fnn5
+      raw_source_sha256: 696c3a1812267980751f30d19193a1b430ac4ad76172bb089e664c96813ead66
+
+  - id: clustering-retail-transaction-segments
+    task_type: clustering
+    industry: retail
+    objective: Segment retail transactions without customer, invoice, or product identifiers.
+    blob_path: qualification/source-data/uci-release-matrix-v3-20260902/online-retail/online_retail.csv
+    exclude_columns: [InvoiceNo, StockCode, Description, CustomerID]
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/352/online+retail
+      license: CC BY 4.0
+      source_dataset_id: uci-352
+      doi: 10.24432/C5BW33
+      retrieval_run_id: stoic_seal_zjvcw3fnn5
+      raw_source_sha256: f5385cbb54bbebf7196389109c6b0621faab0c304e3702548165e71c84aede8b
+
+  - id: clustering-education-student-segments
+    task_type: clustering
+    industry: education
+    objective: Segment student-support patterns without grade outcomes.
+    blob_path: qualification/source-data/uci-release-matrix-v3-20260902/student-performance/student_performance_portuguese.csv
+    exclude_columns: [G1, G2, G3]
+    provenance:
+      source_url: https://archive.ics.uci.edu/dataset/320/student+performance
+      license: CC BY 4.0
+      source_dataset_id: uci-320
+      doi: 10.24432/C5TG7T
+      retrieval_run_id: stoic_seal_zjvcw3fnn5
+      raw_source_sha256: 82ae9d66437b9808df42e8c89d2bb179c46e9cfbcf06f38abc1d20b3b747e177

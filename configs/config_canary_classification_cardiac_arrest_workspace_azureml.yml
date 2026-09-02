@@ -1,17 +1,17 @@
 schema_version: "2.0"
-experiment_name: insurance_v3_azure
-preset: production
-task_type: regression
+experiment_name: canary_cardiac_arrest_v3_azure
+preset: diagnostic
+task_type: classification
 random_seed: 42
 holdout_fraction: 0.20
-holdout_split_strategy: random
+holdout_split_strategy: stratified
 
 dataset:
-  name: insurance
+  name: cardiac_arrest_workspace_canary
   version: "1"
-  target_column: charges
-  blob_path: insurance.csv
-  datastore_name: mlops_blob
+  target_column: target
+  blob_path: mlopsdatasets/cardiac_arrest_dataset.csv
+  datastore_name: workspaceblobstore
 
 azureml:
   subscription_id: 93044a08-5661-4f1b-b424-5eafe066a9d1
@@ -22,50 +22,60 @@ azureml:
   environment_name_preprocessing: mlops-v3-preprocessing
   environment_name_training: mlops-v3-training
 
+stage1:
+  min_rows: 100
+  generate_sweetviz: false
+
 split:
-  strategy: random
+  strategy: stratified
   validation_fraction: 0.0
   test_fraction: 0.20
-  cv_folds: 5
+  cv_folds: 3
   locked_test: true
 
 metrics:
-  primary: r2
+  primary: balanced_accuracy
   selection_protocol: cross_validation
-  cv_folds: 5
+  cv_folds: 3
   locked_test_once: true
   min_comparable_candidates: 2
 
 phases:
+  phase_a_baseline:
+    cv_folds: 3
+    candidate_engine_timeout_seconds: 120
+    flaml_config:
+      time_budget: 120
   phase_b:
-    library_dir: configs/recipes/regression/variant_search
+    library_dir: configs/recipes/classification/variant_search
     library: variant_search
     tier: progressive
-    max_variants: 40
-    runtime_budget_sec: 600
-    time_budget_per_variant: 600
-    phase_timeout_seconds: 10800
+    max_variants: 4
+    runtime_budget_sec: 120
+    time_budget_per_variant: 120
+    phase_timeout_seconds: 1800
     safety_net_review_required: true
     engines: [pycaret, flaml]
     planner:
       enabled: true
-      round1_max_variants: 40
-      round2_max_variants: 8
-      proxy_prune_threshold: -0.50
+      round1_max_variants: 4
+      round2_max_variants: 2
+      proxy_prune_threshold: 0.50
       diversity_min_hamming_distance: 2
       cache_enabled: true
   phase_c_hpo:
     optimizer: optuna
-    n_trials: 50
-    timeout_seconds: 3600
+    n_trials: 5
+    timeout_seconds: 600
 
 registry:
-  model_name: insurance-regression
+  model_name: canary-cardiac-arrest-classification
   quality_failure_policy: warn
   warning_registration_allowed: true
   warning_tags:
     quality_decision: warn
-  pass_aliases: [champion]
+    validation_scope: canary
+  pass_aliases: []
   warning_aliases: []
 
 recipes:

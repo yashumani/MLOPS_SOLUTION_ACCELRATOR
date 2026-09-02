@@ -1,0 +1,25 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: acquire-uci-airfoil-self-noise-v1
+experiment_name: mlops-v3-data-qualification
+description: Acquire, normalize, validate, fingerprint, and stage UCI Airfoil Self-Noise for aviation regression qualification.
+code: ../..
+command: >-
+  python scripts/acquire_uci_release_matrix.py
+  --output-dir ${{outputs.dataset}}
+  --dataset-key airfoil-self-noise
+outputs:
+  dataset:
+    type: uri_folder
+    path: azureml://datastores/mlops_blob/paths/qualification/source-data/uci-airfoil-self-noise-v1-20260902/
+    mode: upload
+environment: azureml:mlops-v3-unified:23
+compute: azureml:mlopsv2computecluster
+limits:
+  timeout: 1800
+tags:
+  evidence_scope: qualification
+  source_repository: uci
+  source_dataset_id: "291"
+  source_license: CC-BY-4.0
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c

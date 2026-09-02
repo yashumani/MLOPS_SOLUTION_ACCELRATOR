@@ -1,0 +1,34 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: acquire-uci-release-matrix-v3
+experiment_name: mlops-v3-data-qualification
+description: Acquire, normalize, validate, fingerprint, and stage seven licensed UCI datasets for the 15-scenario release matrix.
+code: ../..
+command: >-
+  python -m pip install --disable-pip-version-check --no-cache-dir openpyxl==3.1.5
+  && python scripts/acquire_uci_release_matrix.py
+  --output-dir ${{outputs.datasets}}
+  --dataset-key heart-disease
+  --dataset-key iranian-churn
+  --dataset-key ai4i-predictive-maintenance
+  --dataset-key student-performance
+  --dataset-key real-estate-valuation
+  --dataset-key parkinsons-telemonitoring
+  --dataset-key online-retail
+outputs:
+  datasets:
+    type: uri_folder
+    path: azureml://datastores/mlops_blob/paths/qualification/source-data/uci-release-matrix-v3-20260902/
+    mode: upload
+environment: azureml:mlops-v3-unified:23
+compute: azureml:mlopsv2computecluster
+limits:
+  timeout: 3600
+tags:
+  evidence_scope: qualification
+  source_repository: uci
+  source_dataset_count: "7"
+  source_license: CC-BY-4.0
+  acquisition_schema_version: "3"
+  acquisition_openpyxl_version: "3.1.5"
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c

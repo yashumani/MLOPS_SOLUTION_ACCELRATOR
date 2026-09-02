@@ -23,3 +23,9 @@ stage4_feature_engineering:
   dimensionality_reduction:
     method: none
     # Can add PCA later for high-dimensional data
+
+variant_metadata:
+  variant_id: baseline_clustering
+  leakage_risk: none
+  estimated_runtime_sec: 20
+  generation_mode: manual

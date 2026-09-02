@@ -62,8 +62,6 @@ phases:
     library_dir: "configs/recipes/clustering/v1_generated"
     max_variants: 20  # How many variants to test (intelligent selection)
     selection_strategy: "scored"  # scored (intelligent) | alphabetical | random_seeded
-    min_relevance_score: 30.0  # Minimum threshold (0-100)
-    diversity_boost: true  # Ensure diverse preprocessing strategies
 
     # Runtime constraints
     runtime_budget_sec: 180  # Filter variants by estimated runtime
@@ -77,7 +75,7 @@ phases:
       enabled: false  # Enable via --enable_planner CLI flag
       round1_max_variants: 40  # Max variants for Round 1 proxy training
       round2_max_variants: 10  # Max variants for Round 2 full training
-      proxy_prune_threshold: 0.50  # Proxy metric threshold for pruning
+      proxy_prune_threshold: 0.0  # Minimum acceptable silhouette score
       cache_enabled: true  # Enable preprocessing cache
 
   # Phase C: Hyperparameter optimization with Optuna

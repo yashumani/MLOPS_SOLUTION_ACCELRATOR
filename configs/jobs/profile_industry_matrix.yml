@@ -1,0 +1,30 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: mlops-v3-industry-matrix-profile
+experiment_name: mlops-v3-data-qualification
+description: Azure-side schema, identity, privacy, provenance, exclusion, and task-suitability qualification for the 15-scenario release matrix.
+code: ../..
+command: >-
+  python scripts/profile_industry_matrix.py
+  --dataset-root ${{inputs.datasets}}
+  --manifest configs/qualification/industry_matrix_candidates.yml
+  --output-dir ${{outputs.report}}
+inputs:
+  datasets:
+    type: uri_folder
+    path: azureml://datastores/mlops_blob/paths/
+    mode: ro_mount
+outputs:
+  report:
+    type: uri_folder
+    path: azureml://datastores/mlops_blob/paths/qualification/reports/industry-matrix-v4-20260902/
+    mode: upload
+environment: azureml:mlops-v3-unified:32
+compute: azureml:mlopsv2computecluster
+limits:
+  timeout: 3600
+tags:
+  evidence_scope: qualification
+  matrix_scenarios: "15"
+  manifest_revision: licensed-5x3-v4-privacy-reviewed
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c

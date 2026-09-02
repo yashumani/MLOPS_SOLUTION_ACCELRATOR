@@ -1,0 +1,85 @@
+schema_version: '2.0'
+experiment_name: qual-regression-education-final-grade
+preset: diagnostic
+task_type: regression
+random_seed: 42
+holdout_fraction: 0.2
+holdout_split_strategy: random
+dataset:
+  name: regression-education-final-grade
+  version: 20260902-92a48cb3cc67
+  blob_path: qualification/source-data/uci-release-matrix-v3-20260902/student-performance/student_performance_portuguese.csv
+  datastore_name: mlops_blob
+  content_sha256: 92a48cb3cc67bfc771c5f96250e19e0f7a791d51e7c0dc71d177156feee016eb
+  target_column: G3
+  excluded_columns:
+  - G1
+  - G2
+azureml:
+  subscription_id: 93044a08-5661-4f1b-b424-5eafe066a9d1
+  resource_group: mvpv1
+  workspace_name: mlops-accelerator
+  compute_target: mlopsv2computecluster
+  default_datastore: mlops_blob
+  environment: mlops-v3-unified:32
+stage1:
+  min_rows: 100
+  max_missing_pct: 50
+  generate_sweetviz: false
+  eda_sample_size: 5000
+split:
+  strategy: random
+  validation_fraction: 0.0
+  test_fraction: 0.2
+  cv_folds: 3
+  locked_test: true
+metrics:
+  primary: r2
+  selection_protocol: cross_validation
+  cv_folds: 3
+  locked_test_once: true
+  min_comparable_candidates: 2
+phases:
+  phase_a_baseline:
+    cv_folds: 3
+    candidate_engine_timeout_seconds: 120
+    flaml_config:
+      time_budget: 120
+  phase_b:
+    enable_profiling: true
+    profiling_output_path: outputs/dataset_profile.json
+    library_dir: configs/recipes/regression/variant_search
+    library: variant_search
+    tier: progressive
+    max_variants: 4
+    selection_strategy: scored
+    runtime_budget_sec: 120
+    time_budget_per_variant: 120
+    phase_timeout_seconds: 1800
+    safety_net_review_required: true
+    engines:
+    - pycaret
+    - flaml
+    planner:
+      enabled: true
+      round1_max_variants: 4
+      round2_max_variants: 2
+      proxy_prune_threshold: 0.0
+      diversity_min_hamming_distance: 2
+      cache_enabled: true
+  phase_c_hpo:
+    optimizer: optuna
+    n_trials: 5
+    timeout_seconds: 600
+registry:
+  model_name: mlops-v3-qualification-regression-education-final-grade
+  quality_failure_policy: warn
+  warning_registration_allowed: true
+  warning_tags:
+    quality_decision: warn
+    validation_scope: qualification
+    industry_matrix_profile_run: blue_stone_mfcj9dx8p5
+  pass_aliases: []
+  warning_aliases: []
+recipes:
+- file: recipes/baseline_recipe.yml

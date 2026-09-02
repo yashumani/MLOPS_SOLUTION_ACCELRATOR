@@ -26,3 +26,9 @@ stage4_feature_engineering:
   feature_selection:
     method: variance
     threshold: 0.01
+
+variant_metadata:
+  variant_id: winsorize_robust
+  leakage_risk: none
+  estimated_runtime_sec: 30
+  generation_mode: manual

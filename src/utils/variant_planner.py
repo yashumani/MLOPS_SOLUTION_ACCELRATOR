@@ -20,6 +20,11 @@ from typing import Dict, List, Any, Tuple, Optional
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
+try:
+    from utils.recipe_catalog import semantic_recipe_hash
+except ImportError:  # pragma: no cover - package-style imports in local tests
+    from src.utils.recipe_catalog import semantic_recipe_hash
+
 
 @dataclass
 class EdaPriors:
@@ -75,16 +80,9 @@ class VariantPlan:
 
 
 def compute_preprocessing_hash(variant_config: Dict[str, Any]) -> str:
-    """Compute deterministic hash of preprocessing config."""
-    # Extract just the preprocessing dimensions
-    config_str = json.dumps({
-        "imputation": variant_config.get("stage3_preprocessing", {}).get("imputation", {}).get("method", "none"),
-        "encoding": variant_config.get("stage3_preprocessing", {}).get("encoding", {}).get("categorical_method", "none"),
-        "scaling": variant_config.get("stage3_preprocessing", {}).get("scaling", {}).get("method", "none"),
-        "imbalance": variant_config.get("stage3_preprocessing", {}).get("imbalance_handling", {}).get("method", "none"),
-        "feature_selection": variant_config.get("stage4_feature_engineering", {}).get("feature_selection", {}).get("method", "none"),
-    }, sort_keys=True)
-    return hashlib.sha256(config_str.encode()).hexdigest()[:12]
+    """Compute the complete semantic recipe hash used for deduplication."""
+
+    return semantic_recipe_hash(variant_config)[:12]
 
 
 def score_variant_relevance(
@@ -267,11 +265,24 @@ def diverse_sample(
     Ensures selected variants differ by at least min_hamming_distance
     in preprocessing dimensions.
     """
-    if len(scored_variants) <= max_count:
-        return scored_variants
-    
-    # Sort by score descending
-    sorted_variants = sorted(scored_variants, key=lambda v: v.relevance_score, reverse=True)
+    if max_count < 1 or max_count > 40:
+        raise ValueError("Round 1 max_count must be between 1 and 40")
+
+    # Deduplicate complete semantic identities before consuming shortlist slots.
+    unique: dict[str, VariantScore] = {}
+    for variant in sorted(
+        scored_variants,
+        key=lambda item: (
+            -item.relevance_score,
+            item.preprocessing_hash,
+            item.variant_id,
+            item.variant_path,
+        ),
+    ):
+        unique.setdefault(variant.preprocessing_hash, variant)
+    sorted_variants = list(unique.values())
+    if len(sorted_variants) <= max_count:
+        return sorted_variants
     
     selected = [sorted_variants[0]]  # Start with highest scored
     
@@ -319,7 +330,8 @@ def ensure_coverage(
     selected: List[VariantScore],
     all_scored: List[VariantScore],
     dimension: str,
-    min_per_method: int = 1
+    min_per_method: int = 1,
+    max_count: Optional[int] = None,
 ) -> List[VariantScore]:
     """Ensure minimum coverage of a preprocessing dimension."""
     # Count methods in current selection
@@ -338,6 +350,8 @@ def ensure_coverage(
             candidates = [v for v in all_scored if getattr(v, dimension) == method and v not in selected]
             if candidates:
                 best = max(candidates, key=lambda v: v.relevance_score)
+                if max_count is not None and len(selected) >= max_count:
+                    break
                 selected.append(best)
     
     return selected
@@ -401,7 +415,13 @@ def build_variant_plan(
     
     # Extract config
     round1_max = planner_config.get("round1_max_variants", 40)
-    round2_max = planner_config.get("round2_max_variants", 10)
+    round2_max = planner_config.get("round2_max_variants", 8)
+    if not 1 <= int(round1_max) <= 40:
+        raise ValueError("round1_max_variants must be between 1 and 40")
+    if not 1 <= int(round2_max) <= 8:
+        raise ValueError("round2_max_variants must be between 1 and 8")
+    if int(round2_max) > int(round1_max):
+        raise ValueError("Round 2 maximum cannot exceed Round 1 maximum")
     proxy_threshold = planner_config.get("proxy_prune_threshold", 0.50)
     min_hamming = planner_config.get("diversity_min_hamming_distance", 2)
     
@@ -442,7 +462,13 @@ def build_variant_plan(
     
     # Ensure encoding coverage
     if planner_config.get("diversity_coverage_enabled", True):
-        round1_candidates = ensure_coverage(round1_candidates, scored_variants, "encoding", min_per_method=1)
+        round1_candidates = ensure_coverage(
+            round1_candidates,
+            scored_variants,
+            "encoding",
+            min_per_method=1,
+            max_count=round1_max,
+        )
     
     # Apply proxy pruning if Round 1 results available
     if round1_results:
@@ -458,13 +484,6 @@ def build_variant_plan(
     
     # Final shortlist (top-K by score)
     final_shortlist = sorted(round1_candidates, key=lambda v: v.relevance_score, reverse=True)[:round2_max]
-    
-    # GUARD (R5 audit 2026-02): If all variants are pruned, fall back to the
-    # top-scored unpruned variant so s06 never receives an empty shortlist.
-    if not final_shortlist and scored_variants:
-        top_fallback = sorted(scored_variants, key=lambda v: v.relevance_score, reverse=True)[0]
-        final_shortlist = [top_fallback]
-        print(f"⚠️ VariantPlanner: All variants pruned — falling back to top-scored variant {top_fallback.variant_id} (score={top_fallback.relevance_score})")
     
     # Build shortlist with reasoning
     for rank, v in enumerate(final_shortlist, 1):
@@ -487,13 +506,21 @@ def build_variant_plan(
     # Budget allocation
     round0_budget = planner_config.get("round0_budget_per_variant_sec", 10) * len(variant_configs)
     round1_budget = planner_config.get("round1_budget_per_variant_sec", 60) * round1_max
-    round2_budget = planner_config.get("round2_budget_per_variant_sec", 300) * round2_max * 2  # 2 engines
+    round2_budget = (
+        planner_config.get("round2_budget_per_variant_sec", 600)
+        * round2_max
+        * planner_config.get("engine_count", 2)
+    )
+    total_budget = min(
+        round0_budget + round1_budget + round2_budget,
+        planner_config.get("phase_timeout_seconds", 10800),
+    )
     
     plan.budget_allocation = {
         "round0_budget_sec": round0_budget,
         "round1_budget_sec": round1_budget,
         "round2_budget_sec": round2_budget,
-        "total_budget_sec": round0_budget + round1_budget + round2_budget
+        "total_budget_sec": total_budget
     }
     
     return plan
@@ -522,11 +549,12 @@ def get_default_planner_config() -> Dict[str, Any]:
         "round1_sample_size": 5000,
         "proxy_prune_threshold": 0.50,
         "proxy_prune_threshold_regression": -0.5,
-        "round2_max_variants": 10,
-        "round2_budget_per_variant_sec": 300,
+        "round2_max_variants": 8,
+        "round2_budget_per_variant_sec": 600,
         "diversity_min_hamming_distance": 2,
         "diversity_coverage_enabled": True,
         "cache_enabled": True,
         "cache_scope": "in_memory",
-        "total_budget_sec": 7200
+        "phase_timeout_seconds": 10800,
+        "total_budget_sec": 10800
     }

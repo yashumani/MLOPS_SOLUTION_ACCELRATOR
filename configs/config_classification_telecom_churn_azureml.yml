@@ -1,21 +1,73 @@
+schema_version: "2.0"
 experiment_name: telecom_churn_v3_azure
 preset: production
 task_type: classification
+random_seed: 42
+holdout_fraction: 0.20
+holdout_split_strategy: stratified
 
 dataset:
   name: telecom_churn
+  version: "1"
   target_column: churn
   # The relative path inside datastore; stage1 builds the full URI dynamically
   blob_path: telecom_churn.csv
   datastore_name: mlops_blob
 
 azureml:
-  subscription_id: <AZURE_SUBSCRIPTION_ID>
-  resource_group: <AZURE_RESOURCE_GROUP>
-  workspace_name: <AZURE_WORKSPACE_NAME>
-  compute_target: <AZURE_COMPUTE>
+  subscription_id: 93044a08-5661-4f1b-b424-5eafe066a9d1
+  resource_group: mvpv1
+  workspace_name: mlops-accelerator
+  compute_target: mlopsv2computecluster
+  environment: mlops-v3-unified:32
   environment_name_preprocessing: mlops-v3-preprocessing
   environment_name_training: mlops-v3-training
+
+split:
+  strategy: stratified
+  validation_fraction: 0.0
+  test_fraction: 0.20
+  cv_folds: 5
+  locked_test: true
+
+metrics:
+  primary: balanced_accuracy
+  selection_protocol: cross_validation
+  cv_folds: 5
+  locked_test_once: true
+  min_comparable_candidates: 2
+
+phases:
+  phase_b:
+    library_dir: configs/recipes/classification/variant_search
+    library: variant_search
+    tier: progressive
+    max_variants: 40
+    runtime_budget_sec: 600
+    time_budget_per_variant: 600
+    phase_timeout_seconds: 10800
+    safety_net_review_required: true
+    engines: [pycaret, flaml]
+    planner:
+      enabled: true
+      round1_max_variants: 40
+      round2_max_variants: 8
+      proxy_prune_threshold: 0.50
+      diversity_min_hamming_distance: 2
+      cache_enabled: true
+  phase_c_hpo:
+    optimizer: optuna
+    n_trials: 50
+    timeout_seconds: 3600
+
+registry:
+  model_name: telecom-churn-classification
+  quality_failure_policy: warn
+  warning_registration_allowed: true
+  warning_tags:
+    quality_decision: warn
+  pass_aliases: [champion]
+  warning_aliases: []
 
 recipes:
   - file: recipes/baseline_recipe.yml

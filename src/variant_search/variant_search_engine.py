@@ -322,11 +322,14 @@ class VariantSearchEngine:
         
         elif mode == SearchMode.RANDOM_SAMPLE:
             import random
-            random.seed(seed)
-            all_variants = self._generate_all_valid_variants()
+            rng = random.Random(seed)
+            all_variants = sorted(
+                self._generate_all_valid_variants(),
+                key=lambda variant: variant.variant_id,
+            )
             if runtime_budget_sec:
                 all_variants = [v for v in all_variants if v.estimated_runtime_sec <= runtime_budget_sec]
-            return random.sample(all_variants, min(max_variants, len(all_variants)))
+            return rng.sample(all_variants, min(max_variants, len(all_variants)))
         
         elif mode == SearchMode.PROGRESSIVE:
             # Progressive narrowing: generate cheap variants first
@@ -427,10 +430,10 @@ class VariantSearchEngine:
         )
     
     def _generate_variant_id(self, config: Dict[str, Any]) -> str:
-        """Generate stable SHA1 hash from normalized config."""
+        """Generate stable SHA-256 identity from the normalized configuration."""
         # Sort keys for determinism
         normalized = json.dumps(config, sort_keys=True)
-        return hashlib.sha1(normalized.encode()).hexdigest()[:12]
+        return hashlib.sha256(normalized.encode()).hexdigest()[:12]
     
     def _assess_leakage_risk(self, config: Dict[str, Any]) -> LeakageRisk:
         """Assess data leakage risk for this configuration."""
