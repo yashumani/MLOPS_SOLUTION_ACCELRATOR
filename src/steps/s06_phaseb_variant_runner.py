@@ -27,6 +27,7 @@ import secrets
 import math
 import random
 import multiprocessing
+import shutil
 import tempfile
 import traceback
 from pathlib import Path
@@ -262,18 +263,15 @@ def atomic_write(path: Path, content: str):
         raise e
 
 
-def atomic_copy_file(source: Path, destination: str | Path) -> None:
-    """Publish a required uri_file output atomically inside the watchdog."""
+def publish_uri_file(source: Path, destination: str | Path) -> None:
+    """Publish a required Azure ML ``uri_file`` output."""
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(target.suffix + ".tmp")
-    try:
-        temporary.write_bytes(source.read_bytes())
-        os.replace(str(temporary), str(target))
-    except Exception:
-        if temporary.exists():
-            temporary.unlink()
-        raise
+    # Azure ML file outputs expose the declared file path but may reject sibling
+    # temporary files. The step's success boundary provides publication atomicity.
+    shutil.copyfile(source, target)
+    if target.stat().st_size != source.stat().st_size:
+        raise IOError(f"Incomplete Azure ML output publication: {target}")
 
 
 def write_variant_validation_report(output_path: Path, reports: list[dict]) -> None:
@@ -4328,7 +4326,7 @@ def main():
                     final_deadline,
                     f"before_publish_{source.name}",
                 )
-                atomic_copy_file(source, destination)
+                publish_uri_file(source, destination)
         print(
             "✅ Phase B completed at the selection boundary; locked final-test "
             "evaluation remains pending in S10."

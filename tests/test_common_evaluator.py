@@ -15,6 +15,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from src.utils.common_evaluator import (
     CandidateEvidence,
     EvaluationSpec,
+    deterministic_cv_splits,
     evaluate_candidate,
     select_best_evidence,
 )
@@ -41,6 +42,24 @@ def _candidate():
             ("model", LogisticRegression(random_state=17)),
         ]
     )
+
+
+def test_cv_split_detaches_read_only_target_buffer() -> None:
+    backing = np.asarray(([0] * 10) + ([1] * 10))
+    backing.flags.writeable = False
+    target = pd.Series(backing, copy=False)
+
+    splits = deterministic_cv_splits(
+        np.zeros((len(target), 1)),
+        target,
+        task_type="classification",
+        folds=5,
+        seed=17,
+    )
+
+    assert target.to_numpy(copy=False).flags.writeable is False
+    assert len(splits) == 5
+    assert all(len(train) == 16 and len(validation) == 4 for train, validation in splits)
 
 
 def test_engines_share_exact_fold_assignment_and_metric_contract():

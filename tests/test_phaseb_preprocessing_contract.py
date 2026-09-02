@@ -234,7 +234,7 @@ def test_component_does_not_mask_missing_phaseb_evidence():
         encoding="utf-8"
     )
 
-    assert yaml.safe_load(component)["version"] == 14
+    assert yaml.safe_load(component)["version"] == 15
     assert 'echo "[]"' not in component
     assert 'echo "{}"' not in component
     assert "--leaderboard_out ${{outputs.leaderboard_csv}}" in component

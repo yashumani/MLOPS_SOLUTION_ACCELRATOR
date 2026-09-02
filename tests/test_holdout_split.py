@@ -467,6 +467,7 @@ def test_azure_component_graph_declares_and_wires_holdout_boundary():
     )
     builder = Path("pipelines/pipeline_builder.py").read_text(encoding="utf-8")
 
+    assert stage2_component["version"] == 12
     assert stage2_component["outputs"]["raw_train_out"]["type"] == "uri_file"
     assert stage2_component["outputs"]["raw_holdout_out"]["type"] == "uri_file"
     assert final_component["inputs"]["holdout_in"]["type"] == "uri_file"

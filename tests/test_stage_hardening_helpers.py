@@ -8,7 +8,9 @@ import pytest
 from src.orchestration.config_schema import validate_config
 from src.steps.phasec_optuna_hpo import _compute_hpo_cost
 from src.steps.stage2_preparation import (
+    build_partitioned_stage2_inputs,
     drop_excluded_feature_columns,
+    prep_dataframe,
     resolve_excluded_feature_columns,
     resolve_protected_columns,
 )
@@ -70,6 +72,38 @@ def test_stage2_rejects_target_as_excluded_column() -> None:
 def test_stage2_rejects_missing_excluded_column() -> None:
     with pytest.raises(ValueError, match="absent: missing"):
         drop_excluded_feature_columns(pd.DataFrame({"feature": [1]}), ["missing"])
+
+
+def test_stage2_excludes_columns_before_learned_preparation() -> None:
+    frame = pd.DataFrame(
+        {
+            "invoice_id": [f"invoice-{index}" for index in range(12)],
+            "description": [f"item-{index}" for index in range(12)],
+            "quantity": list(range(12)),
+        }
+    )
+
+    raw_partitioned, model_partitioned = build_partitioned_stage2_inputs(
+        frame,
+        target_col=None,
+        task_type="clustering",
+        excluded_columns=["description", "invoice_id"],
+        holdout_fraction=0.25,
+        random_seed=42,
+        split_strategy="random",
+        time_column=None,
+    )
+    prepared, dropped, _ = prep_dataframe(
+        model_partitioned,
+        None,
+        {"imputation_numeric": "median", "high_cardinality_max": 2},
+        "clustering",
+    )
+
+    assert {"description", "invoice_id"}.issubset(raw_partitioned.columns)
+    assert {"description", "invoice_id"}.isdisjoint(model_partitioned.columns)
+    assert {"description", "invoice_id"}.isdisjoint(prepared.columns)
+    assert dropped == []
 
 
 def test_stage3_resolves_task_specific_baseline_alias() -> None:

@@ -101,6 +101,38 @@ def drop_excluded_feature_columns(
     return frame.drop(columns=excluded_columns)
 
 
+def build_partitioned_stage2_inputs(
+    frame: pd.DataFrame,
+    *,
+    target_col: str | None,
+    task_type: str,
+    excluded_columns: list[str],
+    holdout_fraction: float,
+    random_seed: int,
+    split_strategy: str,
+    time_column: str | None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Assign the canonical split, then remove excluded features before learning."""
+
+    split_source = frame.copy()
+    if target_col and target_col in split_source.columns:
+        split_source = split_source[split_source[target_col].notna()].copy()
+    raw_partitioned = ensure_holdout_partition(
+        split_source,
+        target_col=target_col,
+        task_type=task_type,
+        holdout_fraction=holdout_fraction,
+        random_seed=random_seed,
+        split_strategy=split_strategy,
+        time_column=time_column,
+    )
+    model_partitioned = drop_excluded_feature_columns(
+        raw_partitioned,
+        excluded_columns,
+    )
+    return raw_partitioned, model_partitioned
+
+
 def extract_raw_train_and_holdout(
     raw_partitioned: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -456,21 +488,24 @@ def main():
     high_cardinality_max = int(stage2_cfg.get("high_cardinality_max", 100) or 100)
     recommendations["high_cardinality_max"] = high_cardinality_max
     
-    split_source = df.copy()
-    if target_col and target_col in split_source.columns:
-        split_source = split_source[split_source[target_col].notna()].copy()
-    raw_partitioned = ensure_holdout_partition(
-        split_source,
+    raw_partitioned, model_partitioned = build_partitioned_stage2_inputs(
+        df,
         target_col=target_col,
         task_type=task_type,
+        excluded_columns=excluded_feature_columns,
         holdout_fraction=float(cfg.get("holdout_fraction", 0.2)),
         random_seed=int(cfg.get("random_seed", 42)),
         split_strategy=str(cfg.get("holdout_split_strategy", "random")),
         time_column=cfg.get("holdout_time_column"),
     )
+    if excluded_feature_columns:
+        print(
+            "   🛡️  Removed configured identifiers/leakage columns before "
+            f"learned preparation: {excluded_feature_columns}"
+        )
 
     df2, dropped, test_results = prep_dataframe(
-        df,
+        model_partitioned,
         target_col,
         recommendations,
         task_type,
@@ -480,7 +515,6 @@ def main():
         split_strategy=str(cfg.get("holdout_split_strategy", "random")),
         time_column=cfg.get("holdout_time_column"),
     )
-    df2 = drop_excluded_feature_columns(df2, excluded_feature_columns)
     print(f"✅ After preparation: {df2.shape[0]:,} rows × {df2.shape[1]} columns")
     analysis_df = df2.drop(
         columns=[SPLIT_COLUMN, ROW_ID_COLUMN],
@@ -494,6 +528,8 @@ def main():
         protected_columns,
         high_cardinality_max=high_cardinality_max,
     )
+    report["excluded_feature_columns"] = excluded_feature_columns
+    report["excluded_feature_columns_count"] = len(excluded_feature_columns)
 
     # Propagate time-series signal into the prep report
     if ts_detection:

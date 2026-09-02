@@ -208,8 +208,12 @@ def deterministic_cv_splits(
         raise ValueError("Clustering does not use supervised CV splits")
     if len(X) != len(y):
         raise ValueError("X and y row counts differ")
+    # Pandas can preserve a read-only or memory-mapped backing array. Older
+    # scikit-learn releases attempt to mark that target writable during split
+    # validation, so detach it at the evaluator boundary.
+    target = np.array(y, copy=True)
     if task_type == "classification":
-        _, counts = np.unique(np.asarray(y), return_counts=True)
+        _, counts = np.unique(target, return_counts=True)
         if len(counts) < 2:
             raise ValueError("Classification evaluation requires at least two classes")
         effective_folds = min(int(folds), int(counts.min()))
@@ -220,7 +224,7 @@ def deterministic_cv_splits(
             shuffle=True,
             random_state=int(seed),
         )
-        return list(splitter.split(np.zeros(len(y)), y))
+        return list(splitter.split(np.zeros(len(target)), target))
     effective_folds = min(int(folds), int(len(X)))
     if effective_folds < 2:
         raise ValueError("Regression evaluation requires at least two rows")
@@ -229,7 +233,7 @@ def deterministic_cv_splits(
         shuffle=True,
         random_state=int(seed),
     )
-    return list(splitter.split(np.zeros(len(y))))
+    return list(splitter.split(np.zeros(len(target))))
 
 
 def _classification_metrics(model: Any, X: Any, y: Any) -> dict[str, float]:

@@ -16,6 +16,7 @@ from orchestration.config_compiler import (
 )
 from steps.s06_phaseb_variant_runner import (
     HardDeadlineExceeded,
+    publish_uri_file,
     require_phase_b_budget,
     rank_round2_proxy_survivors,
     resolve_recipe_paths,
@@ -32,6 +33,17 @@ def _blocking_operation():
 
 def _raising_operation():
     raise ValueError("isolated failure detail")
+
+
+def test_uri_file_publication_writes_only_the_declared_path(tmp_path: Path) -> None:
+    source = tmp_path / "source.json"
+    destination = tmp_path / "azure-output" / "result.json"
+    source.write_text('{"status":"ok"}\n', encoding="utf-8")
+
+    publish_uri_file(source, destination)
+
+    assert destination.read_bytes() == source.read_bytes()
+    assert not destination.with_suffix(".json.tmp").exists()
 
 
 def test_approved_budget_caps_are_locked() -> None:
