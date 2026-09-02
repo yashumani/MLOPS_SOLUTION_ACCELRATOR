@@ -29,8 +29,8 @@ def test_execution_manifest_and_candidate_catalog_are_wired_end_to_end() -> None
     assert "candidate_catalog=candidate_catalog_input" in submit
     assert 'variants_list=""' in submit
     assert "execution_manifest=execution_manifest_input" in submit
-    assert "_sdk_local_input_path(execution_manifest_path)" in submit
-    assert "_sdk_local_input_path(catalog_evidence_path)" in submit
+    assert submit.count("_sdk_local_file_input(") == 5
+    assert submit.count("datastore=default_datastore") >= 4
     assert builder.count('execution_manifest: Input(type="uri_file"') == 2
     assert builder.count('candidate_catalog: Input(type="uri_file"') == 2
     assert builder.count('"execution_manifest": s06.outputs.execution_manifest_out') == 2

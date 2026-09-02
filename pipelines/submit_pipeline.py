@@ -936,6 +936,18 @@ def _sdk_local_input_path(path: Path) -> str:
     return str(resolved)
 
 
+def _sdk_local_file_input(path: Path, *, datastore: str) -> Input:
+    """Route a local control artifact to the configured working datastore."""
+
+    if not str(datastore or "").strip():
+        raise ValueError("datastore must be non-empty for local file inputs")
+    return Input(
+        path=_sdk_local_input_path(path),
+        type="uri_file",
+        datastore=datastore,
+    )
+
+
 def _azure_from_local_config(cfg):
     """Extract azureml connection defaults from an already-loaded config dict."""
     if not cfg or not isinstance(cfg, dict):
@@ -1618,13 +1630,13 @@ def main():
         logger.info("Execution manifest: %s", execution_manifest_path)
         logger.info("Recipe catalog evidence: %s", catalog_evidence_path)
         logger.info("Upload source manifest: %s", source_manifest_path)
-        execution_manifest_input = Input(
-            path=_sdk_local_input_path(execution_manifest_path),
-            type="uri_file",
+        execution_manifest_input = _sdk_local_file_input(
+            execution_manifest_path,
+            datastore=default_datastore,
         )
-        candidate_catalog_input = Input(
-            path=_sdk_local_input_path(catalog_evidence_path),
-            type="uri_file",
+        candidate_catalog_input = _sdk_local_file_input(
+            catalog_evidence_path,
+            datastore=default_datastore,
         )
 
         drift_baseline_input = Input(path=args.drift_baseline_in, type="uri_folder") if args.drift_baseline_in else None
@@ -1683,13 +1695,13 @@ def main():
             selected_catalog_entries,
             source_manifest,
         )
-        execution_manifest_input = Input(
-            path=_sdk_local_input_path(execution_manifest_path),
-            type="uri_file",
+        execution_manifest_input = _sdk_local_file_input(
+            execution_manifest_path,
+            datastore=default_datastore,
         )
-        candidate_catalog_input = Input(
-            path=_sdk_local_input_path(catalog_evidence_path),
-            type="uri_file",
+        candidate_catalog_input = _sdk_local_file_input(
+            catalog_evidence_path,
+            datastore=default_datastore,
         )
         drift_baseline_input = Input(path=args.drift_baseline_in, type="uri_folder") if args.drift_baseline_in else None
         job = full_pipeline(

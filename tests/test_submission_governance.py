@@ -72,6 +72,19 @@ def test_local_manifest_input_uses_native_absolute_path(tmp_path: Path) -> None:
     assert not resolved.startswith("file:")
 
 
+def test_local_manifest_input_uses_configured_datastore(tmp_path: Path) -> None:
+    manifest = tmp_path / "execution-manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+
+    sdk_input = submit_pipeline._sdk_local_file_input(
+        manifest,
+        datastore="mlops_blob",
+    )
+
+    assert sdk_input.path == str(manifest.resolve())
+    assert sdk_input.datastore == "mlops_blob"
+
+
 def test_legacy_operator_scripts_delegate_to_canonical_submitter() -> None:
     root = Path(__file__).resolve().parents[1]
     for relative_path in (
