@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
-"""Resubmit the historical failed set through the canonical submitter."""
+"""Retired historical replay entrypoint."""
 
 from __future__ import annotations
 
-from _canonical_batch_submit import run_config_batch
+import sys
 
 
-CONFIGS = (
-    "configs/config_regression_college_azureml.yml",
-    "configs/config_regression_insurance_azureml.yml",
-    "configs/config_regression_house_sales_azureml.yml",
-    "configs/config_regression_medical_charges_azureml.yml",
-    "configs/config_regression_length_of_stay_azureml.yml",
-    "configs/config_classification_telco_churn_azureml.yml",
+MESSAGE = (
+    "The historical six-config replay set is retired. Use "
+    "scripts/batch_submit_all.py --scenario <scenario-id> --execute for an "
+    "explicit immutable qualification revision."
 )
 
 
 if __name__ == "__main__":
-    raise SystemExit(
-        run_config_batch(
-            CONFIGS,
-            label="Historical failed-job replay",
-            tags={"resubmit": "canonical_current_revision"},
-        )
-    )
+    print(MESSAGE, file=sys.stderr)
+    raise SystemExit(2)

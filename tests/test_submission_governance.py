@@ -87,14 +87,19 @@ def test_local_manifest_input_uses_configured_datastore(tmp_path: Path) -> None:
 
 def test_legacy_operator_scripts_delegate_to_canonical_submitter() -> None:
     root = Path(__file__).resolve().parents[1]
-    for relative_path in (
-        "scripts/batch_submit_inline.py",
-        "scripts/resubmit_6_failed.py",
-    ):
-        source = (root / relative_path).read_text(encoding="utf-8")
-        assert "run_config_batch" in source
-        assert "jobs.create_or_update" not in source
-        assert "full_pipeline(" not in source
+    batch_source = (root / "scripts/batch_submit_inline.py").read_text(
+        encoding="utf-8"
+    )
+    assert "batch_submit_all" in batch_source
+    assert "jobs.create_or_update" not in batch_source
+    assert "full_pipeline(" not in batch_source
+
+    replay_source = (root / "scripts/resubmit_6_failed.py").read_text(
+        encoding="utf-8"
+    )
+    assert "historical six-config replay set is retired" in replay_source
+    assert "--execute" in replay_source
+    assert "run_config_batch" not in replay_source
 
     helper = (root / "scripts/_canonical_batch_submit.py").read_text(
         encoding="utf-8"
