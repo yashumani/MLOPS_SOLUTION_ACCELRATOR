@@ -1,0 +1,25 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: capture-mlops-v3-unified-31-lock
+experiment_name: mlops-v3-platform-qualification
+description: Capture exact pip and conda package identities from unified environment version 31 after its smoke gate passes.
+code: ../..
+command: >-
+  python scripts/capture_azure_environment_lock.py
+  --environment mlops-v3-unified:31
+  --output-dir ${{outputs.lock}}
+outputs:
+  lock:
+    type: uri_folder
+    path: azureml://datastores/mlops_blob/paths/qualification/environment-locks/mlops-v3-unified-31-20260902/
+    mode: upload
+environment: azureml:mlops-v3-unified:31
+compute: azureml:mlopsv2computecluster
+limits:
+  timeout: 900
+tags:
+  evidence_scope: environment-qualification
+  environment_name: mlops-v3-unified
+  environment_version: "31"
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c
+  prerequisite_smoke_job: frosty_rabbit_kxns1m4msm

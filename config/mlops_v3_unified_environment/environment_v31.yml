@@ -1,0 +1,16 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: mlops-v3-unified
+version: 31
+description: Functionally completed smoke but not release-accepted because mlflow 2.14.3 resolved with mlflow-skinny 3.15.2.
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04@sha256:74a79815972fc52df633e894463c51ba80b178d039a7fc50c2072930b298fc33
+conda_file: conda_v31.yml
+tags:
+  evidence_scope: qualified-with-warning-not-release-accepted
+  predecessor_environment: mlops-v3-unified:30
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c
+  base_image_digest: sha256-74a79815972fc52df633e894463c51ba80b178d039a7fc50c2072930b298fc33
+  dependency_policy: pinned-direct-dependencies
+  setuptools_compatibility: 80.9.0-pkg_resources
+  smoke_job: frosty_rabbit_kxns1m4msm
+  smoke_outcome: completed-rejected-mlflow-skinny-version-mismatch
+  built_image_digest: sha256-bda978c13b3cac812e9fc1246e8261b0f0485ece07bda36605a105722fbb11eb

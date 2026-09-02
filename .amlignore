@@ -18,6 +18,11 @@ scripts/submission_logs/
 tests/
 examples/
 docs/
+react-ui/node_modules/
+react-ui/dist/
+react-ui/.vite/
+react-ui/.env.local
+.pytest_cache/
 catboost_info/
 mlruns/
 *.egg-info/

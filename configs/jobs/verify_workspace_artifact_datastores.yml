@@ -1,0 +1,21 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: verify-workspace-artifact-datastores-v1
+experiment_name: mlops-v3-platform-recovery
+description: Bounded write/read canary for the workspace-default output and artifact datastores.
+code: ../..
+command: >-
+  python scripts/verify_workspace_artifact_datastores.py
+  --output-dir ${{outputs.probe}}
+outputs:
+  probe:
+    type: uri_folder
+    mode: upload
+environment: azureml:mlops-v3-unified:32
+compute: azureml:mlopsv2computecluster
+limits:
+  timeout: 900
+tags:
+  evidence_scope: platform-recovery
+  shared_datastore_change_required: "true"
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c

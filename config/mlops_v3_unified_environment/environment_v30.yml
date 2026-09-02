@@ -1,0 +1,13 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: mlops-v3-unified
+version: 30
+description: Failed release-candidate environment retained for runtime import evidence; azureml-dataprep could not import pkg_resources from setuptools 84.0.0.
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04@sha256:74a79815972fc52df633e894463c51ba80b178d039a7fc50c2072930b298fc33
+conda_file: conda_v30.yml
+tags:
+  evidence_scope: failed-release-candidate
+  predecessor_environment: mlops-v3-unified:29
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c
+  build_job: clever_spoon_fg5bnnytbt
+  build_outcome: failed-azureml-dataprep-pkg-resources-import
+  built_image_digest: sha256-cd72fa9eb11b9a84ced0e86076ca1f3600e809832974330eb04ca93fe76a7a46

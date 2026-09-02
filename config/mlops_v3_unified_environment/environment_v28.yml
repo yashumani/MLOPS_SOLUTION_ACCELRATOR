@@ -1,0 +1,12 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: mlops-v3-unified
+version: 28
+description: Failed release-candidate environment retained for build evidence; conda could not resolve matplotlib 3.7.5.
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04@sha256:74a79815972fc52df633e894463c51ba80b178d039a7fc50c2072930b298fc33
+conda_file: conda_v28.yml
+tags:
+  evidence_scope: failed-release-candidate
+  predecessor_environment: mlops-v3-unified:23
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c
+  build_job: modest_peach_zbn7yrz2y4
+  build_outcome: failed-conda-matplotlib-3.7.5-unavailable

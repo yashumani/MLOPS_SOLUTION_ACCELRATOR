@@ -1,18 +1,20 @@
 # V3 Usage Guide
 
-This guide describes how to submit and monitor the production V3 Azure ML pipeline. Local step execution is not a production validation path.
+Current as of: 2026-08-02
+
+This guide is a concise entry point for day-to-day V3 use. For the complete command reference, see `SUBMISSION_GUIDE.md`.
 
 ## Prerequisites
 
-- Azure ML workspace access to subscription `93044a08-5661-4f1b-b424-5eafe066a9d1`.
-- Resource group `mvpv1` and workspace `mlops-accelerator`.
-- Compute target `mlopsv2computecluster`.
-- A YAML config under `configs/` with Azure ML datastore input paths.
-- The working tree should be clean or intentionally reviewed before production submission.
+- Azure ML workspace access.
+- Subscription `93044a08-5661-4f1b-b424-5eafe066a9d1`.
+- Resource group `mvpv1`.
+- Workspace `mlops-accelerator`.
+- Compute `mlopsv2computecluster`.
+- Runtime `/anaconda/envs/mlops_pipeline_v2/bin/python`.
+- A classification, regression, or clustering config under `configs/` with Azure ML datastore input paths and an exact `dataset.content_sha256` for production submission.
 
-## Choose a Config
-
-Production configs live under `configs/`. Examples:
+## Choose A Config
 
 | Task | Example config |
 |---|---|
@@ -20,12 +22,26 @@ Production configs live under `configs/`. Examples:
 | Regression | `configs/config_regression_college_azureml.yml` |
 | Clustering | `configs/config_clustering_online_retail_azureml.yml` |
 
-Each config controls dataset URI, task type, target column where applicable, stage parameters, Phase A engines, Phase B recipes, Phase C HPO, and final evaluation behavior.
+Each config controls dataset URI, task type, target column where applicable, stage parameters, Phase A engines, Phase B recipes, Phase C HPO, final evaluation behavior, and registry settings.
 
-## Submit a Job
+## Dry-Run A Job
 
 ```bash
-python pipelines/submit_pipeline.py \
+/anaconda/envs/mlops_pipeline_v2/bin/python pipelines/submit_pipeline.py \
+  --config configs/config_regression_college_azureml.yml \
+  --subscription_id 93044a08-5661-4f1b-b424-5eafe066a9d1 \
+  --resource_group mvpv1 \
+  --workspace_name mlops-accelerator \
+  --compute mlopsv2computecluster \
+  --dry_run
+```
+
+Dry-run verifies config validation and graph construction. It does not prove production behavior.
+
+## Submit A Job
+
+```bash
+/anaconda/envs/mlops_pipeline_v2/bin/python pipelines/submit_pipeline.py \
   --config configs/config_classification_telecom_churn_azureml.yml \
   --subscription_id 93044a08-5661-4f1b-b424-5eafe066a9d1 \
   --resource_group mvpv1 \
@@ -33,32 +49,40 @@ python pipelines/submit_pipeline.py \
   --compute mlopsv2computecluster
 ```
 
-Intentional resubmission:
+Use `--force` only for intentional resubmissions after checking active jobs.
+
+## Submit With Drift Baseline
+
+Use this for a second-cycle drift comparison:
 
 ```bash
-python pipelines/submit_pipeline.py \
-  --config configs/config_classification_telecom_churn_azureml.yml \
+/anaconda/envs/mlops_pipeline_v2/bin/python pipelines/submit_pipeline.py \
+  --config configs/config_regression_college_azureml.yml \
   --subscription_id 93044a08-5661-4f1b-b424-5eafe066a9d1 \
   --resource_group mvpv1 \
   --workspace_name mlops-accelerator \
   --compute mlopsv2computecluster \
-  --force
+  --drift_baseline_in azureml://subscriptions/93044a08-5661-4f1b-b424-5eafe066a9d1/resourcegroups/mvpv1/workspaces/mlops-accelerator/datastores/mlops_blob/paths/azureml/df8ab328-9394-48ce-9495-5008ad95d745/drift_baseline/
 ```
 
-`--force` bypasses duplicate-submission guards. Use it only when the existing active job is known and intentional.
+Expected `s13` state for a valid baseline:
 
-## What Happens at Submission
+- `comparison_drift.available=true`.
+- `baseline_status=loaded`.
+- The separate `s14` artifact may recommend `observe_only`, `refresh_baseline`, or `candidate_retrain` depending on policy; `s13` itself emits evidence only.
+
+## What Happens At Submission
 
 1. K2 config validation runs before Azure work.
-2. The submission lock prevents concurrent local submit processes.
+2. The local lock prevents concurrent submissions.
 3. Active Azure ML jobs in the same experiment are checked.
-4. The selected recipes and engines are resolved from config.
-5. Azure ML receives a component pipeline job.
+4. Recipes and engines are resolved.
+5. Azure ML receives the component pipeline job.
 6. The submitted job name is printed and saved under `~/.mlops/last_submitted_job.json`.
 
-On NFS-mounted workspaces, `ml_client.jobs.create_or_update()` can take several minutes. Seeing no immediate job ID during that upload window is normal.
+NFS-mounted workspaces can spend several minutes packaging/uploading code before a job name appears.
 
-## Monitor a Job
+## Monitor A Job
 
 ```bash
 az ml job show \
@@ -69,19 +93,42 @@ az ml job show \
   --output tsv
 ```
 
-List active jobs:
+List child steps:
 
 ```bash
 az ml job list \
+  --parent-job-name <job_name> \
   --resource-group mvpv1 \
   --workspace-name mlops-accelerator \
-  --query "[?status=='Running' || status=='Queued' || status=='Starting'].{name:name,status:status,experiment:experiment_name}" \
+  --query "[].{step:display_name,status:status,name:name}" \
   --output table
 ```
 
+Current active graph should include `s14` for fresh submissions from the updated branch.
+
+## Download Artifacts
+
+```bash
+az ml job download \
+  --name <job_name> \
+  --resource-group mvpv1 \
+  --workspace-name mlops-accelerator \
+  --download-path /tmp/mlops_outputs \
+  --output-name final_report
+
+az ml job download \
+  --name <job_name> \
+  --resource-group mvpv1 \
+  --workspace-name mlops-accelerator \
+  --download-path /tmp/mlops_outputs \
+  --output-name drift_report
+```
+
+For fresh submissions, also download `retrain_decision` and `decision_ledger_record` to review the terminal `s14` decision artifacts.
+
 ## Quality Gate Behavior
 
-Final evaluation computes `quality_gate_passed` and writes the value to MLflow and the final report.
+Phase selection uses comparable training/CV evidence. Final evaluation records the frozen champion's one-time locked-test audit and quality-gate status in `final_report`; the locked-test score does not choose the champion.
 
 Defaults:
 
@@ -91,36 +138,20 @@ Defaults:
 | Regression | `0.0` | Warn-only |
 | Clustering | `0.0` | Warn-only |
 
-To hard-block weak champions, set:
+Set `registry.block_on_quality_fail: true` only when you intentionally want weak champions to block registration.
 
-```yaml
-registry:
-  block_on_quality_fail: true
-```
+## Current Auto-Retrain Status
 
-To override thresholds, set:
+- Current-checkout classification, regression, and clustering SDK dry-runs passed, which proves graph construction only.
+- The 2026-08-02 exact-source Azure canary was rejected before job creation by `ReadOnlyDisabledSubscription`; current Azure runtime acceptance remains blocked.
+- May 2026 first-cycle, second-cycle, and three-task rotation jobs in `AUTO_RETRAIN_OPERATING_LEDGER.md` are historical Azure evidence for earlier revisions.
+- No current-revision registered-model or deployed-inference claim follows from those historical jobs.
 
-```yaml
-registry:
-  min_quality:
-    classification: 0.60
-    regression: 0.10
-    clustering: 0.05
-```
+## More Detail
 
-Do not raise production thresholds casually; recent failures were caused by a dirty working tree that accidentally turned the gate into strict blocking.
+Use these documents next:
 
-## Troubleshooting
-
-| Symptom | Likely cause | Action |
-|---|---|---|
-| K2 validation fails | Config schema problem. | Fix the YAML config before submitting. |
-| Submission appears stuck | NFS snapshot upload. | Wait 10 to 12 minutes before assuming failure. |
-| Active job guard blocks submission | Same experiment already has an active job. | Wait for it or use `--force` only if intentional. |
-| `pathOnCompute` warning appears | Azure ML SDK warning. | Non-fatal if a job name is printed. |
-| `quality_gate_passed=false` | Champion below threshold or invalid. | Inspect champion score, threshold, and `block_on_quality_fail`. |
-| `No sibling holdout.csv` | Legacy dataset artifact. | Resubmit through current Stage 4 to produce holdout siblings. |
-
-## Documentation
-
-Use `docs/PRODUCTION_FREEZE_SUMMARY.md` for current freeze status and `docs/COMMIT_LEDGER_20260501.md` for commit history.
+- `PIPELINE_STAGES.md` for stage behavior.
+- `PIPELINE_IO_CONTRACTS.md` for artifact contracts.
+- `SUBMISSION_GUIDE.md` for complete command examples.
+- `AUTO_RETRAIN_OPERATING_LEDGER.md` for retrain operations.

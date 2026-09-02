@@ -1,0 +1,24 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: validate-mlops-v3-unified-29
+experiment_name: mlops-v3-platform-qualification
+description: Validate package consistency, imports, Evidently execution, and Azure MLflow tracking for environment version 29.
+code: ../..
+command: >-
+  python scripts/validate_azure_environment.py
+  --environment mlops-v3-unified:29
+  --output-dir ${{outputs.evidence}}
+outputs:
+  evidence:
+    type: uri_folder
+    path: azureml://datastores/mlops_blob/paths/qualification/environment-smoke/mlops-v3-unified-29-20260902/
+    mode: upload
+environment: azureml:mlops-v3-unified:29
+compute: azureml:mlopsv2computecluster
+limits:
+  timeout: 3600
+tags:
+  evidence_scope: qualification
+  environment_under_test: mlops-v3-unified:29
+  predecessor_build_job: modest_peach_zbn7yrz2y4
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c

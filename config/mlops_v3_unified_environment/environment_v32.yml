@@ -1,0 +1,17 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: mlops-v3-unified
+version: 32
+description: Release-qualified runtime with aligned MLflow packages, Azure MLflow, Evidently, and a pkg_resources-compatible Setuptools pin.
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04@sha256:74a79815972fc52df633e894463c51ba80b178d039a7fc50c2072930b298fc33
+conda_file: conda_v32.yml
+tags:
+  evidence_scope: release-qualified
+  predecessor_environment: mlops-v3-unified:31
+  source_base_sha: eb739444f9d439b75232e0342f5d5c52ab86986c
+  base_image_digest: sha256-74a79815972fc52df633e894463c51ba80b178d039a7fc50c2072930b298fc33
+  dependency_policy: pinned-direct-dependencies
+  setuptools_compatibility: 80.9.0-pkg_resources
+  mlflow_alignment: 2.14.3
+  smoke_job: cool_pumpkin_wknxj9y9l2
+  smoke_outcome: completed-release-qualified
+  built_image_digest: sha256-5adebdd6ab3ba64ad1a9b8828f18a0b5af4b4d0cad300cee18ebd1bc51c4aa33

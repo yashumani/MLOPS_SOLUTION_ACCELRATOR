@@ -1,9 +1,11 @@
 # Phase 1 Documentation — MLOps Solution Accelerator V3
 
-> **Scope**: End-to-end pipeline steps s00 through s13, covering data ingestion, preprocessing, baseline training, Phase B variant search, Phase C HPO, final evaluation, model registration, and drift detection.
+> **Historical snapshot — not an active product or operating contract.** This January 2026 narrative contains superseded forecasting, Stage 4 split, holdout-based selection, MLflow URI conversion, and pre-S14 claims. Use `PROJECT_REQUIREMENTS.md`, `PIPELINE_STAGES.md`, `PIPELINE_IO_CONTRACTS.md`, and current source instead.
+>
+> **Historical scope**: End-to-end pipeline steps s00 through s13 as documented at that time.
 >
 > **Last updated**: 2026-01
-> **Pipeline version**: V3 (production)
+> **Pipeline version**: V3 historical snapshot
 > **Codebase root**: `mlops-solution-accelerator-v3/`
 
 ---
@@ -640,7 +642,7 @@ These flags activate the Phase 1 intelligent variant recommendation system. All 
 | `--bundles_dir` | string | `None` | Path to a `variant_bundles/<task>` directory. Enables AIM-Tournament bundle gating, which pre-selects variant bundles based on data signals (imbalance ratio, dataset size, feature count) before the VariantRecommender runs. |
 | `--imputation_preset` | string | `None` | Filter the selected variant pool to only variants whose imputation method matches the specified preset. Choices: `auto`, `statistical`, `ml_based`, `removal`, `pandas_native`, `composite`, `sampling`, `advanced`. |
 | `--drift_baseline_in` | string | `None` | URI of a previous Stage 13 drift baseline output folder. When provided, the final evaluation step computes dataset drift relative to this baseline. |
-| `--env_version` | string | from `azureml_unified_env.yml` | Override the Azure ML environment tag. Format: `name:version` (e.g. `mlops-v3-unified:23`). |
+| `--env_version` | string | from config or active component identity | Override the Azure ML environment tag. Format: `name:version` (e.g. `mlops-v3-unified:32`). |
 
 #### 5.2.7 Safety Flags
 
@@ -1614,7 +1616,7 @@ Phase C takes the Phase B champion algorithm and searches for its optimal hyperp
 | **Output** | `hpo_study` | uri_folder | — | Full Optuna study artefacts (trial database) |
 | **Output** | `optimized_model` | uri_folder | — | Best model serialised as `.pkl` |
 
-**Environment**: `azureml:mlops-v3-unified:23`
+**Environment**: `azureml:mlops-v3-unified:32`
 
 #### Config Keys
 

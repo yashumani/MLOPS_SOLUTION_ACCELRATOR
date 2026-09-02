@@ -10,3 +10,10 @@ scripts/submission_logs/
 logs/
 logs.log
 pipelines/.last_submitted_job
+react-ui/node_modules/
+react-ui/dist/
+react-ui/.env.local
+react-ui/.vite/
+react-ui/*.tsbuildinfo
+react-ui/vite.config.js
+react-ui/vite.config.d.ts
