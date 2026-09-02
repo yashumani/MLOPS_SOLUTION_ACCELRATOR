@@ -1,5 +1,5 @@
 """
-Stage 13: Drift Monitor — Baseline Profile & Retraining Cadence
+Stage 13: Drift Evidence & Baseline Profile
 
 Computes per-feature baseline statistics and PSI self-check on the
 processed training dataset. Outputs a drift baseline artifact and
@@ -100,15 +100,53 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 def _safe_disable_autolog():
-    """Disable autolog + convert azureml:// tracking URI to https://."""
+    """Disable autologging without changing the workspace tracking identity."""
     try:
         mlflow.autolog(disable=True)
     except Exception as e:
         logger.debug("mlflow.autolog(disable=True) failed: %s", e)
-    uri = os.getenv("MLFLOW_TRACKING_URI", "")
-    if uri.startswith("azureml://"):
-        mlflow.set_tracking_uri(uri.replace("azureml://", "https://"))
-        logger.info("🔗 MLflow tracking URI converted to HTTPS")
+
+
+_IDENTITY_FIELDS = (
+    "execution_id",
+    "config_hash",
+    "config_revision",
+    "candidate_id",
+    "model_bundle_id",
+    "model_name",
+    "model_version",
+    "data_fingerprint",
+    "dataset_version",
+    "source_sha",
+    "code_version",
+    "environment_hash",
+    "split_fingerprint",
+    "mlflow_run_id",
+)
+
+
+def _collect_upstream_identity(final_report: dict, registry_info: dict) -> dict:
+    """Pass through identity values already emitted by upstream stages."""
+    sources = [
+        final_report.get("identity") or {},
+        final_report.get("lineage") or {},
+        final_report,
+        registry_info.get("identity") or {},
+        registry_info.get("lineage") or {},
+        registry_info,
+    ]
+    identity = {}
+    for field in _IDENTITY_FIELDS:
+        for source in sources:
+            value = source.get(field) if isinstance(source, dict) else None
+            if value not in (None, ""):
+                identity[field] = value
+                break
+
+    actual_run_id = os.getenv("AZUREML_RUN_ID") or os.getenv("MLFLOW_RUN_ID")
+    if actual_run_id and "execution_id" not in identity:
+        identity["execution_id"] = actual_run_id
+    return identity
 
 
 def _load_config(config_name: str) -> dict:
@@ -306,10 +344,7 @@ def run_drift_monitor(args):
     dataset_cfg = config.get("dataset", {})
     target_column = dataset_cfg.get("target_column", None)
     dataset_name = dataset_cfg.get("name", args.config_name.replace(".yml", ""))
-    execution_id = f"s13_{dataset_name}_{int(time.time())}"
-
     logger.info(f"═══ s13 Drift Monitor: {dataset_name} ({task_type}) ═══")
-    logger.info(f"  Execution ID: {execution_id}")
 
     # ── Load upstream artifacts ─────────────────────────────────
     final_report = _load_json_safe(args.final_report, "final_report")
@@ -317,6 +352,8 @@ def run_drift_monitor(args):
         _load_json_safe(args.registry_info, "registry_info")
         if args.registry_info else {}
     )
+    identity = _collect_upstream_identity(final_report, registry_info)
+    logger.info("  Upstream identity fields: %s", sorted(identity))
 
     # ── Load dataset ────────────────────────────────────────────
     delimiter = _detect_delimiter(args.dataset_in)
@@ -399,25 +436,49 @@ def run_drift_monitor(args):
         from utils.drift_detector import inject_synthetic_drift
         numeric_cols = X_ref.select_dtypes(include=[np.number]).columns.tolist()
         if numeric_cols:
-            variances = {c: float(X_ref[c].var(skipna=True)) for c in numeric_cols}
-            top_feat = max(variances, key=variances.get)
-            X_shifted = inject_synthetic_drift(X_ref, top_feat, shift_sigma=2.0)
-            shifted_psi = compute_feature_psi(
-                X_ref[[top_feat]], X_shifted[[top_feat]], n_bins=10
-            )
-            psi_val = float(shifted_psi.get(top_feat, 0.0))
+            variances = {
+                feature_name: float(X_ref[feature_name].var(skipna=True))
+                for feature_name in numeric_cols
+            }
+            candidate_features = [
+                feature_name
+                for feature_name, variance in sorted(
+                    variances.items(), key=lambda item: item[1], reverse=True
+                )
+                if np.isfinite(variance) and variance > 0.0
+            ][:5]
+            if not candidate_features:
+                candidate_features = numeric_cols[:5]
+
+            best_feature = None
+            best_psi = 0.0
+            for feature_name in candidate_features:
+                X_shifted = inject_synthetic_drift(X_ref, feature_name, shift_sigma=2.0)
+                shifted_psi = compute_feature_psi(
+                    X_ref[[feature_name]], X_shifted[[feature_name]], n_bins=10
+                )
+                psi_val = float(shifted_psi.get(feature_name, 0.0))
+                if psi_val > best_psi:
+                    best_feature = feature_name
+                    best_psi = psi_val
+                if psi_val > PSI_YELLOW:
+                    best_feature = feature_name
+                    best_psi = psi_val
+                    break
+
             drift_injection_test.update({
-                "feature": top_feat,
-                "psi": round(psi_val, 6),
-                "passed": bool(psi_val > PSI_YELLOW),
+                "feature": best_feature,
+                "psi": round(best_psi, 6),
+                "passed": bool(best_psi > PSI_YELLOW),
             })
             if drift_injection_test["passed"]:
                 logger.info(
-                    f"  ✅ Drift injection test: shifted '{top_feat}' by 2σ → PSI={psi_val:.4f} (>{PSI_YELLOW})"
+                    f"  ✅ Drift injection test: shifted '{best_feature}' by 2σ → PSI={best_psi:.4f} (>{PSI_YELLOW})"
                 )
             else:
+                drift_injection_test["reason"] = "no_candidate_feature_exceeded_expected_psi"
                 logger.warning(
-                    f"  ⚠️ Drift injection test FAILED: shifted '{top_feat}' by 2σ → PSI={psi_val:.4f} (≤{PSI_YELLOW}). Detector may be broken."
+                    f"  ⚠️ Drift injection test FAILED: best shifted feature '{best_feature}' → PSI={best_psi:.4f} (≤{PSI_YELLOW}). Detector may need review for this dataset."
                 )
         else:
             drift_injection_test["reason"] = "no_numeric_features"
@@ -470,13 +531,30 @@ def run_drift_monitor(args):
     champion_info["model_version"] = registry_info.get("version", "0")
 
     # ── Comparison drift (vs previous baseline) ─────────────────
-    comparison_drift = {"available": False}
+    comparison_drift = {
+        "available": False,
+        "baseline_status": "not_provided",
+        "baseline_metadata": {},
+    }
     if getattr(args, "baseline_in", None):
         logger.info("  Loading previous baseline for comparison drift...")
+        baseline_lineage_uri = str(getattr(args, "baseline_uri", "") or args.baseline_in)
+        comparison_drift["baseline_input_uri"] = baseline_lineage_uri
+        comparison_drift["baseline_path"] = baseline_lineage_uri
+        comparison_drift["baseline_mount_path"] = str(args.baseline_in)
+        comparison_drift["baseline_status"] = "provided"
         prev = _load_previous_baseline(args.baseline_in)
         if prev and prev.get("metadata"):
-            comparison_drift["available"] = True
             prev_meta = prev["metadata"]
+            comparison_drift["baseline_metadata"] = {
+                "dataset_name": prev_meta.get("dataset_name"),
+                "task_type": prev_meta.get("task_type"),
+                "target_column": prev_meta.get("target_column"),
+                "n_rows": prev_meta.get("n_rows"),
+                "n_features": prev_meta.get("n_features"),
+                "champion_metric": prev_meta.get("champion_metric"),
+                "champion_algorithm": prev_meta.get("champion_algorithm"),
+            }
             logger.info(
                 f"  Previous baseline: {prev_meta.get('dataset_name', '?')} "
                 f"({prev_meta.get('n_rows', '?')} rows)"
@@ -485,6 +563,16 @@ def run_drift_monitor(args):
             # Evidently feature drift (reference vs current)
             ref_data = prev.get("reference_data")
             if ref_data is not None and not ref_data.empty:
+                comparison_drift["available"] = True
+                comparison_drift["baseline_status"] = "loaded"
+                comparison_psi_scores = compute_feature_psi(ref_data, X, n_bins=10)
+                comparison_drift["feature_psi_scores"] = {
+                    feature_name: round(score, 6)
+                    for feature_name, score in sorted(
+                        comparison_psi_scores.items(), key=lambda item: -item[1]
+                    )
+                }
+                comparison_drift["feature_psi_count"] = len(comparison_psi_scores)
                 logger.info("  Running Evidently comparison drift...")
                 evidently_result = _run_evidently_drift(ref_data, X, target_column)
                 comparison_drift["evidently"] = evidently_result
@@ -493,6 +581,8 @@ def run_drift_monitor(args):
                 elif evidently_result:
                     logger.info("  ✅ Evidently: No dataset drift")
             else:
+                comparison_drift["available"] = False
+                comparison_drift["baseline_status"] = "loaded_no_reference_data"
                 logger.info("  No reference CSV in baseline — skipping Evidently comparison")
 
             # Concept drift (metric comparison)
@@ -504,6 +594,7 @@ def run_drift_monitor(args):
                     f"dropped from {concept_result['baseline']} to {concept_result['current']}"
                 )
         else:
+            comparison_drift["baseline_status"] = "invalid_or_empty"
             logger.info("  Previous baseline empty or invalid — skipping comparison")
 
     # ── Warnings ────────────────────────────────────────────────
@@ -537,9 +628,16 @@ def run_drift_monitor(args):
             f"Dataset drift detected by Evidently: {n_drifted_ev} columns drifted."
         )
 
+    stability_assessment = {
+        "stability_score": stability_score,
+        "components": stability_components,
+        "recommended_cadence": cadence_name,
+        "recommended_days": cadence_days,
+        "rationale": cadence_rationale,
+    }
     # ── Build report ────────────────────────────────────────────
     drift_report = {
-        "execution_id": execution_id,
+        "identity": identity,
         "config_name": args.config_name,
         "task_type": task_type,
         "dataset_name": dataset_name,
@@ -558,13 +656,7 @@ def run_drift_monitor(args):
         },
         "drift_injection_test": drift_injection_test,
         "feature_psi_scores": {f: round(p, 6) for f, p in sorted(psi_scores.items(), key=lambda x: -x[1])},
-        "stability_assessment": {
-            "stability_score": stability_score,
-            "components": stability_components,
-            "recommended_cadence": cadence_name,
-            "recommended_days": cadence_days,
-            "rationale": cadence_rationale,
-        },
+        "stability_assessment": stability_assessment,
         "champion_info": champion_info,
         "comparison_drift": comparison_drift,
         "warnings": warnings,
@@ -584,6 +676,7 @@ def run_drift_monitor(args):
 
     # Save feature baseline statistics
     baseline_artifact = {
+        "identity": identity,
         "dataset_name": dataset_name,
         "task_type": task_type,
         "target_column": target_column,
@@ -593,7 +686,7 @@ def run_drift_monitor(args):
         "champion_metric": champion_info.get("primary_metric"),
         "champion_algorithm": champion_info.get("algorithm"),
         "psi_bins": 10,
-        "reference_split": "train_80pct_seed_42",
+        "reference_split": f"train_80pct_seed_{_seed}",
     }
     with open(baseline_dir / "feature_baseline.json", "w") as f:
         json.dump(baseline_artifact, f, indent=2, cls=NumpyEncoder)
@@ -725,6 +818,7 @@ def main():
     parser.add_argument("--final_report", type=str, required=True, help="Final evaluation report JSON (from s10)")
     parser.add_argument("--registry_info", type=str, default=None, help="Model registry info JSON (from s12, optional)")
     parser.add_argument("--baseline_in", type=str, default=None, help="Previous drift baseline folder (optional)")
+    parser.add_argument("--baseline_uri", type=str, default="", help="Original previous baseline URI for lineage (optional)")
     parser.add_argument("--drift_report", type=str, required=True, help="Output: drift report JSON")
     parser.add_argument("--drift_baseline", type=str, required=True, help="Output: drift baseline folder")
     args = parser.parse_args()

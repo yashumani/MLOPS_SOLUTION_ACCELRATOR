@@ -50,6 +50,8 @@ _TILES = [
      "Launch Azure ML pipeline jobs from YAML configs"),
     ("pages/3_Configs.py",         "⚙️", "Configs",
      "Browse, create and edit pipeline configurations"),
+    ("pages/4_Auto_Retrain.py",    "🔁", "Auto Retrain",
+     "Approve baselines and build controller dry-run plans"),
     ("pages/5_Drift_Monitor.py",   "📉", "Drift",
      "PSI-based data and model drift analysis"),
     ("pages/7_Live_Logs.py",       "📡", "Live Logs",

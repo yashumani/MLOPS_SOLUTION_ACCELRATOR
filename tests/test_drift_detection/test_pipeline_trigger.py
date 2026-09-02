@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import List
 
@@ -54,6 +55,7 @@ class TestPipelineTrigger:
         trigger = PipelineTrigger(config, dry_run=True)
         summary = trigger.evaluate(_make_results(detected=True))
         assert summary["dry_run"] is True
+        assert summary["execution"]["status"] == "dry_run"
 
     def test_trigger_history_accumulated(self, config: DriftConfig) -> None:
         trigger = PipelineTrigger(config, dry_run=True)
@@ -87,3 +89,79 @@ class TestPipelineTrigger:
         summary = trigger.evaluate(results)
         assert summary["should_trigger"] is True
         assert set(summary["triggered_by"]) == {"feature", "label"}
+
+    def test_non_dry_run_does_not_submit_when_auto_retrain_disabled(
+        self,
+        config: DriftConfig,
+    ) -> None:
+        trigger = PipelineTrigger(config, dry_run=False)
+        summary = trigger.evaluate(_make_results(detected=True))
+        assert summary["execution"]["status"] == "disabled"
+
+    def test_enabled_trigger_delegates_to_s14_without_submitting(
+        self,
+        config: DriftConfig,
+    ) -> None:
+        config.auto_retrain.enabled = True
+        config.auto_retrain.mode = "submit"
+
+        trigger = PipelineTrigger(config, dry_run=False)
+        summary = trigger.evaluate(_make_results(detected=True))
+        execution = summary["execution"]
+
+        assert execution["status"] == "delegated"
+        assert execution["submitted"] is False
+        assert execution["next_stage"] == "s14_retrain_decision"
+        assert execution["submission_owner"] == "external_controller"
+        assert execution["required_artifact"] == "retrain_decision.json"
+
+    def test_pipeline_trigger_source_contains_no_child_submission_path(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "src"
+            / "drift_detection"
+            / "pipeline_trigger.py"
+        ).read_text(encoding="utf-8")
+
+        assert "subprocess" not in source
+        assert "submit_pipeline.py" not in source
+        assert "_build_submit_command" not in source
+
+
+def test_drift_config_loads_auto_retrain_section(tmp_path: Path) -> None:
+    config_path = tmp_path / "drift_config.yaml"
+    config_path.write_text(
+        "auto_retrain:\n"
+        "  enabled: true\n"
+        "  mode: submit\n"
+        "  config_path: configs/config_classification_telecom_churn_azureml.yml\n"
+        "  compute: mlops-cluster\n"
+        "  extra_args:\n"
+        "    - --use_phase1\n"
+    )
+    config = DriftConfig.from_yaml(str(config_path))
+    assert config.auto_retrain.enabled is True
+    assert config.auto_retrain.mode == "submit"
+    assert config.auto_retrain.compute == "mlops-cluster"
+    assert config.auto_retrain.extra_args == ["--use_phase1"]
+
+
+def test_legacy_schedule_setup_cannot_construct_or_submit_training_dag() -> None:
+    schedule_source = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "setup_drift_schedule.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(schedule_source)
+    imported_names = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    }
+
+    assert "azure.ai.ml" not in imported_names
+    assert "pipelines.pipeline_builder" not in imported_names
+    assert "full_pipeline" not in schedule_source
+    assert "begin_create_or_update" not in schedule_source
+    assert "run_auto_retrain_controller.py" in schedule_source

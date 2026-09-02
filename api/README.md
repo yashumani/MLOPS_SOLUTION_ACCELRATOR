@@ -33,8 +33,12 @@ uvicorn api.main:app --host 127.0.0.1 --port 8000
 | `GET` | `/api/v1/pipelines/jobs/{name}/outputs/{out}/download` | Download output |
 | `GET` | `/api/v1/pipelines/jobs/{name}/metrics` | MLflow metrics |
 | `GET` | `/api/v1/pipelines/jobs/{name}/drift` | Drift analysis |
+| `POST` | `/api/v1/pipelines/jobs/{name}/notifications/email` | Generate Markdown/JSON/CSV report files and send by SMTP |
 | `POST` | `/api/v1/pipelines/baseline/capture` | Capture drift baseline |
 | `POST` | `/api/v1/pipelines/resubmit` | Resubmit a job |
+| `GET` | `/api/v1/configs/schema` | Return config JSON schema for guided forms |
+| `POST` | `/api/v1/configs/validate` | Validate a config draft without saving |
+| `POST` | `/api/v1/configs/preview` | Preview S01-S09 plan and key execution settings |
 
 ## Authentication
 
@@ -44,3 +48,30 @@ All `/api/v1/pipelines/*` and `/api/v1/configs/*` endpoints require an
 ## Environment Variables
 
 See [`.env.example`](../.env.example) for the full list.
+
+### SMTP Notification Reports
+
+`POST /api/v1/pipelines/jobs/{name}/notifications/email` creates a report
+folder under `outputs/notifications/` and writes four attachments:
+
+- Markdown operator brief
+- JSON machine-readable payload
+- Drift feature PSI CSV
+- Pipeline step status CSV
+
+SMTP is configured only through environment variables so the server can be
+changed without code edits. The default profile uses Gmail SMTP over STARTTLS;
+set `NOTIFICATION_SMTP_PASSWORD` to a Gmail app password in `.env`.
+
+```bash
+NOTIFICATION_RECIPIENT_EMAIL=mlops-oncall@example.com
+NOTIFICATION_SENDER_EMAIL=mlops-notifications@example.com
+NOTIFICATION_SMTP_HOST=smtp.gmail.com
+NOTIFICATION_SMTP_PORT=587
+NOTIFICATION_SMTP_USERNAME=mlops-notifications@example.com
+NOTIFICATION_SMTP_PASSWORD=<gmail-app-password>
+NOTIFICATION_SMTP_STARTTLS=true
+NOTIFICATION_SMTP_SSL=false
+```
+
+To generate files without sending email, post `{"dry_run": true}`.

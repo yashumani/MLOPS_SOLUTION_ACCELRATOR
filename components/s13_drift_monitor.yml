@@ -1,8 +1,9 @@
 $schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
 
 name: v3_s13_drift_monitor
-display_name: "s13 — Drift Monitor (Baseline & Cadence)"
-version: 4
+display_name: "s13 — Drift Evidence & Baseline"
+description: Emits drift evidence and a candidate baseline; policy evaluation belongs to S14.
+version: 5
 type: command
 is_deterministic: false
 
@@ -24,6 +25,11 @@ inputs:
     type: uri_folder
     optional: true
     description: Previous run drift baseline folder (for comparison drift detection)
+  baseline_uri:
+    type: string
+    optional: true
+    default: ""
+    description: Original azureml:// URI for the previous drift baseline, used for lineage only
 
 outputs:
   drift_report:
@@ -42,10 +48,11 @@ command: >
   --final_report ${{inputs.final_report}}
   $[[--registry_info ${{inputs.registry_info}}]]
   $[[--baseline_in ${{inputs.baseline_in}}]]
+  $[[--baseline_uri ${{inputs.baseline_uri}}]]
   --drift_report ${{outputs.drift_report}}
   --drift_baseline ${{outputs.drift_baseline}}
 
-environment: azureml:mlops-v3-unified:23
+environment: azureml:mlops-v3-unified:32
 
 resources:
   instance_count: 1

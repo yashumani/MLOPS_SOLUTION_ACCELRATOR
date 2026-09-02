@@ -57,6 +57,32 @@ class DriftActions:
 
 
 @dataclass
+class AutoRetrainConfig:
+    """How drift-triggered retraining is submitted.
+
+    Automatic submission is intentionally disabled by default. Operators must
+    opt in with ``enabled: true`` and ``mode: submit`` before the trigger will
+    invoke the Azure ML submission entrypoint.
+    """
+
+    enabled: bool = False
+    mode: str = "dry_run"
+    config_path: Optional[str] = None
+    subscription_id: Optional[str] = None
+    resource_group: Optional[str] = None
+    workspace_name: Optional[str] = None
+    compute: Optional[str] = None
+    experiment_name: Optional[str] = None
+    display_name_prefix: str = "auto_retrain"
+    drift_baseline_in: Optional[str] = None
+    wait: bool = False
+    stop_compute: bool = False
+    force: bool = False
+    timeout_seconds: int = 1800
+    extra_args: List[str] = field(default_factory=list)
+
+
+@dataclass
 class ArtifactPaths:
     """Where drift artifacts are stored."""
 
@@ -89,6 +115,7 @@ class DriftConfig:
     thresholds: DriftThresholds = field(default_factory=DriftThresholds)
     schedule: DriftSchedule = field(default_factory=DriftSchedule)
     actions: DriftActions = field(default_factory=DriftActions)
+    auto_retrain: AutoRetrainConfig = field(default_factory=AutoRetrainConfig)
     artifact_paths: ArtifactPaths = field(default_factory=ArtifactPaths)
     column_mapping: ColumnMapping = field(default_factory=ColumnMapping)
 
@@ -116,11 +143,25 @@ class DriftConfig:
         with open(config_path, "r") as fh:
             raw: Dict = yaml.safe_load(fh) or {}
 
+        auto_retrain_raw = raw.get("auto_retrain", {}) or {}
+        auto_retrain_fields = AutoRetrainConfig.__dataclass_fields__
+        unknown_auto_retrain = set(auto_retrain_raw) - set(auto_retrain_fields)
+        if unknown_auto_retrain:
+            logger.warning(
+                "Ignoring unknown auto_retrain config keys: %s",
+                sorted(unknown_auto_retrain),
+            )
+
         return cls(
             methods=DriftMethods(**raw.get("drift_methods", {})),
             thresholds=DriftThresholds(**raw.get("thresholds", {})),
             schedule=DriftSchedule(**raw.get("schedule", {})),
             actions=DriftActions(**raw.get("actions", {})),
+            auto_retrain=AutoRetrainConfig(**{
+                key: value
+                for key, value in auto_retrain_raw.items()
+                if key in auto_retrain_fields
+            }),
             artifact_paths=ArtifactPaths(**raw.get("artifact_paths", {})),
             column_mapping=ColumnMapping(**raw.get("column_mapping", {})),
         )

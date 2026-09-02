@@ -144,6 +144,7 @@ async def root(request: Request):
             "pipelines_job_outputs": "GET /api/v1/pipelines/jobs/{job_name}/outputs",
             "pipelines_job_metrics": "GET /api/v1/pipelines/jobs/{job_name}/metrics",
             "pipelines_job_summary": "GET /api/v1/pipelines/jobs/{job_name}/summary",
+            "pipelines_job_email_notification": "POST /api/v1/pipelines/jobs/{job_name}/notifications/email",
         },
         "auth": {
             "header": "X-API-Key",

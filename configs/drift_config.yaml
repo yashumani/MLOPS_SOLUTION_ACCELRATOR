@@ -16,6 +16,18 @@ thresholds:
   concept_drift_accuracy_drop: 0.05 # Absolute accuracy drop vs baseline; > threshold = drift
   label_drift: 0.10                 # Chi-squared p-value complement; > threshold = drift
 
+# S14 consumes feature/concept thresholds from the shared block above. Every
+# remaining policy value is explicit so a code default cannot silently change
+# retraining or promotion behavior.
+retrain_policy:
+  severe_feature_psi: 0.25
+  severe_drifted_share: 0.30
+  low_stability_score: 40.0
+  urgent_cadence_days: 14
+  minimum_promotion_delta: 0.01
+  allow_auto_promotion: false
+  require_registered_candidate_for_promotion: true
+
 schedule:
   frequency: "daily"                 # Options: hourly, daily, weekly
   time: "02:00"                      # UTC time for scheduled drift checks
@@ -25,6 +37,26 @@ actions:
   alert_channels:
     - "email"
     - "mlflow_dashboard"
+
+# ─── Auto Retrain Submission ────────────────────────────────────────
+# Disabled by default. Set enabled=true and mode="submit" only after
+# operators approve automatic Azure ML retraining for the workspace.
+auto_retrain:
+  enabled: false
+  mode: "dry_run"                  # Options: dry_run, submit
+  config_path: null                 # Example: configs/config_classification_telecom_churn_azureml.yml
+  subscription_id: null             # Optional; submit_pipeline.py can use config/env fallbacks
+  resource_group: null
+  workspace_name: null
+  compute: null
+  experiment_name: null
+  display_name_prefix: "auto_retrain"
+  drift_baseline_in: null           # Optional previous s13 drift_baseline uri_folder
+  wait: false
+  stop_compute: false
+  force: false                      # Keep false unless bypassing duplicate-submission guards intentionally
+  timeout_seconds: 1800
+  extra_args: []                    # Optional submit_pipeline.py flags, e.g. ["--use_phase1"]
 
 # ─── Artifact Paths ─────────────────────────────────────────────────
 artifact_paths:

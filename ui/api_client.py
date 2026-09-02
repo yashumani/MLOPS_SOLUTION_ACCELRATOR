@@ -58,6 +58,18 @@ class APIClient:
     def get_config(self, config_name: str) -> dict:
         return self._get(f"/api/v1/configs/{config_name}")
 
+    def get_config_schema(self) -> dict:
+        return self._get("/api/v1/configs/schema")
+
+    def validate_config_content(self, content: dict) -> dict:
+        return self._post("/api/v1/configs/validate", json={"content": content})
+
+    def preview_config(self, content: dict, config_name: str | None = None) -> dict:
+        return self._post(
+            "/api/v1/configs/preview",
+            json={"content": content, "config_name": config_name},
+        )
+
     # ── pipelines ──────────────────────────────────────────
 
     def submit_pipeline(
@@ -144,6 +156,38 @@ class APIClient:
 
     def get_job_drift(self, job_name: str) -> dict:
         return self._get(f"/api/v1/pipelines/jobs/{job_name}/drift")
+
+    def send_job_notification(self, job_name: str, dry_run: bool = False) -> dict:
+        return self._post(
+            f"/api/v1/pipelines/jobs/{job_name}/notifications/email",
+            json={"dry_run": dry_run},
+        )
+
+    # -- auto-retrain operations ---------------------------------------
+
+    def list_auto_retrain_schedules(self, limit_records: int = 10) -> dict:
+        return self._get(
+            "/api/v1/pipelines/auto-retrain/schedules",
+            limit_records=limit_records,
+        )
+
+    def list_auto_retrain_decisions(self, limit: int = 100) -> dict:
+        return self._get(
+            "/api/v1/pipelines/auto-retrain/decisions",
+            limit=limit,
+        )
+
+    def plan_auto_retrain(self, payload: dict) -> dict:
+        return self._post(
+            "/api/v1/pipelines/auto-retrain/controller/plan",
+            json=payload,
+        )
+
+    def approve_auto_retrain_baseline(self, payload: dict) -> dict:
+        return self._post(
+            "/api/v1/pipelines/auto-retrain/baselines/approve",
+            json=payload,
+        )
 
     # ── resubmit (Phase 0d) ───────────────────────────────
 

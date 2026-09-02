@@ -1,200 +1,108 @@
-"""Create / update an Azure ML schedule for the drift-only pipeline.
+"""Fail-closed compatibility entrypoint for the retired training DAG schedule.
 
-Phase 5 of the production hardening plan. The schedule fires the existing
-``pipelines/submit_pipeline.py`` against a target config on a recurrence:
+Azure ML ``JobSchedule`` stores a static job template. A static training DAG
+cannot consume a fresh S14 policy decision on every tick, so this legacy setup
+entrypoint must not create or update a recurring training pipeline.
 
-  * Default cadence: hourly (first week post-launch)
-  * Steady-state:    daily   (after first week)
-
-Switch cadence with ``--cadence {hourly,daily}``. The script is idempotent:
-a schedule with the same name is updated in place via ``begin_create_or_update``.
-
-Per the locked-in defaults (#1 alert-only retraining for first 30 days), the
-schedule submits a ``--drift-only`` pipeline; retraining is NOT auto-triggered.
-Alerts are dispatched from inside ``s13_drift_monitor.py`` via ``utils.alerts``.
-
-Env vars (required, via scripts/_azure_ctx.py):
-  AZURE_SUBSCRIPTION_ID
-  AZURE_RESOURCE_GROUP
-  AZURE_WORKSPACE_NAME
-  AZURE_COMPUTE
-
-Optional env vars (alerting; passed through to schedule env):
-  TEAMS_WEBHOOK_URL
-  ACS_CONNECTION_STRING / ACS_SENDER_ADDRESS / DRIFT_ALERT_RECIPIENTS
+Schedule an external controller invocation instead. That controller must receive
+the explicit ``retrain_decision.json`` emitted by S14 and delegates the actual
+submission to the canonical ``pipelines/submit_pipeline.py`` entrypoint.
 """
 
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-from _azure_ctx import (  # noqa: E402
-    AzureContext,
-    MissingAzureContextError,
-    load_azure_context,
-)
 
-try:
-    from azure.ai.ml import MLClient
-    from azure.ai.ml.entities import (
-        JobSchedule,
-        RecurrencePattern,
-        RecurrenceTrigger,
-    )
-    from azure.identity import (
-        AzureCliCredential,
-        ChainedTokenCredential,
-        ManagedIdentityCredential,
-    )
-except ImportError as exc:  # pragma: no cover — surfaced at runtime
-    print(f"❌ azure-ai-ml not available: {exc}", file=sys.stderr)
-    sys.exit(2)
+ROOT = Path(__file__).resolve().parents[1]
+CONTROLLER = ROOT / "scripts" / "run_auto_retrain_controller.py"
+CADENCE_CHOICES = ("hourly", "daily", "weekly")
 
 
-CADENCE_PRESETS = {
-    "hourly": {"frequency": "hour", "interval": 1, "minutes": [0]},
-    "daily": {"frequency": "day", "interval": 1, "hours": [2], "minutes": [0]},
-}
-
-
-def _ml_client(ctx: AzureContext) -> MLClient:
-    cred = ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential())
-    return MLClient(
-        credential=cred,
-        subscription_id=ctx.subscription_id,
-        resource_group_name=ctx.resource_group,
-        workspace_name=ctx.workspace_name,
-    )
-
-
-def _build_trigger(cadence: str, start_in_minutes: int) -> RecurrenceTrigger:
-    preset = CADENCE_PRESETS[cadence]
-    start_time = datetime.now(timezone.utc) + timedelta(minutes=start_in_minutes)
-    pattern_kwargs = {"minutes": preset["minutes"]}
-    if "hours" in preset:
-        pattern_kwargs["hours"] = preset["hours"]
-    return RecurrenceTrigger(
-        frequency=preset["frequency"],
-        interval=preset["interval"],
-        start_time=start_time,
-        time_zone="UTC",
-        schedule=RecurrencePattern(**pattern_kwargs),
-    )
-
-
-def _load_pipeline_job(config_name: str, ctx: AzureContext):
-    """Build the pipeline job object the schedule will submit on each tick.
-
-    Wires the same arguments as ``submit_pipeline.py`` so the schedule fires a
-    real, runnable pipeline. The dataset folder URI is derived from the loaded
-    YAML's ``dataset.datastore_name`` (default ``mlops_blob``); recipes are
-    selected via ``select_recipes_for_tier`` to match interactive submissions.
-    """
-    import yaml as _yaml
-    from azure.ai.ml import Input as _Input
-
-    repo_root = ROOT.parent  # mlops-solution-accelerator-v3/
-    sys.path.insert(0, str(repo_root / "pipelines"))
-    sys.path.insert(0, str(repo_root))
-    from pipeline_builder import full_pipeline  # type: ignore[import-untyped]
-    from src.utils.recipe_selector import select_recipes_for_tier  # type: ignore[import-untyped]
-
-    config_path = repo_root / "configs" / f"{config_name}.yml"
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config not found: {config_path}")
-    with open(config_path) as _f:
-        cfg = _yaml.safe_load(_f) or {}
-
-    task_type = cfg.get("task_type", "classification")
-    datastore_name = (cfg.get("dataset") or {}).get("datastore_name", "mlops_blob")
-    dataset_folder_uri = (
-        f"azureml://subscriptions/{ctx.subscription_id}"
-        f"/resourcegroups/{ctx.resource_group}"
-        f"/workspaces/{ctx.workspace_name}"
-        f"/datastores/{datastore_name}/paths/"
-    )
-    phase_b = (cfg.get("phases") or {}).get("phase_b_recipes", {}) or {}
-    recipes = select_recipes_for_tier(
-        task_type=task_type,
-        tier=phase_b.get("tier", "progressive"),
-        count=phase_b.get("max_recipes", 2),
-        library=phase_b.get("library", "variant_search"),
-        max_runtime_sec=phase_b.get("runtime_budget_sec"),
-        recipes_base_dir=repo_root / "configs" / "recipes",
-    )
-    if not recipes:
-        raise RuntimeError(f"No Phase B recipes selected for task_type={task_type}")
-    engines = "pycaret" if task_type == "clustering" else "pycaret,flaml"
-    time_budget = ((cfg.get("phases") or {}).get("phase_b") or {}).get(
-        "time_budget_per_variant", 600
-    )
-
-    job = full_pipeline(
-        config_name=f"{config_name}.yml",
-        dataset_folder=_Input(path=dataset_folder_uri, type="uri_folder"),
-        variants_list=",".join(recipes),
-        engine_list=engines,
-        time_budget_per_variant=time_budget,
-    )
-    job.settings.default_compute = ctx.compute
-    job.experiment_name = f"{config_name.replace('config_', '').replace('_azureml', '')}_drift"
-    job.display_name = f"drift-monitor::{config_name}"
-    job.tags = {"purpose": "drift_monitor", "schedule": "true"}
-    return job
+def _controller_command_preview(args: argparse.Namespace) -> list[str]:
+    """Return the external-controller shape operators should schedule."""
+    config_path = Path(args.config)
+    if not config_path.suffix:
+        config_path = ROOT / "configs" / f"{args.config}.yml"
+    return [
+        sys.executable,
+        str(CONTROLLER),
+        "--config",
+        str(config_path),
+        "--decision",
+        "<fresh-s14-retrain-decision.json>",
+        "--ledger",
+        "<shared-auto-retrain-decision-ledger.jsonl>",
+        "--mode",
+        "submit",
+        "--trigger",
+        f"schedule:{args.cadence}",
+        "--schedule-name",
+        args.name,
+    ]
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Create/update drift-monitor schedule")
-    parser.add_argument("--name", required=True, help="Schedule name (idempotent)")
-    parser.add_argument("--config", required=True,
-                        help="Config filename without .yml (e.g. config_classification_telco_churn_azureml)")
-    parser.add_argument("--cadence", choices=list(CADENCE_PRESETS), default="hourly",
-                        help="Recurrence cadence (default: hourly)")
-    parser.add_argument("--start-in-minutes", type=int, default=5,
-                        help="Minutes from now to first execution (default: 5)")
-    parser.add_argument("--disable", action="store_true",
-                        help="Disable an existing schedule instead of creating it")
+    parser = argparse.ArgumentParser(
+        description="Retired AML training schedule setup; prints the external controller boundary"
+    )
+    parser.add_argument("--name", required=True, help="External schedule/controller name")
+    parser.add_argument("--config", required=True, help="V3 config path or config stem")
+    parser.add_argument("--cadence", choices=CADENCE_CHOICES, default="daily")
+    parser.add_argument(
+        "--schedule-mode",
+        choices=["candidate_retrain"],
+        default="candidate_retrain",
+        help="Retained only for legacy CLI compatibility",
+    )
+    parser.add_argument(
+        "--drift-baseline-in",
+        default=None,
+        help="Retired: the controller resolves the approved baseline from its ledger",
+    )
+    parser.add_argument(
+        "--start-in-minutes",
+        type=int,
+        default=5,
+        help="Retained only for legacy CLI compatibility",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the required external-controller command shape",
+    )
+    parser.add_argument(
+        "--disable",
+        action="store_true",
+        help="No Azure mutation is performed; disable old schedules through approved operations",
+    )
     args = parser.parse_args()
 
-    try:
-        ctx = load_azure_context()
-    except MissingAzureContextError as exc:
-        print(f"❌ {exc}", file=sys.stderr)
-        return 2
-
-    client = _ml_client(ctx)
-
-    if args.disable:
-        print(f"⏸  Disabling schedule: {args.name}")
-        client.schedules.begin_disable(args.name).result()
-        print("✅ Disabled")
-        return 0
-
-    print(f"📅 Building drift schedule: {args.name} ({args.cadence})")
-    pipeline_job = _load_pipeline_job(args.config, ctx)
-    trigger = _build_trigger(args.cadence, args.start_in_minutes)
-
-    schedule = JobSchedule(
-        name=args.name,
-        trigger=trigger,
-        create_job=pipeline_job,
-        description=f"Drift-only pipeline ({args.cadence}) for {args.config}",
-        tags={"cadence": args.cadence, "config": args.config, "owner": "mlops"},
+    print(
+        "Direct Azure ML training-DAG schedules are disabled: a static schedule "
+        "cannot enforce a fresh S14 decision."
     )
-
-    print(f"📤 Submitting schedule …")
-    poller = client.schedules.begin_create_or_update(schedule)
-    result = poller.result()
-    print(f"✅ Schedule '{result.name}' active (cadence={args.cadence})")
-    print(f"   First run starts ~{args.start_in_minutes} min from now (UTC)")
-    print(f"   To switch cadence later: rerun with --cadence daily")
-    return 0
+    print("Schedule the external controller after S14 produces its decision artifact:")
+    print(f"  {shlex.join(_controller_command_preview(args))}")
+    if args.disable:
+        print(
+            "This compatibility entrypoint does not mutate Azure schedules; "
+            "use approved Azure ML operations to disable the named legacy schedule.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.dry_run:
+        return 0
+    print(
+        "No schedule was created or updated. Re-run with --dry-run to inspect "
+        "the controller boundary.",
+        file=sys.stderr,
+    )
+    return 2
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

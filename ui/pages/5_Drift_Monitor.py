@@ -18,6 +18,7 @@ import streamlit as st
 
 from ui.api_client import get_client
 from ui.components.job_picker import pick_single_job
+from ui.components.notification_panel import render_notification_panel
 from ui.components.sidebar import render_sidebar
 from ui.components.theme import inject_theme, page_header
 from ui.data_cache import cached_job_drift, cached_list_jobs
@@ -88,6 +89,8 @@ st.markdown(
     f"status `{sel.get('status')}`"
 )
 
+render_notification_panel(client, job_name, display_name, key="drift")
+
 trigger = st.button(
     "📉 Extract drift report from this job",
     type="primary",
@@ -101,7 +104,7 @@ st.session_state[f"drift_loaded_{job_name}"] = True
 
 with st.spinner("Downloading drift_report from Azure ML…"):
     try:
-        data = cached_job_drift(job_name)
+        data = cached_job_drift(job_name, known_status=sel.get("status"))
     except Exception as exc:  # noqa: BLE001
         st.error(f"Failed to load drift data: {exc}")
         st.session_state.pop(f"drift_loaded_{job_name}", None)
@@ -114,10 +117,9 @@ if studio_url:
 
 if not features:
     st.warning(
-        "No drift results found for this job. Drift analysis is an **optional** "
-        "step (`s13_drift_monitor`) — it is only present when the pipeline was "
-        "submitted with a baseline job for comparison. Re-submit with a "
-        "`baseline_job` set on the Submit Pipeline page to enable it."
+        "No per-feature PSI results were found in this job's drift report. "
+        "The pipeline may have failed before `s13_drift_monitor`, or the "
+        "drift_report artifact may be incomplete."
     )
     st.stop()
 
@@ -141,6 +143,58 @@ if stability_score is not None:
         f"**Overall drift detected:** "
         f"`{'YES' if data.get('overall_drift_detected') else 'no'}`"
     )
+
+cadence = data.get("recommended_cadence") or "not available"
+recommended_days = data.get("recommended_days")
+cadence_label = f"{cadence}"
+if recommended_days is not None:
+    cadence_label = f"{cadence} ({recommended_days} days)"
+
+baseline_status = data.get("baseline_status") or "unknown"
+comparison_label = "ready" if data.get("comparison_available") else "not available"
+trigger = data.get("auto_retrain_trigger") or {}
+trigger_execution = trigger.get("execution") or {}
+trigger_status = trigger_execution.get("status") or "not_requested"
+trigger_action = trigger.get("action") or "none"
+decision = data.get("auto_retrain_decision") or {}
+decision_outcome = decision.get("outcome") or "not_available"
+
+o1, o2, o3, o4 = st.columns(4)
+o1.metric("Recommended cadence", cadence_label)
+o2.metric("Baseline comparison", comparison_label)
+o3.metric("Baseline status", baseline_status)
+o4.metric("Retrain decision", decision_outcome)
+
+with st.expander("Auto-retrain decision", expanded=bool(trigger.get("should_trigger"))):
+    if decision:
+        st.markdown(
+            f"**Policy outcome:** `{decision_outcome}`  &nbsp; "
+            f"**Severity:** `{decision.get('severity', 'none')}`  &nbsp; "
+            f"**Submit candidate:** `{'YES' if decision.get('should_submit') else 'no'}`"
+        )
+        for reason in decision.get("reasons") or []:
+            st.caption(f"Policy reason: {reason}")
+    st.markdown(
+        f"**Action:** `{trigger_action}`  &nbsp; "
+        f"**Trigger status:** `{trigger_status}`  &nbsp; "
+        f"**Should trigger:** `{'YES' if trigger.get('should_trigger') else 'no'}`"
+    )
+    triggered_by = trigger.get("triggered_by") or []
+    if triggered_by:
+        st.markdown("**Triggered by:** " + ", ".join(f"`{item}`" for item in triggered_by))
+    reason = trigger_execution.get("reason")
+    if reason:
+        st.caption(f"Execution reason: {reason}")
+    if data.get("cadence_rationale"):
+        st.caption(f"Cadence rationale: {data['cadence_rationale']}")
+    baseline_meta = data.get("baseline_metadata") or {}
+    if baseline_meta:
+        st.markdown("**Baseline metadata**")
+        st.json(baseline_meta, expanded=False)
+    if data.get("warnings"):
+        st.markdown("**Warnings**")
+        for warning in data["warnings"]:
+            st.warning(warning)
 
 # ── PSI legend ───────────────────────────────────────────────
 with st.expander("ℹ️  How to read PSI", expanded=False):

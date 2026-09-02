@@ -6,7 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from api.core.security import verify_api_key
-from api.schemas.config import ConfigDetail, ConfigListResponse
+from api.schemas.config import (
+    ConfigDetail,
+    ConfigListResponse,
+    ConfigPreviewRequest,
+    ConfigPreviewResponse,
+    ConfigValidationRequest,
+    ConfigValidationResponse,
+)
 from api.services import config_service, pipeline_service
 
 router = APIRouter(prefix="/api/v1/configs", tags=["configs"], dependencies=[Depends(verify_api_key)])
@@ -67,6 +74,24 @@ async def list_configs():
     """List all available Azure ML pipeline configs."""
     configs = config_service.list_configs()
     return ConfigListResponse(configs=configs, total=len(configs))
+
+
+@router.get("/schema")
+async def get_config_schema():
+    """Return the JSON schema backing config validation."""
+    return config_service.get_config_schema()
+
+
+@router.post("/validate", response_model=ConfigValidationResponse)
+async def validate_config(body: ConfigValidationRequest):
+    """Validate a config draft without saving or submitting anything."""
+    return config_service.validate_content(body.content)
+
+
+@router.post("/preview", response_model=ConfigPreviewResponse)
+async def preview_config(body: ConfigPreviewRequest):
+    """Return a no-side-effect workbench preview for a config draft."""
+    return config_service.preview_config(body.content, config_name=body.config_name)
 
 
 @router.get("/{config_name}", response_model=ConfigDetail)

@@ -9,6 +9,12 @@ from fastapi.responses import FileResponse
 
 from api.core.security import verify_api_key
 from api.schemas.pipeline import (
+    AutoRetrainBaselineApprovalRequest,
+    AutoRetrainBaselineApprovalResponse,
+    AutoRetrainControllerPlanRequest,
+    AutoRetrainControllerPlanResponse,
+    AutoRetrainDecisionListResponse,
+    AutoRetrainScheduleResponse,
     BaselineCaptureRequest,
     BaselineCaptureResponse,
     DriftResponse,
@@ -17,6 +23,8 @@ from api.schemas.pipeline import (
     JobStatus,
     LocalOutputsResponse,
     MetricsResponse,
+    NotificationEmailRequest,
+    NotificationEmailResponse,
     OutputContentResponse,
     OutputListResponse,
     PipelineSummaryResponse,
@@ -24,7 +32,7 @@ from api.schemas.pipeline import (
     SubmitRequest,
     SubmitResponse,
 )
-from api.services import pipeline_service
+from api.services import auto_retrain_service, notification_service, pipeline_service
 
 router = APIRouter(
     prefix="/api/v1/pipelines",
@@ -164,6 +172,70 @@ def list_local_outputs(
     )
 
 
+# ── Auto-retrain operations ──────────────────────────────────
+
+@router.get(
+    "/auto-retrain/schedules",
+    response_model=AutoRetrainScheduleResponse,
+)
+def list_auto_retrain_schedules(
+    limit_records: int = Query(10, ge=0, le=100),
+):
+    """Return planned auto-retrain schedules plus recent ledger records."""
+    try:
+        return auto_retrain_service.list_auto_retrain_schedules(
+            limit_records=limit_records,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get(
+    "/auto-retrain/decisions",
+    response_model=AutoRetrainDecisionListResponse,
+)
+def list_auto_retrain_decisions(
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Return recent auto-retrain decision ledger records."""
+    try:
+        return auto_retrain_service.list_auto_retrain_decisions(limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post(
+    "/auto-retrain/controller/plan",
+    response_model=AutoRetrainControllerPlanResponse,
+)
+def build_auto_retrain_controller_plan(req: AutoRetrainControllerPlanRequest):
+    """Build a dry-run controller plan using the latest approved baseline."""
+    try:
+        return auto_retrain_service.build_auto_retrain_controller_plan(req)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post(
+    "/auto-retrain/baselines/approve",
+    response_model=AutoRetrainBaselineApprovalResponse,
+)
+def approve_auto_retrain_baseline(req: AutoRetrainBaselineApprovalRequest):
+    """Append an operator-approved drift baseline record to the decision ledger."""
+    try:
+        return auto_retrain_service.approve_auto_retrain_baseline(req)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # ── Status ────────────────────────────────────────────────────
 
 @router.get("/jobs/{job_name}", response_model=JobStatus)
@@ -277,6 +349,23 @@ def get_job_drift(job_name: str):
         return pipeline_service.get_job_drift(job_name)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"Drift data not available: {exc}")
+
+
+# -- Notifications ---------------------------------------------------------
+
+@router.post(
+    "/jobs/{job_name}/notifications/email",
+    response_model=NotificationEmailResponse,
+)
+def send_job_notification(job_name: str, req: NotificationEmailRequest | None = None):
+    """Generate a Markdown/JSON/CSV job report and send it by configured SMTP."""
+    try:
+        return notification_service.send_job_notification(
+            job_name,
+            dry_run=bool(req.dry_run) if req else False,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Notification report failed: {exc}")
 
 
 # ── Resubmit (Phase 0d) ──────────────────────────────────────

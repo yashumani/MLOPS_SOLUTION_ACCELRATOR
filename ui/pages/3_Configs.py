@@ -81,6 +81,49 @@ def _config_body(payload: dict | None) -> dict:
     return content if isinstance(content, dict) else payload
 
 
+def _render_issue_list(title: str, issues: list[dict]) -> None:
+    if not issues:
+        return
+    st.markdown(f"**{title}**")
+    for issue in issues:
+        st.markdown(f"- `{issue.get('path', '$')}`: {issue.get('message', 'n/a')}")
+
+
+def _render_preview(preview: dict) -> None:
+    p1, p2, p3, p4 = st.columns(4)
+    p1.metric("Task", preview.get("task_type") or "n/a")
+    p2.metric("Dataset", preview.get("dataset_name") or "n/a")
+    p3.metric("Compute", preview.get("compute_target") or "n/a")
+    p4.metric("Phase B variants", preview.get("phase_b_variant_budget") or "default")
+    st.caption(f"Dataset URI preview: `{preview.get('dataset_uri_preview') or 'n/a'}`")
+    st.caption(
+        "Baseline engines: "
+        + (", ".join(preview.get("baseline_engines") or []) or "n/a")
+        + " | Phase B engines: "
+        + (", ".join(preview.get("phase_b_engines") or []) or "n/a")
+    )
+    trials = preview.get("phase_c_trials")
+    timeout = preview.get("phase_c_timeout_seconds")
+    if trials or timeout:
+        st.caption(f"Phase C HPO: trials={trials or 'default'}, timeout={timeout or 'default'} seconds")
+
+    rows = preview.get("stage_plan") or []
+    if rows:
+        st.dataframe(
+            [
+                {
+                    "Stage": row.get("stage_id"),
+                    "Label": row.get("label"),
+                    "Enabled": row.get("enabled"),
+                    "Summary": row.get("summary"),
+                }
+                for row in rows
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 # ── Config List ───────────────────────────────────────────────
 try:
     data = cached_list_configs()
@@ -88,6 +131,104 @@ try:
 except Exception as exc:  # noqa: BLE001
     st.error(f"Failed to list configs: {exc}")
     config_names = []
+
+# ── Workbench MVP ─────────────────────────────────────────────
+with st.expander("Configuration Workbench MVP", expanded=False):
+    st.caption(
+        "Draft YAML, validate it through the API, preview the S01-S09 execution plan, "
+        "then save a reviewed copy. This does not submit Azure ML jobs."
+    )
+    source = st.selectbox(
+        "Start from config",
+        ["<blank>", *config_names],
+        key="cfg_workbench_source",
+    )
+    if source != "<blank>":
+        try:
+            source_content = _config_body(cached_get_config(source) or {})
+        except Exception:  # noqa: BLE001
+            source_content = {}
+    else:
+        source_content = {
+            "experiment_name": "new_experiment_v3",
+            "preset": "production",
+            "task_type": "classification",
+            "dataset": {"name": "my_dataset", "target_column": "target", "blob_path": "dataset.csv", "datastore_name": "mlops_blob"},
+            "azureml": {"compute_target": "mlopsv2computecluster"},
+            "recipes": [{"file": "recipes/baseline_recipe.yml"}],
+        }
+    draft_yaml = st.text_area(
+        "Workbench YAML draft",
+        value=yaml.safe_dump(source_content, sort_keys=False, default_flow_style=False),
+        height=360,
+        key=f"cfg_workbench_yaml_{source}",
+    )
+    wb1, wb2, wb3 = st.columns([1, 1, 2])
+    with wb1:
+        validate_clicked = st.button("Validate", key="cfg_workbench_validate", use_container_width=True)
+    with wb2:
+        preview_clicked = st.button("Preview", key="cfg_workbench_preview", use_container_width=True)
+    with wb3:
+        copy_name = st.text_input(
+            "Save reviewed copy as",
+            placeholder="config_classification_my_dataset_azureml",
+            key="cfg_workbench_copy_name",
+        )
+    save_clicked = st.button("Save as copy", type="primary", key="cfg_workbench_save")
+
+    parsed_draft: dict | None = None
+    if validate_clicked or preview_clicked or save_clicked:
+        try:
+            parsed = yaml.safe_load(draft_yaml)
+            if not isinstance(parsed, dict):
+                st.error("Top-level YAML must be a mapping.")
+            else:
+                parsed_draft = parsed
+        except yaml.YAMLError as exc:
+            st.error(f"YAML parse error: {exc}")
+
+    if parsed_draft is not None and validate_clicked:
+        try:
+            result = client.validate_config_content(parsed_draft)
+            if result.get("valid"):
+                st.success("Config draft is valid.")
+            else:
+                st.error("Config draft has validation errors.")
+            _render_issue_list("Errors", result.get("errors") or [])
+            _render_issue_list("Warnings", result.get("warnings") or [])
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Validation failed: {exc}")
+
+    if parsed_draft is not None and preview_clicked:
+        try:
+            preview_name = copy_name.strip() or (source if source != "<blank>" else None)
+            preview = client.preview_config(parsed_draft, config_name=preview_name)
+            if preview.get("valid"):
+                st.success("Preview generated from a valid draft.")
+            else:
+                st.warning("Preview generated, but the draft has validation errors.")
+            validation = preview.get("validation") or {}
+            _render_issue_list("Errors", validation.get("errors") or [])
+            _render_issue_list("Warnings", validation.get("warnings") or [])
+            _render_preview(preview)
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Preview failed: {exc}")
+
+    if parsed_draft is not None and save_clicked:
+        if not copy_name.strip():
+            st.error("Provide a destination config name before saving.")
+        else:
+            try:
+                validation = client.validate_config_content(parsed_draft)
+                if not validation.get("valid"):
+                    st.error("Fix validation errors before saving a reviewed copy.")
+                    _render_issue_list("Errors", validation.get("errors") or [])
+                else:
+                    client.create_config(copy_name.strip(), parsed_draft)
+                    st.success(f"Created `{copy_name.strip()}`")
+                    _refresh_and_rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Save failed: {exc}")
 
 # ── Search / filter bar ───────────────────────────────────────
 fc1, fc2, fc3 = st.columns([2, 1.5, 1.5])

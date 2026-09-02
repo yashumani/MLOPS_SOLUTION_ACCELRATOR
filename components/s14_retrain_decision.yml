@@ -1,0 +1,71 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+
+name: v3_s14_retrain_decision
+display_name: "s14 - Retrain Decision Gate"
+description: Emits the RetrainDecision policy artifact and ledger record; never submits jobs.
+version: 2
+type: command
+is_deterministic: false
+
+inputs:
+  config_name:
+    type: string
+    description: Config YAML filename
+  drift_report:
+    type: uri_file
+    description: Drift analysis report JSON from s13
+  candidate_baseline:
+    type: uri_folder
+    description: Drift baseline folder emitted by s13 for possible future approval
+  final_report:
+    type: uri_file
+    optional: true
+    description: Final evaluation report JSON from s10
+  registry_info:
+    type: uri_file
+    optional: true
+    description: Model registration info JSON from s12
+  drift_policy_config:
+    type: string
+    default: configs/drift_config.yaml
+    description: Repository-relative YAML containing the effective S14 policy
+  trigger:
+    type: string
+    optional: true
+    default: pipeline_s14
+    description: Decision trigger label
+
+outputs:
+  retrain_decision:
+    type: uri_file
+    description: RetrainDecision S14 policy JSON for the external controller
+  decision_ledger_record:
+    type: uri_file
+    description: Ledger-shaped decision JSON to append after approval or controller processing
+
+code: ../
+
+command: >
+  python src/steps/s14_retrain_decision.py
+  --config_name ${{inputs.config_name}}
+  --drift_report ${{inputs.drift_report}}
+  --candidate_baseline ${{inputs.candidate_baseline}}
+  $[[--final_report ${{inputs.final_report}}]]
+  $[[--registry_info ${{inputs.registry_info}}]]
+  --drift_policy_config ${{inputs.drift_policy_config}}
+  $[[--trigger ${{inputs.trigger}}]]
+  --retrain_decision ${{outputs.retrain_decision}}
+  --decision_ledger_record ${{outputs.decision_ledger_record}}
+
+environment: azureml:mlops-v3-unified:32
+
+resources:
+  instance_count: 1
+
+tags:
+  stage: s14
+  purpose: auto_retrain_decision
+  controller: external
+
+history:
+  enableMLflowTracking: true

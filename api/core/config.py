@@ -26,6 +26,19 @@ class Settings(BaseSettings):
     experiment_cache_preload_count: int = 20
     experiment_cache_ttl_seconds: int = 120
 
+    # Job notification reports (SMTP-backed, secrets supplied through env)
+    notification_recipient_email: str = ""
+    notification_sender_email: str = ""
+    notification_smtp_host: str = "smtp.gmail.com"
+    notification_smtp_port: int = 587
+    notification_smtp_username: str = ""
+    notification_smtp_password: str = ""
+    notification_smtp_starttls: bool = True
+    notification_smtp_ssl: bool = False
+    notification_smtp_timeout_seconds: int = 20
+    notification_report_dir: str = "outputs/notifications"
+    notification_max_attachment_bytes: int = 5_000_000
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     def cors_origins(self) -> list[str]:

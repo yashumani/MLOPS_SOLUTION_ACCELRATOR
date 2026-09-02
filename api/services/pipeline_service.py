@@ -1,20 +1,24 @@
 """Pipeline submission, monitoring, and output retrieval service."""
 
+import json
 import logging
+import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
-from azure.ai.ml import Input, MLClient
+from azure.ai.ml import MLClient
 try:
     from azure.ai.ml.constants import ListViewType
 except Exception:  # pragma: no cover - older SDKs may not expose this enum
@@ -22,6 +26,16 @@ except Exception:  # pragma: no cover - older SDKs may not expose this enum
 
 from api.core.azure_ml import get_ml_client
 from api.core.config import settings
+from api.services.auto_retrain_service import (
+    load_config_metadata,
+    validate_baseline_job,
+)
+from api.services.submission_request_store import (
+    SubmissionRequestStoreError,
+    create_request_record,
+    get_request_record,
+    update_request_record,
+)
 from api.schemas.pipeline import (
     BaselineCaptureRequest,
     BaselineCaptureResponse,
@@ -52,7 +66,41 @@ from api.utils.azure_links import build_studio_url
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _CONFIGS_DIR = _REPO_ROOT / "configs"
 _LOCAL_OUTPUTS_DIR = _REPO_ROOT / "outputs"
+_CANONICAL_SUBMITTER = _REPO_ROOT / "pipelines" / "submit_pipeline.py"
 _SAFE_CONFIG_NAME = re.compile(r"^[A-Za-z0-9_]+$")
+_SUBMIT_ERROR_LIMIT = 2000
+_PROTECTED_SUBMISSION_TAGS = {
+    "compiled_config_hash",
+    "config_name",
+    "dataset",
+    "environment",
+    "execution_id",
+    "parent_config_hash",
+    "parent_execution_id",
+    "parent_source_identity",
+    "pipeline_version",
+    "preset",
+    "recipe_catalog_hash",
+    "revision_reason",
+    "source",
+    "source_decision_id",
+    "source_identity",
+    "submission_request_id",
+    "submission_revision_kind",
+    "task",
+}
+
+
+@dataclass(frozen=True)
+class ReplaySubmissionContext:
+    """Immutable parent identity and explicit semantics for a replay submission."""
+
+    revision_kind: str
+    parent_execution_id: str
+    parent_config_hash: str
+    parent_source_identity: str
+    source_decision_id: str | None = None
+    revision_reason: str | None = None
 
 # In-memory cache for terminal-state job metrics/summaries.
 # Outputs are immutable once a job is Completed/Failed/Canceled.
@@ -295,79 +343,232 @@ def _load_config_yaml(config_name: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def submit_pipeline(req: SubmitRequest) -> SubmitResponse:
-    """Submit an Azure ML pipeline job mirroring submit_pipeline.py logic."""
-    ml_client = get_ml_client()
-    cfg = _load_config_yaml(req.config_name)
+def _resolve_baseline_uri(
+    baseline_job: str | None,
+    *,
+    config_name: str,
+) -> str | None:
+    """Resolve only a completed, identity-matched baseline job output."""
+    if not baseline_job:
+        return None
 
-    # Ensure pipeline_builder is importable
-    pipelines_dir = str(_REPO_ROOT / "pipelines")
-    if pipelines_dir not in sys.path:
-        sys.path.insert(0, pipelines_dir)
-    from pipeline_builder import full_pipeline  # type: ignore[import-untyped]
-
-    datastore_name = (cfg.get("dataset") or {}).get("datastore_name", "mlops_blob")
-    dataset_folder_uri = (
-        f"azureml://subscriptions/{settings.azure_subscription_id}"
-        f"/resourcegroups/{settings.azure_resource_group}"
-        f"/workspaces/{settings.azure_workspace_name}"
-        f"/datastores/{datastore_name}/paths/"
+    config_path = (_CONFIGS_DIR / f"{config_name}.yml").resolve()
+    metadata = load_config_metadata(config_path)
+    baseline_uri, _, _ = validate_baseline_job(
+        config_path=config_path,
+        metadata=metadata,
+        baseline_job_name=baseline_job,
+        requested_uri=None,
     )
+    return baseline_uri
 
-    config_filename = f"{req.config_name}.yml"
-    pipeline_kwargs: dict = dict(
-        config_name=config_filename,
-        dataset_folder=Input(path=dataset_folder_uri, type="uri_folder"),
-    )
 
-    # Optional drift baseline
-    if req.baseline_job:
-        try:
-            baseline_job_obj = ml_client.jobs.get(req.baseline_job)
-            outputs = baseline_job_obj.outputs or {}
-            if "drift_baseline" in outputs:
-                asset_id = getattr(outputs["drift_baseline"], "path", None)
-                if asset_id:
-                    pipeline_kwargs["drift_baseline_in"] = Input(path=asset_id, type="uri_folder")
-        except Exception:
-            pass  # proceed without baseline
+def _append_cli_option(command: list[str], flag: str, value: str | None) -> None:
+    if value:
+        command.extend((flag, value))
 
-    job = full_pipeline(**pipeline_kwargs)
 
-    compute = req.compute or settings.compute_target
-    job.settings.default_compute = compute
-    if req.force_rerun:
-        job.settings.force_rerun = True
-
+def _build_canonical_submit_command(
+    req: SubmitRequest,
+    *,
+    result_path: Path,
+    baseline_uri: str | None,
+    replay_context: ReplaySubmissionContext | None = None,
+    internal_tags: dict[str, str] | None = None,
+) -> tuple[list[str], str, str]:
+    """Build the canonical submitter command used by sync and async API paths."""
+    config_path = (_CONFIGS_DIR / f"{req.config_name}.yml").resolve()
     experiment_name = _derive_experiment_name(req.config_name)
     display_name = _derive_display_name(experiment_name)
-    job.experiment_name = experiment_name
-    job.display_name = display_name
 
-    # Tags
-    dataset_meta = cfg.get("dataset") or {}
-    tags = {
-        "dataset": dataset_meta.get("name", "unknown"),
-        "task": cfg.get("task_type", "unknown"),
-        "pipeline_version": "v3",
-        "source": "api",
-    }
-    tags.update(req.tags)
-    job.tags = tags
-
-    submitted = ml_client.jobs.create_or_update(job)
-
-    return SubmitResponse(
-        job_name=submitted.name,
-        experiment_name=experiment_name,
-        display_name=display_name,
-        status=submitted.status or "Submitted",
-        studio_url=build_studio_url(ml_client, submitted.name),
+    command = [
+        sys.executable,
+        str(_CANONICAL_SUBMITTER),
+        "--config",
+        str(config_path),
+        "--experiment_name",
+        experiment_name,
+        "--display_name",
+        display_name,
+        "--result_json",
+        str(result_path),
+    ]
+    _append_cli_option(
+        command,
+        "--subscription_id",
+        settings.azure_subscription_id,
     )
+    _append_cli_option(
+        command,
+        "--resource_group",
+        settings.azure_resource_group,
+    )
+    _append_cli_option(
+        command,
+        "--workspace_name",
+        settings.azure_workspace_name,
+    )
+    _append_cli_option(
+        command,
+        "--compute",
+        req.compute or settings.compute_target,
+    )
+    _append_cli_option(command, "--drift_baseline_in", baseline_uri)
+
+    if replay_context is not None:
+        command.extend(
+            (
+                "--submission_revision_kind",
+                replay_context.revision_kind,
+                "--parent_execution_id",
+                replay_context.parent_execution_id,
+                "--parent_config_hash",
+                replay_context.parent_config_hash,
+                "--parent_source_identity",
+                replay_context.parent_source_identity,
+            )
+        )
+        if replay_context.revision_kind in {"exact_replay", "decision_retrain"}:
+            command.extend(
+                (
+                    "--expected_execution_id",
+                    replay_context.parent_execution_id,
+                    "--expected_config_hash",
+                    replay_context.parent_config_hash,
+                    "--expected_source_identity",
+                    replay_context.parent_source_identity,
+                )
+            )
+        _append_cli_option(
+            command,
+            "--source_decision_id",
+            replay_context.source_decision_id,
+        )
+        _append_cli_option(
+            command,
+            "--revision_reason",
+            replay_context.revision_reason,
+        )
+
+    if req.force_rerun:
+        command.append("--force_rerun")
+
+    protected = sorted(_PROTECTED_SUBMISSION_TAGS.intersection(req.tags))
+    if protected:
+        raise ValueError(
+            "Request tags cannot override protected submission metadata: "
+            + ", ".join(protected)
+        )
+    api_tags = {"source": "api", **req.tags, **dict(internal_tags or {})}
+    command.extend(
+        (
+            "--tags_json",
+            json.dumps(api_tags, separators=(",", ":"), sort_keys=True),
+        )
+    )
+    return command, experiment_name, display_name
+
+
+def _canonical_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
+    """Return bounded, operator-useful output without echoing the full process log."""
+    output = (completed.stderr or completed.stdout or "").strip()
+    if not output:
+        return "canonical submitter returned no diagnostic output"
+    return output[-_SUBMIT_ERROR_LIMIT:]
+
+
+def _load_canonical_submit_result(
+    result_path: Path,
+    *,
+    experiment_name: str,
+    display_name: str,
+) -> SubmitResponse:
+    if not result_path.is_file():
+        raise RuntimeError(
+            "Canonical submitter completed without a structured result. "
+            "Submission state is unknown; inspect the submitter logs before retrying."
+        )
+    try:
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "Canonical submitter returned an unreadable structured result. "
+            "Submission state is unknown; inspect the submitter logs before retrying."
+        ) from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("Canonical submitter result must be a JSON object.")
+
+    expected = {
+        "experiment_name": experiment_name,
+        "display_name": display_name,
+    }
+    for field, expected_value in expected.items():
+        if payload.get(field) != expected_value:
+            raise RuntimeError(
+                f"Canonical submitter result field {field!r} did not match the request."
+            )
+
+    required_fields = ("job_name", "status", "studio_url")
+    missing = [field for field in required_fields if not payload.get(field)]
+    if missing:
+        raise RuntimeError(
+            "Canonical submitter result is missing required fields: "
+            + ", ".join(missing)
+        )
+    return SubmitResponse(**payload)
+
+
+def submit_pipeline(
+    req: SubmitRequest,
+    *,
+    replay_context: ReplaySubmissionContext | None = None,
+    internal_tags: dict[str, str] | None = None,
+) -> SubmitResponse:
+    """Submit through the canonical CLI so every caller shares its safety guards."""
+    _load_config_yaml(req.config_name)
+    if not _CANONICAL_SUBMITTER.is_file():
+        raise FileNotFoundError(
+            f"Canonical pipeline submitter not found: {_CANONICAL_SUBMITTER}"
+        )
+
+    baseline_uri = _resolve_baseline_uri(
+        req.baseline_job,
+        config_name=req.config_name,
+    )
+    with tempfile.TemporaryDirectory(prefix="mlops-api-submit-") as temp_dir:
+        result_path = Path(temp_dir) / "submission-result.json"
+        command, experiment_name, display_name = _build_canonical_submit_command(
+            req,
+            result_path=result_path,
+            baseline_uri=baseline_uri,
+            replay_context=replay_context,
+            internal_tags=internal_tags,
+        )
+        completed = subprocess.run(
+            command,
+            cwd=str(_REPO_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            shell=False,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "Canonical pipeline submission failed "
+                f"(exit code {completed.returncode}): "
+                f"{_canonical_failure_detail(completed)}"
+            )
+        return _load_canonical_submit_result(
+            result_path,
+            experiment_name=experiment_name,
+            display_name=display_name,
+        )
 
 
 # ---------------------------------------------------------------------------
-# Async submit (Phase 4) — fire-and-poll request table
+# Async submit (Phase 4) - durable fire-and-poll request state
 # ---------------------------------------------------------------------------
 
 # Azure ML job creation can take 5–60s wall time on cold compute. The async
@@ -376,8 +577,6 @@ def submit_pipeline(req: SubmitRequest) -> SubmitResponse:
 # appears, then switch to the standard /pipelines/jobs/{job_name} endpoints.
 
 _submit_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="submit-async")
-_submit_requests: dict[str, dict] = {}
-_submit_lock = threading.Lock()
 
 
 def _new_request_id() -> str:
@@ -387,26 +586,35 @@ def _new_request_id() -> str:
 def _submit_worker(request_id: str, req: SubmitRequest) -> None:
     """Background worker that performs the blocking Azure ML submission."""
     try:
-        result = submit_pipeline(req)
-        with _submit_lock:
-            _submit_requests[request_id].update(
-                {
-                    "status": "submitted",
-                    "job_name": result.job_name,
-                    "experiment_name": result.experiment_name,
-                    "display_name": result.display_name,
-                    "studio_url": result.studio_url,
-                    "completed_at": datetime.utcnow().isoformat() + "Z",
-                }
-            )
+        result = submit_pipeline(
+            req,
+            internal_tags={"submission_request_id": request_id},
+        )
+        update_request_record(
+            request_id,
+            {
+                "status": "submitted",
+                "job_name": result.job_name,
+                "experiment_name": result.experiment_name,
+                "display_name": result.display_name,
+                "studio_url": result.studio_url,
+                "completed_at": datetime.utcnow().isoformat() + "Z",
+            },
+        )
     except Exception as exc:  # noqa: BLE001 — record any failure for the poller
-        with _submit_lock:
-            _submit_requests[request_id].update(
+        try:
+            update_request_record(
+                request_id,
                 {
                     "status": "failed",
                     "error": str(exc),
                     "completed_at": datetime.utcnow().isoformat() + "Z",
-                }
+                },
+            )
+        except SubmissionRequestStoreError:
+            _logger.exception(
+                "Async submission failed and durable request state could not be updated: %s",
+                request_id,
             )
 
 
@@ -425,17 +633,93 @@ def submit_pipeline_async(req: SubmitRequest) -> dict:
         "error": None,
         "completed_at": None,
     }
-    with _submit_lock:
-        _submit_requests[request_id] = record
+    create_request_record(record)
     _submit_executor.submit(_submit_worker, request_id, req)
-    return record
+    return dict(record)
+
+
+def _pending_request_is_stale(record: dict[str, Any]) -> bool:
+    try:
+        threshold = max(
+            0,
+            int(os.environ.get("MLOPS_SUBMISSION_RECONCILE_AFTER_SECONDS", "300")),
+        )
+    except ValueError:
+        threshold = 300
+    raw_submitted_at = str(record.get("submitted_at") or "")
+    try:
+        submitted_at = datetime.fromisoformat(raw_submitted_at.replace("Z", "+00:00"))
+        if submitted_at.tzinfo is None:
+            submitted_at = submitted_at.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return True
+    age_seconds = (datetime.now(timezone.utc) - submitted_at).total_seconds()
+    return age_seconds >= threshold
+
+
+def _reconcile_stale_submit_request(record: dict[str, Any]) -> dict[str, Any]:
+    """Recover job identity after an API restart without submitting again."""
+
+    request_id = str(record["request_id"])
+    checked_at = datetime.now(timezone.utc).isoformat()
+    try:
+        ml_client = get_ml_client()
+        matches = []
+        for job in ml_client.jobs.list():
+            tags = dict(getattr(job, "tags", None) or {})
+            if tags.get("submission_request_id") == request_id:
+                matches.append(job)
+        if len(matches) == 1:
+            job = matches[0]
+            return update_request_record(
+                request_id,
+                {
+                    "status": "submitted",
+                    "job_name": str(job.name),
+                    "experiment_name": getattr(job, "experiment_name", None),
+                    "display_name": getattr(job, "display_name", None),
+                    "studio_url": build_studio_url(ml_client, str(job.name)),
+                    "completed_at": checked_at,
+                    "reconciled_at": checked_at,
+                    "error": None,
+                },
+            )
+        detail = (
+            "multiple Azure jobs carry this request ID"
+            if len(matches) > 1
+            else "no Azure job carrying this request ID was found"
+        )
+    except Exception as exc:  # noqa: BLE001 - preserve uncertainty instead of retrying a write
+        detail = f"Azure reconciliation failed: {type(exc).__name__}: {exc}"
+
+    return update_request_record(
+        request_id,
+        {
+            "status": "reconciliation_required",
+            "error": (
+                f"Async submission state is uncertain because {detail}. "
+                "Inspect Azure ML and the canonical submitter logs before retrying."
+            ),
+            "reconciled_at": checked_at,
+        },
+    )
 
 
 def get_submit_request(request_id: str) -> dict | None:
-    """Return a snapshot of a submit request's state, or None if unknown."""
-    with _submit_lock:
-        record = _submit_requests.get(request_id)
-        return dict(record) if record else None
+    """Return durable async request state, or None if the ID is unknown."""
+    try:
+        record = get_request_record(request_id)
+        if (
+            record is not None
+            and record.get("status") == "pending"
+            and _pending_request_is_stale(record)
+        ):
+            return _reconcile_stale_submit_request(record)
+        return record
+    except SubmissionRequestStoreError as exc:
+        if "Invalid submission request ID" in str(exc):
+            return None
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -795,7 +1079,7 @@ def list_local_outputs(max_depth: int = 4, max_files: int = 500) -> LocalOutputs
             continue
         items.append(
             LocalOutputFileInfo(
-                relative_path=str(rel),
+                relative_path=rel.as_posix(),
                 name=path.name,
                 is_dir=path.is_dir(),
                 size_bytes=None if path.is_dir() else stat.st_size,
@@ -1013,27 +1297,167 @@ def get_job_metrics(job_name: str) -> MetricsResponse:
 # ---------------------------------------------------------------------------
 
 
+_DRIFT_IDENTITY_FIELDS = (
+    "execution_id",
+    "config_hash",
+    "config_revision",
+    "candidate_id",
+    "model_bundle_id",
+    "data_fingerprint",
+    "dataset_version",
+    "source_sha",
+    "environment_hash",
+    "split_fingerprint",
+)
+
+
+def _download_json_output(
+    ml_client: MLClient,
+    job_name: str,
+    output_name: str,
+    download_root: Path,
+) -> dict[str, Any] | None:
+    """Download one named output into an isolated folder and parse its JSON object."""
+    output_dir = download_root / output_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        ml_client.jobs.download(
+            job_name,
+            download_path=str(output_dir),
+            output_name=output_name,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Failed to download {output_name}: {exc}") from exc
+
+    candidates = sorted(
+        (path for path in output_dir.rglob("*") if path.is_file()),
+        key=lambda path: (path.suffix.lower() != ".json", str(path)),
+    )
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(payload, dict):
+            return payload
+
+    _logger.warning(
+        "%s download had no parseable JSON object; files=%s",
+        output_name,
+        [str(path.relative_to(output_dir)) for path in candidates],
+    )
+    return None
+
+
+def _join_s14_retrain_decision(
+    drift_report: dict[str, Any],
+    s14_payload: dict[str, Any] | None,
+    *,
+    missing_status: str,
+) -> tuple[dict[str, Any], str | None]:
+    """Return an S14 decision only when it is identity-bound to S13 evidence."""
+    base = {
+        "available": False,
+        "source_stage": "s14_retrain_decision",
+        "source_output": "retrain_decision",
+        "join_status": missing_status,
+    }
+    if not s14_payload:
+        return base, (
+            "S14 retrain_decision output is not available; no policy decision is reported."
+        )
+
+    s13_identity = drift_report.get("identity") or {}
+    s14_identity = s14_payload.get("identity") or {}
+    if not isinstance(s13_identity, dict) or not isinstance(s14_identity, dict):
+        base["join_status"] = "identity_unverified"
+        return base, "S13/S14 identity metadata is malformed; the S14 decision was withheld."
+
+    s13_execution_id = s13_identity.get("execution_id")
+    source = s14_payload.get("source") or {}
+    s14_execution_id = s14_identity.get("execution_id") or (
+        source.get("drift_execution_id") if isinstance(source, dict) else None
+    )
+    if not s13_execution_id or not s14_execution_id:
+        base["join_status"] = "identity_unverified"
+        return base, (
+            "S13/S14 execution identity is missing; the S14 decision was withheld."
+        )
+
+    mismatched_fields = [
+        field
+        for field in _DRIFT_IDENTITY_FIELDS
+        if s13_identity.get(field) not in (None, "")
+        and s14_identity.get(field) not in (None, "")
+        and str(s13_identity[field]) != str(s14_identity[field])
+    ]
+    for field in ("config_name", "task_type", "dataset_name"):
+        if (
+            drift_report.get(field) not in (None, "")
+            and s14_payload.get(field) not in (None, "")
+            and str(drift_report[field]) != str(s14_payload[field])
+        ):
+            mismatched_fields.append(field)
+    if str(s13_execution_id) != str(s14_execution_id):
+        mismatched_fields.append("execution_id")
+    if mismatched_fields:
+        mismatch_names = sorted(set(mismatched_fields))
+        base.update({
+            "join_status": "identity_mismatch",
+            "mismatched_fields": mismatch_names,
+        })
+        return base, (
+            "S13/S14 identity mismatch; the S14 decision was withheld: "
+            + ", ".join(mismatch_names)
+        )
+
+    decision = s14_payload.get("retrain_decision") or s14_payload.get("decision") or {}
+    if not isinstance(decision, dict) or not decision.get("outcome"):
+        base["join_status"] = "malformed_decision"
+        return base, "S14 output has no valid retrain decision; policy status was withheld."
+    artifact_decision_id = s14_payload.get("decision_id")
+    contract_decision_id = decision.get("decision_id")
+    if not artifact_decision_id or not contract_decision_id:
+        base["join_status"] = "decision_identity_unverified"
+        return base, "S14 decision identity is missing; policy status was withheld."
+    if str(artifact_decision_id) != str(contract_decision_id):
+        base["join_status"] = "decision_identity_mismatch"
+        return base, "S14 decision identity is inconsistent; policy status was withheld."
+
+    return {
+        **decision,
+        "available": True,
+        "source_stage": str(s14_payload.get("stage") or "s14_retrain_decision"),
+        "source_output": "retrain_decision",
+        "join_status": "matched",
+        "matched_execution_id": str(s13_execution_id),
+        "decision_id": str(contract_decision_id),
+        "policy": s14_payload.get("policy") or {},
+    }, None
+
+
+def _effective_psi_thresholds(
+    auto_retrain_decision: dict[str, Any],
+) -> tuple[float, float]:
+    """Use the policy recorded by S14, with legacy PSI bands as a fallback."""
+    effective = (auto_retrain_decision.get("policy") or {}).get("effective") or {}
+    try:
+        moderate = float(effective.get("moderate_feature_psi", 0.10))
+        severe = float(effective.get("severe_feature_psi", 0.25))
+    except (TypeError, ValueError):
+        return 0.10, 0.25
+    if moderate < 0 or severe <= moderate:
+        return 0.10, 0.25
+    return moderate, severe
+
+
 def get_job_drift(job_name: str) -> DriftResponse:
-    """Retrieve drift detection results from a completed pipeline job.
-
-    Parses the actual ``s13_drift_monitor`` JSON schema:
-
-      {
-        "self_check": {"overall_psi": ..., "drifted_features": [...], "status": "PASS|WARN"},
-        "feature_psi_scores": {feature: psi},
-        "stability_assessment": {"stability_score": ..., "recommended_cadence": ...},
-        "comparison_drift": {...}                # only when baseline_in provided
-      }
-    """
-    import json
-
+    """Join S13 drift evidence with the identity-matched S14 policy decision."""
     ml_client = get_ml_client()
     parent = ml_client.jobs.get(job_name)
     available = list((parent.outputs or {}).keys())
 
     if "drift_report" not in available:
-        # Output not yet produced (job still running, failed before s13, or
-        # this pipeline doesn't include drift).
         return DriftResponse(
             job_name=job_name,
             studio_url=build_studio_url(ml_client, job_name),
@@ -1046,112 +1470,139 @@ def get_job_drift(job_name: str) -> DriftResponse:
 
     tmp = Path(tempfile.mkdtemp(prefix=f"mlops_drift_{job_name}_"))
     try:
-        try:
-            ml_client.jobs.download(
-                job_name, download_path=str(tmp), output_name="drift_report"
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Failed to download drift_report: {exc}")
-
-        # Producer writes to args.drift_report path directly (no extension);
-        # try *.json first, then any file with parseable JSON content.
-        report: dict | None = None
-        candidates = list(tmp.rglob("*.json")) + [
-            p for p in tmp.rglob("*") if p.is_file() and p.suffix == ""
-        ]
-        for f in candidates:
-            try:
-                report = json.loads(f.read_text())
-                if isinstance(report, dict):
-                    break
-                report = None
-            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-                continue
-
+        report = _download_json_output(ml_client, job_name, "drift_report", tmp)
         if not report:
-            _logger.warning(
-                "drift_report download had no parseable JSON; files=%s",
-                [str(p.relative_to(tmp)) for p in tmp.rglob("*") if p.is_file()],
-            )
             return DriftResponse(
                 job_name=job_name,
                 studio_url=build_studio_url(ml_client, job_name),
             )
 
-        # ── Parse actual s13 schema (see src/steps/s13_drift_monitor.py) ──
-        self_check = report.get("self_check") or {}
-        # Fallback chain in case key naming evolves.
-        psi_scores: dict = (
+        s14_payload: dict[str, Any] | None = None
+        s14_download_warning: str | None = None
+        if "retrain_decision" in available:
+            try:
+                s14_payload = _download_json_output(
+                    ml_client,
+                    job_name,
+                    "retrain_decision",
+                    tmp,
+                )
+            except RuntimeError as exc:
+                s14_download_warning = str(exc)
+        missing_status = "pending" if status not in _TERMINAL_STATES else "missing_output"
+        auto_retrain_decision, join_warning = _join_s14_retrain_decision(
+            report,
+            s14_payload,
+            missing_status=missing_status,
+        )
+
+        self_check = report.get("self_check") or report.get("smoke_test") or {}
+        stability = report.get("stability_assessment") or {}
+        comparison = report.get("comparison_drift") or {}
+        if not isinstance(self_check, dict):
+            self_check = {}
+        if not isinstance(stability, dict):
+            stability = {}
+        if not isinstance(comparison, dict):
+            comparison = {}
+
+        self_check_psi_scores = (
             report.get("feature_psi_scores")
             or report.get("psi_scores")
             or report.get("psi_per_feature")
             or {}
         )
-        stability = report.get("stability_assessment") or {}
-        comparison = report.get("comparison_drift") or {}
-
-        if not psi_scores:
+        comparison_psi_scores = (
+            comparison.get("feature_psi_scores")
+            or comparison.get("comparison_feature_psi_scores")
+            or comparison.get("psi_scores")
+            or {}
+        )
+        if not isinstance(self_check_psi_scores, dict):
+            self_check_psi_scores = {}
+        if not isinstance(comparison_psi_scores, dict):
+            comparison_psi_scores = {}
+        if not self_check_psi_scores:
             _logger.warning(
                 "drift_report missing per-feature PSI; top-level keys=%s",
                 list(report.keys()),
             )
 
+        comparison_available = bool(comparison.get("available"))
+        psi_scores = (
+            comparison_psi_scores
+            if comparison_available and comparison_psi_scores
+            else self_check_psi_scores
+        )
+        moderate_threshold, severe_threshold = _effective_psi_thresholds(
+            auto_retrain_decision
+        )
         features: list[DriftResultItem] = []
         for feat_name, raw in psi_scores.items():
-            # Per-feature value may be a float OR a nested dict like
-            # {"psi": 0.05, "n_bins": 10, ...}; handle both.
             if isinstance(raw, dict):
-                raw = raw.get("psi") or raw.get("score") or raw.get("value")
+                raw = next(
+                    (
+                        raw.get(key)
+                        for key in ("psi", "score", "value")
+                        if raw.get(key) is not None
+                    ),
+                    None,
+                )
             try:
-                psi_v = float(raw)
+                psi_value = float(raw)
             except (TypeError, ValueError):
                 continue
             severity = (
-                "severe" if psi_v >= 0.25
-                else "moderate" if psi_v >= 0.10
+                "severe"
+                if psi_value >= severe_threshold
+                else "moderate"
+                if psi_value >= moderate_threshold
                 else "none"
             )
             features.append(
                 DriftResultItem(
                     feature=str(feat_name),
-                    psi=psi_v,
-                    drift_detected=psi_v >= 0.10,
+                    psi=psi_value,
+                    drift_detected=psi_value >= moderate_threshold,
                     severity=severity,
                 )
             )
+        features.sort(key=lambda item: item.psi, reverse=True)
 
-        # Sort by PSI descending (worst drift first)
-        features.sort(key=lambda x: x.psi, reverse=True)
-
-        # Comparison drift block exists in every report with at least
-        # {"available": false}; treat it as present only when "available" is True.
-        comparison_available = bool(comparison.get("available"))
+        baseline_status = comparison.get("baseline_status")
+        if not baseline_status:
+            baseline_status = (
+                "comparison_ready" if comparison_available else "not_available"
+            )
+        baseline_metadata = comparison.get("baseline_metadata") or {}
         evidently = comparison.get("evidently") or {}
         concept = comparison.get("concept_drift") or {}
+        if not isinstance(baseline_metadata, dict):
+            baseline_metadata = {}
+        if not isinstance(evidently, dict):
+            evidently = {}
+        if not isinstance(concept, dict):
+            concept = {}
 
-        # Overall drift indicator: prefer comparison drift signals when a
-        # previous baseline was supplied; otherwise fall back to self-check
-        # status, with per-feature PSI threshold as a final fallback.
         if comparison_available:
             overall = bool(
                 evidently.get("dataset_drift")
                 or concept.get("detected")
+                or any(feature.drift_detected for feature in features)
             )
             drift_type = "comparison"
         elif self_check:
             overall = self_check.get("status") == "WARN"
             drift_type = "self_check"
         else:
-            overall = any(f.drift_detected for f in features)
+            overall = any(feature.drift_detected for feature in features)
             drift_type = "psi"
 
-        # drifted_columns must be list[str] per DriftResponse schema. Try
-        # several shapes: Evidently's drift_by_columns list (dicts with
-        # "column"), self_check.drifted_features (dicts with "feature"), or
-        # simply derive from per-feature PSI.
-        drifted_cols: list[str] = []
+        drifted_cols = [
+            feature.feature for feature in features if feature.drift_detected
+        ]
         ev_cols = evidently.get("drifted_columns") or []
-        if isinstance(ev_cols, list) and ev_cols:
+        if isinstance(ev_cols, list):
             for item in ev_cols:
                 if isinstance(item, dict):
                     name = item.get("column") or item.get("feature")
@@ -1159,7 +1610,7 @@ def get_job_drift(job_name: str) -> DriftResponse:
                         drifted_cols.append(str(name))
                 elif isinstance(item, str):
                     drifted_cols.append(item)
-        if not drifted_cols:
+        if not drifted_cols and not comparison_available:
             sc_cols = self_check.get("drifted_features") or []
             if isinstance(sc_cols, list):
                 for item in sc_cols:
@@ -1169,14 +1620,51 @@ def get_job_drift(job_name: str) -> DriftResponse:
                             drifted_cols.append(str(name))
                     elif isinstance(item, str):
                         drifted_cols.append(item)
-        if not drifted_cols:
-            drifted_cols = [f.feature for f in features if f.drift_detected]
+        drifted_cols = list(dict.fromkeys(drifted_cols))
+
+        s13_evidence = {
+            "contract_type": "S13DriftEvidence",
+            "source_stage": "s13_drift_monitor",
+            "ownership": "evidence_only",
+            "identity": report.get("identity") or {},
+            "self_check": {
+                **self_check,
+                "feature_psi_scores": self_check_psi_scores,
+            },
+            "comparison": {
+                "available": comparison_available,
+                "baseline_status": baseline_status,
+                "feature_psi_scores": comparison_psi_scores,
+                "evidently": evidently,
+                "concept_drift": concept,
+            },
+        }
+        warnings = [str(item) for item in report.get("warnings") or []]
+        for warning in (s14_download_warning, join_warning):
+            if warning and warning not in warnings:
+                warnings.append(warning)
+        if comparison_available and not comparison_psi_scores:
+            warnings.append(
+                "S13 comparison is available but has no comparison PSI scores; "
+                "the feature table uses self-check PSI."
+            )
 
         response = DriftResponse(
             job_name=job_name,
+            task_type=report.get("task_type"),
+            dataset_name=report.get("dataset_name"),
             overall_drift_detected=overall,
             stability_score=stability.get("stability_score"),
             drift_type=drift_type,
+            recommended_cadence=stability.get("recommended_cadence"),
+            recommended_days=stability.get("recommended_days"),
+            cadence_rationale=stability.get("rationale"),
+            comparison_available=comparison_available,
+            baseline_status=baseline_status,
+            baseline_metadata=baseline_metadata,
+            auto_retrain_decision=auto_retrain_decision,
+            auto_retrain_trigger=s13_evidence,
+            warnings=warnings,
             drifted_columns=drifted_cols,
             features=features,
             evidently_report_path=report.get("evidently_report_path"),
@@ -1194,24 +1682,76 @@ def get_job_drift(job_name: str) -> DriftResponse:
 # ---------------------------------------------------------------------------
 
 
+def _original_revision_identity(tags: dict[str, Any]) -> dict[str, str]:
+    fields = {
+        "execution_id": "execution_id",
+        "config_hash": "compiled_config_hash",
+        "source_identity": "source_identity",
+    }
+    identity = {
+        field: str(tags.get(tag_name) or "").strip()
+        for field, tag_name in fields.items()
+    }
+    missing = [field for field, value in identity.items() if not value]
+    if missing:
+        raise ValueError(
+            "Original job lacks immutable replay identity tags: "
+            + ", ".join(missing)
+            + ". It cannot be replayed or linked as a new revision safely."
+        )
+    return identity
+
+
+def _original_config_name(original: Any, tags: dict[str, Any]) -> str:
+    raw_name = str(tags.get("config_name") or "").strip()
+    if not raw_name:
+        experiment_name = str(getattr(original, "experiment_name", "") or "")
+        if not experiment_name:
+            raise ValueError(
+                "Original job has no config_name tag or experiment identity"
+            )
+        experiment_stem = (
+            experiment_name[:-3]
+            if experiment_name.endswith("_v3")
+            else experiment_name
+        )
+        raw_name = f"config_{experiment_stem}_azureml"
+    if raw_name.endswith(".yml"):
+        raw_name = raw_name[:-4]
+    if not _SAFE_CONFIG_NAME.fullmatch(raw_name):
+        raise ValueError(f"Original job has an invalid config identity: {raw_name!r}")
+    return raw_name
+
+
 def resubmit_pipeline(req: ResubmitRequest) -> SubmitResponse:
-    """Resubmit a pipeline job using the same configuration as the original."""
+    """Replay an exact revision or explicitly branch current inputs as a new one."""
     ml_client = get_ml_client()
     original = ml_client.jobs.get(req.job_name)
     tags = dict(original.tags) if original.tags else {}
+    identity = _original_revision_identity(tags)
+    config_name = _original_config_name(original, tags)
 
-    config_name = tags.get("config_name", "")
-    if not config_name:
-        # Infer from experiment name
-        exp = getattr(original, "experiment_name", "") or ""
-        config_name = f"config_{exp.replace('_v3', '')}_azureml"
+    revision_reason = str(req.revision_reason or "").strip()
+    if req.revision_mode == "new_revision":
+        if not revision_reason:
+            raise ValueError("new_revision requires a non-empty revision_reason")
+    elif revision_reason:
+        raise ValueError("revision_reason is valid only for new_revision")
+
+    replay_context = ReplaySubmissionContext(
+        revision_kind=req.revision_mode,
+        parent_execution_id=identity["execution_id"],
+        parent_config_hash=identity["config_hash"],
+        parent_source_identity=identity["source_identity"],
+        revision_reason=revision_reason or None,
+    )
 
     submit_req = SubmitRequest(
         config_name=config_name,
         force_rerun=req.force_rerun,
         tags={"resubmit_from": req.job_name},
     )
-    return submit_pipeline(submit_req)
+    return submit_pipeline(submit_req, replay_context=replay_context)
 
 
 # ---------------------------------------------------------------------------
@@ -1225,13 +1765,23 @@ def capture_baseline(req: BaselineCaptureRequest) -> BaselineCaptureResponse:
     j = ml_client.jobs.get(req.job_name)
 
     baseline_path: str | None = None
+    output_present = False
     outputs = j.outputs or {}
     if "drift_baseline" in outputs:
+        output_present = True
         baseline_path = getattr(outputs["drift_baseline"], "path", None)
+
+    if baseline_path:
+        status = "captured"
+    elif output_present:
+        status = "baseline_output_path_unavailable"
+    else:
+        status = "no_baseline_output"
 
     return BaselineCaptureResponse(
         job_name=req.job_name,
         baseline_path=baseline_path,
-        status="captured" if baseline_path else "no_baseline_output",
+        output_present=output_present,
+        status=status,
         studio_url=build_studio_url(ml_client, req.job_name),
     )

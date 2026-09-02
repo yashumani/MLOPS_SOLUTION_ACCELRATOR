@@ -1,11 +1,11 @@
-# Drift Detection - Production Guide
+# Drift Detection And Retraining Control Guide
 
-> **Branch:** `prod-hardening-20260425`
-> **Step ID:** `s13` (terminal step, last in the pipeline DAG)
-> **Feature Status:** Implemented and wired into the production Azure ML pipeline.
-> **Current posture:** Drift alerts are non-blocking; they report risk and do not trigger automatic retraining during the freeze window.
+> **Branch:** `codex_ys/mlops-pipeline-correctness`
+> **Step IDs:** `s13` (drift monitor) and `s14` (retrain decision gate)
+> **Feature Status:** Implemented and wired in source; current exact-source Azure pipeline acceptance is pending.
+> **Current posture:** Drift alerts are non-blocking by default. `s13` emits drift and baseline artifacts, `s14` emits retrain decision artifacts, and Azure ML submission remains behind an explicit controller gate. The external controller resolves approved baselines and builds canonical submissions, while model promotion remains manual.
 
-## Current Production Thresholds
+## Configured Thresholds
 
 The standalone drift config is `configs/drift_config.yaml`.
 
@@ -45,27 +45,28 @@ Alert dispatch is best-effort and non-fatal. Missing Teams or email environment 
 
 ## 1. Overview
 
-Drift detection in the MLOps V3 pipeline is implemented as **step s13 (Drift Monitor)**. It is a **training-time** step, not a real-time production monitor. Its purpose is to:
+Drift detection in the MLOps V3 pipeline is implemented as **step s13 (Drift Monitor)** with a separate **step s14 (Retrain Decision Gate)**. These are **training-time** steps, not a real-time production monitor. Their purpose is to:
 
 1. **Establish a baseline profile** of the feature-engineered training data for future production monitoring.
 2. **Validate the PSI drift detector** via a self-check (train/test split on the same data — expects PSI ≈ 0).
 3. **Recommend a retraining cadence** (quarterly → weekly) based on dataset characteristics (size, complexity, volatility, imbalance).
 4. **Compare against a previous baseline** (if provided) using Evidently and concept drift checks.
+5. **Emit an auto-retrain policy decision** (`observe_only`, `refresh_baseline`, `candidate_retrain`, `promote_candidate`, or `blocked`) as a dedicated `s14` artifact for the external controller.
 
-The step consumes the feature-engineered dataset from `s04` and the final evaluation report from `s11`, runs drift analysis, and outputs a drift report JSON plus a baseline artifact folder for chaining into future runs.
+`s13` consumes the feature-engineered dataset from `s04` and the final evaluation report from `s10`, runs drift analysis, and outputs a drift report JSON plus a baseline artifact folder for chaining into future runs. `s14` consumes those `s13` outputs, applies the auto-retrain policy, and writes operator-facing decision artifacts without submitting another pipeline run.
 
 ---
 
 ## 2. Pipeline Position (DAG)
 
 ```
-s01 → s02 → s03 → s04 ─┬─ [s05a, s05b, s05t] → s05z
+s01 → s02 → s03 → s04 ─┬─ [s05a, s05b] → s05z
 (ingestion)  (prep)  (preproc)  (feat_eng)     (baselines)  (aggregate)
                         │
-                        └──→ s06 → s08z → s10 → s10z → s11 → s13
-                           (PhaseB) (agg) (HPO) (agg)  (final_eval) (DRIFT MONITOR)
-                                                                       ↑
-                                                                  TERMINAL STEP
+                        └──→ s06 → s08 → s09 → s10 → s12 → s13 → s14
+                          (PhaseB) (HPO) (agg) (final_eval) (registry) (DRIFT) (RETRAIN DECISION)
+                                                            ↑
+                                                         TERMINAL STEP
 ```
 
 **Key data flows into s13:**
@@ -73,10 +74,10 @@ s01 → s02 → s03 → s04 ─┬─ [s05a, s05b, s05t] → s05z
 | Input | Source Step | Content |
 |-------|-----------|---------|
 | `dataset_in` | **s04** (feature engineering) | Feature-engineered CSV — the processed training dataset |
-| `final_report` | **s11** (final evaluation) | Champion model info, metrics, algorithm, phase selection |
+| `final_report` | **s10** (final evaluation) | Champion model info, metrics, algorithm, phase selection |
 | `baseline_in` *(optional)* | Previous pipeline run's `drift_baseline` output | Reference distributions, feature stats, reference CSV |
 
-**s13 is the last step** — it depends on s04 and s11 but nothing depends on s13. Its outputs (`drift_report`, `drift_baseline`) are pipeline-level outputs used for monitoring and chaining into subsequent runs.
+**s14 is the last step** — it depends on s13 and emits pipeline-level decision artifacts. `s13` outputs (`drift_report`, `drift_baseline`) remain pipeline-level outputs used for monitoring and chaining into subsequent runs.
 
 ---
 
@@ -90,7 +91,7 @@ s01 → s02 → s03 → s04 ─┬─ [s05a, s05b, s05t] → s05z
 |------|------|----------|-------------|
 | `config_name` | `string` | Yes | Config YAML filename (e.g., `config_classification_telecom_churn_azureml.yml`) |
 | `dataset_in` | `uri_file` | Yes | Processed dataset CSV from s04 feature engineering |
-| `final_report` | `uri_file` | Yes | Final evaluation report JSON from s11 |
+| `final_report` | `uri_file` | Yes | Final evaluation report JSON from s10 |
 | `registry_info` | `uri_file` | No | Model registration info JSON from s12 |
 | `baseline_in` | `uri_folder` | No | Previous run's drift baseline folder (enables comparison drift) |
 
@@ -98,7 +99,7 @@ s01 → s02 → s03 → s04 ─┬─ [s05a, s05b, s05t] → s05z
 
 | Name | Type | Description |
 |------|------|-------------|
-| `drift_report` | `uri_file` | JSON report with PSI scores, stability assessment, comparison drift results, warnings |
+| `drift_report` | `uri_file` | JSON evidence with PSI scores, stability assessment, comparison drift results, cadence, alerts, and warnings; no policy decision or submission result |
 | `drift_baseline` | `uri_folder` | Folder containing `feature_baseline.json`, `reference_distributions.json`, `reference_data.csv` |
 
 ### CLI Arguments (s13_drift_monitor.py)
@@ -114,6 +115,29 @@ python src/steps/s13_drift_monitor.py \
   --drift_baseline <output/drift_baseline/>
 ```
 
+### Component YAML: `components/s14_retrain_decision.yml`
+
+**Inputs:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `config_name` | `string` | Yes | Config YAML filename |
+| `drift_report` | `uri_file` | Yes | Drift analysis report JSON from s13 |
+| `candidate_baseline` | `uri_folder` | Yes | Drift baseline folder emitted by s13 for possible future approval |
+| `final_report` | `uri_file` | No | Final evaluation report JSON from s10 |
+| `registry_info` | `uri_file` | No | Model registration info JSON from s12 |
+| `drift_policy_config` | `string` | Yes | Repository-relative policy YAML consumed by s14 |
+| `trigger` | `string` | No | Decision trigger label, default `pipeline_s14` |
+
+**Outputs:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `retrain_decision` | `uri_file` | Auto-retrain decision JSON for operator review |
+| `decision_ledger_record` | `uri_file` | Ledger-shaped decision JSON to append after approval or controller processing |
+
+`s14` does not submit Azure ML jobs and does not approve baselines. It emits evidence for the external controller and manual promotion workflow.
+
 ---
 
 ## 4. Execution Flow
@@ -122,7 +146,7 @@ When s13 runs, it follows this sequence:
 
 ### Step 1: Load Configuration
 - Reads the pipeline config YAML to extract `task_type`, `target_column`, `dataset_name`.
-- Sets up MLflow tracking (converts `azureml://` → `https://`, disables autolog).
+- Uses the workspace-provided `azureml://` MLflow tracking URI unchanged with `azureml-mlflow` and disables conflicting autolog behavior where required.
 
 ### Step 2: Load Upstream Artifacts
 - Loads `final_report` JSON (champion model info, primary metric, algorithm).
@@ -136,7 +160,7 @@ When s13 runs, it follows this sequence:
   - **Clustering:** No target column — `X` = full dataset, `y` = None.
 
 ### Step 4: Train/Test Split (Self-Check)
-- Splits data **80/20** with `random_state=42` (matches the evaluation step s11).
+- Splits the training-only monitoring input **80/20** with `random_state=42` for detector smoke testing. This is not the Stage 2 locked test and is not model-selection evidence.
 - For classification: uses `stratify=y`.
 - Reference set = 80% (train), Test set = 20% (test).
 
@@ -165,7 +189,7 @@ If a `baseline_in` folder from a previous run is provided:
 - **Evidently Feature Drift:** Runs `DataDriftPreset` comparing the previous reference data against the current dataset. Detects per-column statistical drift using appropriate tests (KS for numeric, chi-squared for categorical).
 - **Concept Drift:** Compares the champion model's primary metric from the current run against the previous run's metric. Flags if the drop exceeds 5%.
 
-### Step 10: Generate Outputs
+### Step 10: Generate Evidence Outputs
 - Writes `drift_report.json` with all analysis results.
 - Writes `drift_baseline/` folder with:
   - `feature_baseline.json` — per-feature statistics + champion metadata.
@@ -190,9 +214,14 @@ PSI measures how much a feature's distribution has shifted between two datasets.
 $$
 PSI = \sum_{i=1}^{n} (P_i^{test} - P_i^{ref}) \times \ln\left(\frac{P_i^{test}}{P_i^{ref}}\right)
 $$
+Focused drift and orchestration tests cover the standalone drift library plus auto-retrain policy, ledger, and controller planning:
 
+Focused drift and orchestration tests cover the standalone drift library plus auto-retrain policy, ledger, and controller planning:
 Where $P_i^{ref}$ and $P_i^{test}$ are proportions of observations in bin $i$ for the reference and test sets.
 
+| `test_auto_retrain_policy.py` | Tests policy outcomes for stable reports, missing baselines, drift signals, and promotion gating |
+| `test_auto_retrain_decision_ledger.py` | Tests append/load behavior and latest approved baseline URI resolution |
+| `test_auto_retrain_controller.py` | Tests controller baseline resolution, canonical command generation, and submitted job-name parsing |
 **Implementation (`src/utils/drift_detector.py`):**
 
 - **Numeric features:** 10 equal-width bins from reference distribution. Bin edges extended to capture out-of-range test values. Laplace smoothing ($\epsilon = 10^{-6}$) prevents log(0).
@@ -304,8 +333,16 @@ schedule:
   time: "02:00"                      # UTC
 
 actions:
-  on_drift_detected: "trigger_full_pipeline"
+  on_drift_detected: "trigger_full_pipeline" # Legacy action label; active s13 emits evidence only
   alert_channels: [email, mlflow_dashboard]
+
+auto_retrain:
+  enabled: false                    # External-controller compatibility; s13/s14 never submit
+  mode: "dry_run"                   # Controller planning mode, not an s13 execution mode
+  config_path: null                 # Controller input when that compatibility path is used
+  compute: null                     # Controller input; submit_pipeline.py may use env fallback
+  drift_baseline_in: null           # Optional previous s13 drift_baseline uri_folder
+  force: false                      # Keep duplicate-submission guards enabled by default
 
 artifact_paths:
   baseline_dir: "outputs/drift_baseline"
@@ -334,7 +371,7 @@ column_mapping:
   "n_features": 19,
   "target_column": "Churn",
   "detector": "psi",
-  "self_check": {
+  "smoke_test": {
     "method": "train_test_split_80_20_seed_42",
     "overall_psi": 0.001234,
     "max_feature_psi": 0.008567,
@@ -371,7 +408,9 @@ column_mapping:
     "model_version": "3"
   },
   "comparison_drift": {
-    "available": false
+    "available": false,
+    "baseline_status": "not_provided",
+    "baseline_metadata": {}
   },
   "warnings": [],
   "runtime_seconds": 12.5
@@ -421,7 +460,7 @@ All drift metrics and params are logged to the step's MLflow run within the pare
 
 ## 9. Baseline Chaining Across Runs
 
-To enable comparison drift (detecting distribution shift between training runs), pass the previous run's `drift_baseline` output to the next run via `--baseline_job`:
+To enable comparison drift (detecting distribution shift between training runs), pass the previous run's reusable `drift_baseline` output URI to the next run via `--drift_baseline_in`:
 
 ```bash
 # First run (no baseline — self-check only)
@@ -435,21 +474,31 @@ python pipelines/submit_pipeline.py \
   --config configs/config_classification_telecom_churn_azureml.yml \
   --subscription_id <sub> --resource_group <rg> --workspace_name <ws> \
   --compute <AZURE_COMPUTE> --wait \
-  --baseline_job <first_run_job_name>
+  --drift_baseline_in <azureml_uri_folder_for_previous_drift_baseline>
 ```
 
-When `--baseline_job` is provided, `submit_pipeline.py` uses the Azure ML History API to locate the `drift_baseline` output asset from the specified job and passes it as the `baseline_in` input to s13. This enables:
+When `--drift_baseline_in` is provided, `submit_pipeline.py` wraps the URI as an Azure ML `uri_folder` input and passes it as the `baseline_in` input to s13. This enables:
 
 - **Evidently comparison drift** between the previous reference data and the current dataset.
 - **Concept drift** detection by comparing model metrics across runs.
 
-Without `--baseline_job`, s13 runs in **self-check only mode** — no comparison drift is performed, and `comparison_drift.available` will be `false` in the report.
+Without `--drift_baseline_in`, s13 runs in **self-check only mode** — no comparison drift is performed, and `comparison_drift.available` will be `false` in the report.
+
+The FastAPI submit endpoint also accepts `baseline_job`. It resolves `outputs.drift_baseline.path` from the previous Azure ML job and passes that path to the pipeline. If a previous job has a downloadable `drift_baseline` artifact but Azure ML does not expose a reusable output path, the API returns `baseline_output_path_unavailable` from `/api/v1/pipelines/baseline/capture` and rejects baseline-chained submit with HTTP 400. This prevents accidental unchained validation runs.
+
+Historical Azure finding (May 2026): Azure ML job metadata can omit `outputs.drift_baseline.path`, while `az ml job download --output-name drift_baseline` can expose the underlying datastore URI in its download output. Treat any recovered URI as evidence for that exact historical job only.
+
+Historical second-cycle proof completed on 2026-05-16 with regression job `loyal_owl_0h0rz9krcn`. That earlier revision combined policy/trigger fields inside `drift_report`; the active contract no longer does so. The job remains baseline-comparison history, not current-source S13/S14 or deployment proof.
+
+Current classification, regression, and clustering canonical SDK dry-runs emit separate `s13` and `s14` artifacts. An exact-source Azure canary attempted on 2026-08-02 was rejected before job creation by `ReadOnlyDisabledSubscription`; no current-revision Azure runtime claim is valid until that external blocker is cleared and outputs are downloaded.
+
+The controller entrypoint is `scripts/run_auto_retrain_controller.py`. It resolves the latest approved baseline from the JSONL decision ledger, checks for active jobs, builds the canonical `pipelines/submit_pipeline.py` command, and appends a pending decision record only after a successful submit.
 
 ---
 
 ## 10. Standalone Drift Library
 
-In addition to the pipeline step, the codebase includes a **standalone drift detection library** at `src/drift_detection/`. This is an importable Python package designed for broader use (e.g., production monitoring, batch scoring environments). It is **separate from and not imported by** the pipeline step.
+In addition to the pipeline step, the codebase includes a **standalone drift detection library** at `src/drift_detection/`. This is an importable compatibility package and is **separate from and not imported by** the pipeline step. Its legacy `PipelineTrigger` execution path is not an approved operational submitter; active submissions require an S14 decision and the external controller.
 
 ### Library Components
 
@@ -481,10 +530,10 @@ checker = DriftChecker(config, baseline)
 results = checker.run_all_checks(prod_df)
 # Returns: [DriftResult(type="feature", detected=True, score=0.18, ...), ...]
 
-# Evaluate and optionally trigger retraining
+# Produce a legacy trigger recommendation only; do not dispatch from this path
 trigger = PipelineTrigger(config)
 action = trigger.evaluate(results)
-# Returns: {"should_trigger": True, "action": "trigger_full_pipeline", "reasons": [...]}
+# Returns: {"should_trigger": True, "action": "trigger_full_pipeline", "execution": {...}}
 ```
 
 ### Drift Types in Library
@@ -508,6 +557,9 @@ Four test files in `tests/test_drift_detection/`:
 | `test_baseline_capture.py` | `BaselineCapture`: capture stores reference, stats computed correctly, save/load round-trip (parquet + JSON), feature_columns excludes prediction/target |
 | `test_drift_checker.py` | `DriftChecker` + `DriftResult`: all 4 drift types detected correctly, `run_all_checks()` returns 4 results, DriftResult fields populated |
 | `test_pipeline_trigger.py` | `PipelineTrigger`: no trigger when no drift, trigger when drift detected (action = trigger_full_pipeline), dry_run flag, trigger_history tracking, save_trigger_log JSON output |
+| `test_auto_retrain_policy.py` | Pure policy outcomes for stable reports, missing baseline, severe feature drift, concept drift, and explicitly allowed promotion |
+| `test_auto_retrain_decision_ledger.py` | Append/load behavior and latest approved baseline URI resolution |
+| `test_auto_retrain_controller.py` | Controller baseline resolution, canonical command generation, and submitted job-name parsing |
 
 ---
 
@@ -520,6 +572,10 @@ Four test files in `tests/test_drift_detection/`:
 | `src/steps/s13_drift_monitor.py` | ~650 | Main step: PSI self-check, Evidently comparison, stability scoring, MLflow logging |
 | `components/s13_drift_monitor.yml` | ~40 | Azure ML component definition (v2, non-deterministic) |
 | `src/utils/drift_detector.py` | ~335 | Core PSI computation, baseline stats, stability score, retraining cadence |
+| `src/orchestration/auto_retrain_policy.py` | ~240 | Pure auto-retrain policy decision layer; no Azure side effects |
+| `src/orchestration/auto_retrain_decision_ledger.py` | ~170 | Append-only decision ledger helpers for baseline URI lineage and controller audit records |
+| `src/orchestration/auto_retrain_controller.py` | ~230 | Controller planning utilities: approved-baseline resolution, canonical submit command construction, pending decision record generation |
+| `scripts/run_auto_retrain_controller.py` | ~170 | CLI wrapper for dry-run/submit controller cycles with Azure active-job checks |
 
 ### Standalone Library
 
@@ -564,7 +620,7 @@ Four test files in `tests/test_drift_detection/`:
   (from s04)        │  2. Load final_report (champion info, metrics)             │
                     │  3. Load dataset CSV → split X / y                        │
   final_report ────►│  4. Train/Test split (80/20, seed=42)                     │
-  (from s11)        │  5. ┌──── PSI Self-Check ────────────────────┐            │
+  (from s10)        │  5. ┌──── PSI Self-Check ────────────────────┐            │
                     │     │  compute_feature_psi(X_ref, X_test)    │            │
                     │     │  → per-feature PSI scores               │            │
                     │     │  → self_check: PASS/WARN               │            │
@@ -593,7 +649,7 @@ Four test files in `tests/test_drift_detection/`:
   Run 1 (no baseline)                  Run 2 (with baseline from Run 1)
   ════════════════════                 ════════════════════════════════
 
-  s04 → ... → s11 → s13               s04 → ... → s11 → s13
+  s04 → ... → s10 → s12 → s13         s04 → ... → s10 → s12 → s13
                       │                                     │
                       ▼                                     ▼
                 drift_baseline/ ──────────────────► baseline_in
@@ -626,9 +682,9 @@ Four test files in `tests/test_drift_detection/`:
   │        └── Label drift    (chi-squared via ColumnDriftMetric)      │
   │              │                                                      │
   │              ▼                                                      │
-  │  PipelineTrigger.evaluate(results)                                 │
-  │        └── should_trigger? → action dispatch                       │
-  │            └── trigger_log.json + MLflow logging                   │
+  │  PipelineTrigger.evaluate(results)  [standalone compatibility]     │
+  │        └── recommendation only; active submission requires         │
+  │            s14 policy output + external controller                 │
   │                                                                     │
   │  ReportGenerator.generate(results) → Evidently HTML report         │
   │  generate_drifted_data() → Synthetic test data (none/mild/severe)  │
@@ -641,13 +697,13 @@ Four test files in `tests/test_drift_detection/`:
 
 1. **Two parallel implementations:** The pipeline step (`s13` + `drift_detector.py`) and the standalone library (`src/drift_detection/`) overlap in functionality but are not integrated. The step does not import from the library. A future refactor should unify them so the step delegates to the library.
 
-2. **PipelineTrigger._execute_trigger() is a placeholder:** The standalone library's trigger mechanism evaluates whether retraining should happen but does not actually submit an Azure ML pipeline job. Wiring this to `submit_pipeline.py` would enable automatic retraining.
+2. **Legacy standalone trigger path:** `PipelineTrigger._execute_trigger()` can still construct a submission in the standalone library, but that violates the active S13/S14/controller ownership contract. Keep it disabled, do not use it operationally, and retire or route it through an immutable S14 decision before release.
 
-3. **s13 not in blueprint CSV:** The `docs/MLOPS-v3-blueprint.CSV` lists steps s00–s12 only. The s11 row mentions "Drift detection" as a future enhancement. The blueprint should be updated to include s13.
+3. **Blueprint CSV is historical:** The `docs/MLOPS-v3-blueprint.CSV` predates the current `s13 -> s14` terminal flow and should not override `PIPELINE_STAGES.md` or `pipeline_builder.py`.
 
 4. **Prediction drift & label drift only in standalone library:** The pipeline step only checks feature drift (PSI) and concept drift (metric comparison). Prediction drift (KS test on model outputs) and label drift (chi-squared on target) are only available in the standalone library.
 
-5. **No production scheduler:** The `drift_config.yaml` defines a schedule (`daily at 02:00 UTC`) but no scheduler implementation exists. The step currently runs only as part of the full pipeline DAG. For production monitoring, a separate scheduled Azure ML pipeline or cron job would need to be created.
+5. **Schedule truth is external:** May 2026 schedule names are historical records, not proof that schedules are currently enabled or correctly configured. Operators must query live Azure schedule state; any active schedule must preserve the S13 evidence -> S14 decision -> external controller ownership boundary and manual promotion.
 
 6. **Evidently API compatibility:** The code uses `evidently.legacy.*` fallback imports, indicating compatibility with Evidently 0.5.x while using the 0.4.x API surface. This should be updated when the environment stabilizes on a single Evidently version.
 
@@ -677,6 +733,8 @@ Implementation: [api/services/pipeline_service.py](../api/services/pipeline_serv
 | `comparison_drift.evidently.drifted_columns` | `drifted_columns` | preferred source |
 | `stability_assessment.stability_score` | `stability_score` | passed through |
 | (resolved) | `drift_type` | `comparison` → `self_check` → `psi` |
+
+The API joins the producer-side `s13` `drift_report` with the separate `s14` `retrain_decision` artifact and verifies their execution/decision identity. `s13` never emits or dispatches a retraining policy result.
 
 ### Severity thresholds (PSI)
 

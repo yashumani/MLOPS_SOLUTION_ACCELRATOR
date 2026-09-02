@@ -34,6 +34,7 @@ from ui.components.metrics_table import (
     render_champion_rationale,
     render_phase_grouped_leaderboard,
 )
+from ui.components.notification_panel import render_notification_panel
 from ui.components.sidebar import render_sidebar
 from ui.components.status_badge import status_badge
 from ui.components.step_timeline import render_step_timeline
@@ -169,6 +170,7 @@ def _focus_header() -> None:
 
 
 _focus_header()
+render_notification_panel(client, job_name, display_name, key="focus")
 st.divider()
 
 

@@ -17,6 +17,7 @@ NAV_ITEMS: list[tuple[str, str, str]] = [
     ("pages/2_Focus.py",             ":material/center_focus_strong:", "Focus"),
     ("pages/1_Submit_Pipeline.py",   ":material/rocket_launch:", "Submit"),
     ("pages/3_Configs.py",           ":material/settings:",      "Configs"),
+    ("pages/4_Auto_Retrain.py",      ":material/autorenew:",      "Auto Retrain"),
     ("pages/5_Drift_Monitor.py",     ":material/trending_down:", "Drift"),
     ("pages/7_Live_Logs.py",         ":material/terminal:",      "Live Logs"),
 ]

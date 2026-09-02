@@ -1,8 +1,8 @@
-"""Evaluate drift results and trigger pipeline re-runs when needed.
+"""Evaluate drift results and hand drift evidence to the S14 decision gate.
 
-The ``PipelineTrigger`` class reads ``DriftResult`` objects, decides
-whether to trigger a full retraining pipeline, and logs trigger events
-to MLflow.
+The legacy class name is retained for compatibility. It no longer constructs or
+submits child training jobs. S14 owns retrain policy; an external controller may
+submit only after consuming S14's explicit ``RetrainDecision`` artifact.
 """
 
 from __future__ import annotations
@@ -11,16 +11,17 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from .drift_checker import DriftResult
 from .drift_config import DriftConfig
+
+if TYPE_CHECKING:
+    from .drift_checker import DriftResult
 
 logger = logging.getLogger(__name__)
 
-
 class PipelineTrigger:
-    """Decide whether drift results warrant a pipeline re-run.
+    """Summarize drift evidence without deciding or submitting retraining.
 
     Parameters
     ----------
@@ -44,7 +45,7 @@ class PipelineTrigger:
 
     # ── Public API ──────────────────────────────────────────────
 
-    def evaluate(self, results: List[DriftResult]) -> Dict:
+    def evaluate(self, results: List["DriftResult"]) -> Dict:
         """Evaluate drift results and return an action summary.
 
         Parameters
@@ -81,19 +82,27 @@ class PipelineTrigger:
             "dry_run": self.dry_run,
             "timestamp": ts,
             "details": details,
+            "execution": {
+                "status": "not_requested",
+                "reason": "no_drift",
+            },
         }
 
         self._trigger_log.append(summary)
 
         if should_trigger:
             if self.dry_run:
+                summary["execution"] = {
+                    "status": "dry_run",
+                    "reason": "PipelineTrigger was constructed with dry_run=True",
+                }
                 logger.info(
                     "[DRY-RUN] Would trigger %r due to drift in: %s",
                     action,
                     triggered_by,
                 )
             else:
-                self._execute_trigger(summary)
+                summary["execution"] = self._execute_trigger(summary)
                 self._log_to_mlflow(summary)
         else:
             logger.info("No drift — no pipeline trigger needed.")
@@ -129,17 +138,40 @@ class PipelineTrigger:
 
     # ── Internal ────────────────────────────────────────────────
 
-    def _execute_trigger(self, summary: Dict) -> None:
-        """Trigger the pipeline re-run.
+    def _execute_trigger(self, summary: Dict) -> Dict:
+        """Delegate drift evidence to S14 without constructing a child job."""
+        auto_retrain = self.config.auto_retrain
+        if not auto_retrain.enabled:
+            logger.warning(
+                "PIPELINE TRIGGER DISABLED: action=%r, triggered_by=%s",
+                summary["action"],
+                summary["triggered_by"],
+            )
+            return {
+                "status": "disabled",
+                "reason": "auto_retrain.enabled is false",
+            }
 
-        Currently a placeholder — integration with Azure ML
-        ``submit_pipeline.py`` will be added once wired end-to-end.
-        """
-        logger.warning(
-            "PIPELINE TRIGGER: action=%r, triggered_by=%s",
-            summary["action"],
-            summary["triggered_by"],
+        if summary["action"] != "trigger_full_pipeline":
+            return {
+                "status": "skipped",
+                "reason": f"unsupported action: {summary['action']}",
+            }
+
+        logger.info(
+            "Drift evidence delegated to S14; no pipeline was submitted by PipelineTrigger."
         )
+        return {
+            "status": "delegated",
+            "reason": (
+                "S14 must evaluate drift evidence and emit an explicit "
+                "RetrainDecision before the external controller may submit"
+            ),
+            "submitted": False,
+            "next_stage": "s14_retrain_decision",
+            "submission_owner": "external_controller",
+            "required_artifact": "retrain_decision.json",
+        }
 
     def _log_to_mlflow(self, summary: Dict) -> None:
         """Log trigger event to MLflow (best-effort, non-fatal)."""
@@ -148,6 +180,9 @@ class PipelineTrigger:
 
             mlflow.log_param("drift_trigger_action", summary["action"])
             mlflow.log_param("drift_triggered_by", ",".join(summary["triggered_by"]))
+            execution = summary.get("execution", {})
+            if execution:
+                mlflow.log_param("drift_trigger_execution_status", execution.get("status", "unknown"))
             for dtype, info in summary["details"].items():
                 mlflow.log_metric(f"drift_score_{dtype}", info["score"])
             logger.info("Trigger event logged to MLflow.")
