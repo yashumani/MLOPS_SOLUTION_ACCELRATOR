@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ast
+import sys
+import types
 from pathlib import Path
 
 import numpy as np
@@ -11,11 +13,13 @@ import pytest
 import yaml
 
 from src.steps.s06_phaseb_variant_runner import (
+    CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS,
     VariantResult,
     count_distinct_phaseb_candidates,
     fit_round1_proxy_preprocessor,
     is_usable_phaseb_result,
     require_valid_phaseb_results,
+    train_pycaret_variant,
 )
 from src.utils.common_evaluator import build_fold_local_pipeline
 from src.utils.fitted_variant_preprocessor import FittedVariantPreprocessor
@@ -65,6 +69,49 @@ def _transform_pair(train, holdout, recipe):
     transformed_train["target"] = train["target"].values
     transformed_holdout["target"] = holdout["target"].values
     return transformed_train, transformed_holdout
+
+
+def test_clustering_pycaret_selection_is_sampled_then_refit(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    class _Model:
+        def fit(self, data):
+            observed["full_refit_rows"] = len(data)
+            return self
+
+    module = types.ModuleType("pycaret.clustering")
+
+    def _setup(*, data, **_kwargs):
+        observed["selection_rows"] = len(data)
+
+    module.setup = _setup
+    module.create_model = lambda *_args, **_kwargs: _Model()
+    module.pull = lambda: pd.DataFrame({"Silhouette": [0.42]})
+    monkeypatch.setitem(sys.modules, "pycaret.clustering", module)
+
+    total_rows = CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS + 25
+    frame = pd.DataFrame(
+        {
+            "feature_a": np.arange(total_rows, dtype=float),
+            "feature_b": np.arange(total_rows, dtype=float) % 7,
+        }
+    )
+
+    model, metrics, timed_out = train_pycaret_variant(
+        frame,
+        object(),
+        target_column="",
+        task_type="clustering",
+        time_budget=300,
+        random_seed=17,
+    )
+
+    assert model is not None
+    assert timed_out is False
+    assert observed["selection_rows"] == CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS
+    assert observed["full_refit_rows"] == total_rows
+    assert metrics["pycaret_selection_rows"] == CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS
+    assert metrics["full_refit_rows"] == total_rows
 
 
 def test_label_encoder_and_scaler_are_shared():
@@ -234,7 +281,7 @@ def test_component_does_not_mask_missing_phaseb_evidence():
         encoding="utf-8"
     )
 
-    assert yaml.safe_load(component)["version"] == 15
+    assert yaml.safe_load(component)["version"] == 16
     assert 'echo "[]"' not in component
     assert 'echo "{}"' not in component
     assert "--leaderboard_out ${{outputs.leaderboard_csv}}" in component

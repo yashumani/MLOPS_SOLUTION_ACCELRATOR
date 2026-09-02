@@ -88,6 +88,7 @@ from utils.common_evaluator import (
 
 
 LEGACY_VARIANTS_LIST_MAX_CHARS = 1800
+CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS = 10_000
 _CANDIDATE_CATALOG_IDENTITY_FIELDS = (
     "execution_id",
     "recipe_catalog_hash",
@@ -1998,9 +1999,25 @@ def train_pycaret_variant(
             df_cluster = df.copy()
             if target_column and target_column in df_cluster:
                 df_cluster = df_cluster.drop(columns=[target_column])
-            df_cluster = df_cluster.select_dtypes(include=[np.number])
+            df_cluster = df_cluster.select_dtypes(include=[np.number]).astype(
+                np.float64
+            )
             if df_cluster.empty or df_cluster.shape[1] == 0:
                 raise ValueError("No numeric features available for clustering")
+            selection_rows = min(
+                len(df_cluster), CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS
+            )
+            df_selection = (
+                df_cluster.sample(n=selection_rows, random_state=random_seed)
+                .sort_index()
+                if selection_rows < len(df_cluster)
+                else df_cluster
+            )
+            if selection_rows < len(df_cluster):
+                print(
+                    "      PyCaret clustering selection sample: "
+                    f"{selection_rows}/{len(df_cluster)} rows"
+                )
             remaining_time = max(0.0, time_budget - (time.time() - start_time))
             if remaining_time < 30:
                 return None, {
@@ -2012,7 +2029,7 @@ def train_pycaret_variant(
                 }, True
 
             setup(
-                data=df_cluster.astype(np.float64),
+                data=df_selection,
                 session_id=random_seed,
                 preprocess=False,
                 normalize=False,
@@ -2027,6 +2044,8 @@ def train_pycaret_variant(
                 verbose=False,
             )
             leaderboard = pull()
+            if selection_rows < len(df_cluster):
+                best_model.fit(df_cluster)
             actual_runtime = time.time() - start_time
             timed_out = actual_runtime > time_budget
             silhouette_column = next(
@@ -2050,6 +2069,8 @@ def train_pycaret_variant(
                 "timed_out": timed_out,
                 "n_models_trained": 1,
                 "engine": "pycaret",
+                "pycaret_selection_rows": selection_rows,
+                "full_refit_rows": len(df_cluster),
             }
             return best_model, metrics, timed_out
             
