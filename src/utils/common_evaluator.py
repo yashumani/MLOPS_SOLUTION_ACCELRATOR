@@ -14,6 +14,7 @@ import json
 import math
 import multiprocessing
 import time
+import traceback
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -161,8 +162,25 @@ def build_fold_local_pipeline(
 
 def _take(values: Any, indices: Sequence[int]) -> Any:
     if hasattr(values, "iloc"):
-        return values.iloc[list(indices)]
-    return np.asarray(values)[list(indices)]
+        return values.iloc[list(indices)].copy(deep=True)
+    return np.array(np.asarray(values)[list(indices)], copy=True)
+
+
+def _clone_for_isolated_fit(estimator: Any) -> Any:
+    """Clone a candidate without nested process pools inside the worker."""
+
+    fitted = clone(estimator)
+    if not hasattr(fitted, "get_params"):
+        return fitted
+    parameters = fitted.get_params(deep=True)
+    updates = {
+        name: 1
+        for name in parameters
+        if name == "n_jobs" or name.endswith("__n_jobs")
+    }
+    if updates:
+        fitted.set_params(**updates)
+    return fitted
 
 
 def _split_fingerprint(splits: Iterable[tuple[np.ndarray, np.ndarray]]) -> str:
@@ -311,7 +329,7 @@ def _evaluate_candidate_impl(
                     failure_reason="clustering_is_pycaret_only",
                     elapsed_seconds=time.monotonic() - started_at,
                 )
-            fitted = clone(estimator)
+            fitted = _clone_for_isolated_fit(estimator)
             labels = (
                 fitted.fit_predict(X)
                 if hasattr(fitted, "fit_predict")
@@ -381,7 +399,7 @@ def _evaluate_candidate_impl(
         fingerprint = _split_fingerprint(splits)
         evidence_rows: list[dict[str, float]] = []
         for train_index, validation_index in splits:
-            fold_model = clone(estimator)
+            fold_model = _clone_for_isolated_fit(estimator)
             fold_model.fit(_take(X, train_index), _take(y, train_index))
             if spec.task_type == "classification":
                 row = _classification_metrics(
@@ -412,6 +430,7 @@ def _evaluate_candidate_impl(
             split_fingerprint=fingerprint,
         )
     except Exception as error:
+        traceback.print_exc()
         return CandidateEvidence(
             **base,
             status="failure",

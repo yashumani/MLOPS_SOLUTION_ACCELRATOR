@@ -41,6 +41,16 @@ SUPPORTED_RECIPE_METHODS = {
 }
 
 
+def _materialize_owned_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """Detach transformed columns from read-only or memory-mapped buffers."""
+
+    data = {
+        column: np.array(frame[column].to_numpy(copy=False), copy=True)
+        for column in frame.columns
+    }
+    return pd.DataFrame(data, index=frame.index.copy(), copy=True)
+
+
 class FittedVariantPreprocessor(BaseEstimator, TransformerMixin):
     """Fit recipe transforms once on training data and replay them at inference."""
 
@@ -360,7 +370,8 @@ class FittedVariantPreprocessor(BaseEstimator, TransformerMixin):
         result = self._apply_outlier_bounds(result)
         result = self._apply_encoding(result)
         result = self._apply_scaling(result)
-        return result.reindex(columns=self.selected_columns_, fill_value=0)
+        ordered = result.reindex(columns=self.selected_columns_, fill_value=0)
+        return _materialize_owned_frame(ordered)
 
     def fit_transform(self, frame: pd.DataFrame, target: Any = None) -> pd.DataFrame:
         return self.fit(frame, target).transform(frame)

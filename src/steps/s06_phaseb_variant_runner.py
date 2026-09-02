@@ -28,6 +28,7 @@ import math
 import random
 import multiprocessing
 import tempfile
+import traceback
 from pathlib import Path
 from typing import Dict, List, Any, Tuple, Optional
 from datetime import datetime
@@ -509,6 +510,7 @@ def _isolated_callable_worker(
                 "ok": False,
                 "error_type": type(exc).__name__,
                 "error": str(exc),
+                "traceback": traceback.format_exc(),
             },
             result_path,
         )
@@ -555,7 +557,8 @@ def run_with_hard_timeout(
         if not payload.get("ok"):
             raise RuntimeError(
                 f"{payload.get('error_type', 'ChildError')}: "
-                f"{payload.get('error', 'unknown isolated failure')}"
+                f"{payload.get('error', 'unknown isolated failure')}\n"
+                f"{payload.get('traceback', '')}".rstrip()
             )
         return payload["value"]
 
@@ -1660,7 +1663,7 @@ def validate_execution_manifest_for_run(
     )
     split_id = canonical_hash(config["split"])
     data_version = dataset_version_identity(config["dataset"])
-    environment_hash = manifest.environment_hashes.get("training")
+    environment_hash = require_training_environment_hash(manifest)
     expected_records = tuple(
         CandidateRecord(
             task_type=manifest.task_type,
@@ -1699,6 +1702,19 @@ def validate_execution_manifest_for_run(
                 f"record at index {index}"
             )
     return manifest, expected_records
+
+
+def require_training_environment_hash(manifest: ExecutionManifest) -> str:
+    """Return the immutable training environment identity or fail closed."""
+
+    environment_hash = str(
+        manifest.environment_hashes.get("training") or ""
+    ).strip()
+    if not environment_hash:
+        raise ValueError(
+            "ExecutionManifest environment_hashes.training is required"
+        )
+    return environment_hash
 
 
 def train_pycaret_variant(
@@ -3953,7 +3969,9 @@ def main():
             selection_metrics=champion_result.metrics,
             final_test_metrics={},
             environment={
-                "environment_hash": execution_manifest.environment_hash,
+                "environment_hash": require_training_environment_hash(
+                    execution_manifest
+                ),
                 "code_sha": execution_manifest.code_sha,
                 "component": "s06_phaseb_variant_runner",
             },

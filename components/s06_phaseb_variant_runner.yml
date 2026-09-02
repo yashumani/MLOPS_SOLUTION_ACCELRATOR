@@ -1,6 +1,6 @@
 # FORCE RE-REGISTRATION: 2026-02-08 - V3-Proposed Planner Mode (v7)
 name: v3_phaseb_variant_runner
-version: 13
+version: 14
 display_name: s06 - V3 Phase B - Variant Runner - Planner Mode
 type: command
 is_deterministic: false

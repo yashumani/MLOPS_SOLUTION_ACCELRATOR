@@ -30,6 +30,10 @@ def _blocking_operation():
     time.sleep(5)
 
 
+def _raising_operation():
+    raise ValueError("isolated failure detail")
+
+
 def test_approved_budget_caps_are_locked() -> None:
     assert ROUND1_MAX_VARIANTS_CAP == 40
     assert ROUND2_MAX_VARIANTS_CAP == 8
@@ -217,6 +221,18 @@ def test_hard_timeout_terminates_blocking_operation() -> None:
             timeout_seconds=0.2,
         )
     assert time.monotonic() - started < 3
+
+
+def test_isolated_operation_preserves_child_traceback() -> None:
+    with pytest.raises(RuntimeError) as error:
+        run_with_hard_timeout(
+            _raising_operation,
+            timeout_seconds=45,
+        )
+
+    message = str(error.value)
+    assert "ValueError: isolated failure detail" in message
+    assert "_raising_operation" in message
 
 
 def test_expired_phase_b_budget_fails_closed() -> None:

@@ -89,9 +89,43 @@ class _SlowClassifier(BaseEstimator, ClassifierMixin):
         return np.repeat(self.classes_[0], len(X))
 
 
+class _SerialOnlyClassifier(BaseEstimator, ClassifierMixin):
+    def __init__(self, n_jobs=-1):
+        self.n_jobs = n_jobs
+
+    def fit(self, X, y):
+        if self.n_jobs != 1:
+            raise ValueError("nested parallelism was not disabled")
+        self.classes_ = np.unique(y)
+        return self
+
+    def predict(self, X):
+        return np.resize(self.classes_, len(X))
+
+
 class _NoiseAwareClusterer(BaseEstimator, ClusterMixin):
     def fit_predict(self, X, y=None):
         return np.asarray([-1, -1, 0, 0, 1, 1])
+
+
+def test_isolated_evaluator_disables_nested_estimator_process_pools():
+    X, y = _classification_data()
+
+    evidence = evaluate_candidate(
+        _SerialOnlyClassifier(),
+        X,
+        y,
+        candidate_id="serial-only",
+        engine="pycaret",
+        spec=EvaluationSpec(
+            task_type="classification",
+            folds=3,
+            timeout_seconds=SUCCESS_PROCESS_TIMEOUT_SECONDS,
+        ),
+    )
+
+    assert evidence.status == "success"
+    assert evidence.completed_folds == 3
 
 
 def test_timeout_is_process_enforced_and_cannot_win():

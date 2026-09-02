@@ -124,6 +124,25 @@ def test_onehot_reference_category_is_shared():
     assert transformed_holdout["category_c"].tolist() == [False, True]
 
 
+def test_preprocessor_detaches_read_only_input_buffers():
+    backing = np.arange(24, dtype=float).reshape(8, 3)
+    backing.flags.writeable = False
+    frame = pd.DataFrame(
+        backing,
+        columns=["first", "second", "third"],
+        copy=False,
+    )
+
+    transformed = FittedVariantPreprocessor(
+        _variant(scaling="standard"),
+        random_seed=42,
+    ).fit_transform(frame, pd.Series([0, 1] * 4))
+
+    assert transformed.to_numpy(copy=False).flags.writeable is True
+    transformed.iloc[0, 0] = -999.0
+    assert backing[0, 0] == 0.0
+
+
 @pytest.mark.parametrize("scaling", ("yeo_johnson", "quantile"))
 def test_declared_scaler_is_fitted_on_training_and_applied_to_holdout(scaling):
     train = pd.DataFrame(
@@ -215,7 +234,7 @@ def test_component_does_not_mask_missing_phaseb_evidence():
         encoding="utf-8"
     )
 
-    assert yaml.safe_load(component)["version"] == 13
+    assert yaml.safe_load(component)["version"] == 14
     assert 'echo "[]"' not in component
     assert 'echo "{}"' not in component
     assert "--leaderboard_out ${{outputs.leaderboard_csv}}" in component

@@ -18,6 +18,7 @@ from orchestration.contracts import (
 )
 from steps.s06_phaseb_variant_runner import (
     bind_candidate_records_to_runtime_split,
+    require_training_environment_hash,
     validate_execution_manifest_for_run,
 )
 from utils.recipe_catalog import normalize_recipe, semantic_recipe_hash
@@ -47,6 +48,26 @@ def test_candidate_identity_is_stable_and_deeply_immutable() -> None:
         first.engine = "flaml"
     with pytest.raises(TypeError):
         first.parameters["new"] = "value"
+
+
+def test_phaseb_requires_training_environment_identity() -> None:
+    manifest = ExecutionManifest(
+        config_hash="a" * 64,
+        task_type="classification",
+        dataset={"name": "sample", "version": "1"},
+        split_policy={"strategy": "random"},
+        engines=("pycaret",),
+        recipe_paths=("classification/variant.yml",),
+        recipe_ids=("recipe-1",),
+        candidate_ids=("candidate-1",),
+        budgets={"round1_max_variants": 1},
+        code_sha="c" * 40,
+        environment_hashes={},
+        recipe_catalog_hash="e" * 64,
+    )
+
+    with pytest.raises(ValueError, match="environment_hashes.training"):
+        require_training_environment_hash(manifest)
 
 
 def test_split_manifest_detects_identity_tampering() -> None:
