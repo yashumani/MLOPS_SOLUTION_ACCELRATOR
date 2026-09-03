@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "3bc05bc3-19d1-4d30-89c5-134f4b278b11",
+  "users": [
+    {
+      "object_id": "b03e4295-9fce-4b3b-b6ba-e7e750e639ef",
+      "roles": ["admin"]
+    }
+  ]
+}

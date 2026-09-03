@@ -1,10 +1,13 @@
 import { createContext, useContext } from "react";
-import { MLOpsApiClient } from "./apiClient";
+import { MLOpsApiClient, type UserIdentity } from "./apiClient";
 
 export interface ApiContextValue {
   api: MLOpsApiClient;
   apiKey: string;
   setApiKey: (apiKey: string) => void;
+  identity: UserIdentity;
+  signOut: () => void;
+  refreshIdentity: () => Promise<void>;
 }
 
 export const ApiContext = createContext<ApiContextValue | null>(null);

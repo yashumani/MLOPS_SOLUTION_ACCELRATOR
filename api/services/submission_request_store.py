@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping
 from uuid import uuid4
 
+from orchestration import operational_state
+
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _REQUEST_ID = re.compile(r"^req-[0-9a-f]{12}$")
@@ -40,6 +42,13 @@ def request_store_root() -> Path:
 def create_request_record(record: Mapping[str, Any]) -> dict[str, Any]:
     payload = _validate_record(dict(record))
     path = _record_path(payload["request_id"])
+    if operational_state.database_path() is not None:
+        with operational_state.transaction() as connection:
+            _check_sqlite_migration(connection, path.parent)
+            if operational_state.get_document(connection, "submission_requests", payload["request_id"]) is not None:
+                raise SubmissionRequestStoreError(f"Submission request already exists: {payload['request_id']}")
+            operational_state.put_document(connection, "submission_requests", payload["request_id"], payload)
+        return dict(payload)
     with _store_lock(path.parent):
         if path.exists():
             raise SubmissionRequestStoreError(
@@ -54,6 +63,18 @@ def update_request_record(
     updates: Mapping[str, Any],
 ) -> dict[str, Any]:
     path = _record_path(request_id)
+    if operational_state.database_path() is not None:
+        with operational_state.transaction() as connection:
+            _check_sqlite_migration(connection, path.parent)
+            current = operational_state.get_document(connection, "submission_requests", request_id)
+            if current is None:
+                raise SubmissionRequestStoreError(f"Unknown submission request: {request_id}")
+            current.update(dict(updates))
+            payload = _validate_record(current)
+            if payload["request_id"] != request_id:
+                raise SubmissionRequestStoreError("Submission request identity cannot be changed")
+            operational_state.put_document(connection, "submission_requests", request_id, payload)
+        return dict(payload)
     with _store_lock(path.parent):
         current = _read_record(path)
         if current is None:
@@ -62,15 +83,28 @@ def update_request_record(
             )
         current.update(dict(updates))
         payload = _validate_record(current)
+        if payload["request_id"] != request_id:
+            raise SubmissionRequestStoreError("Submission request identity cannot be changed")
         _write_atomic(path, payload)
     return dict(payload)
 
 
 def get_request_record(request_id: str) -> dict[str, Any] | None:
     path = _record_path(request_id)
+    if operational_state.database_path() is not None:
+        with operational_state.transaction() as connection:
+            _check_sqlite_migration(connection, path.parent)
+            record = operational_state.get_document(connection, "submission_requests", request_id)
+        return _validate_record(record) if record is not None else None
     with _store_lock(path.parent):
         record = _read_record(path)
     return dict(record) if record is not None else None
+
+
+def _check_sqlite_migration(connection: Any, root: Path) -> None:
+    operational_state.require_legacy_import(
+        connection, "submission_requests", any(root.glob("req-*.json"))
+    )
 
 
 def _record_path(request_id: str) -> Path:

@@ -1,9 +1,10 @@
 import { getRuntimeConfig } from "../services/runtimeConfig";
 import { useApi } from "../services/ApiContext";
+import { LogOut } from "lucide-react";
 
 export function Settings() {
   const config = getRuntimeConfig();
-  const { setApiKey } = useApi();
+  const { identity, signOut } = useApi();
   return (
     <main className="page">
       <section className="page-heading">
@@ -18,9 +19,10 @@ export function Settings() {
           <div className="metric-card"><small>API base URL</small><strong>{config.apiBaseUrl}</strong></div>
           <div className="metric-card"><small>UI base URL</small><strong>{config.uiBaseUrl}</strong></div>
           <div className="metric-card"><small>Environment</small><strong>{config.environment}</strong></div>
-          <div className="metric-card"><small>API key storage</small><strong>In-memory session only</strong></div>
+          <div className="metric-card"><small>Sign-in</small><strong>{identity.mode === "entra" ? "Microsoft Entra" : "API key"}</strong></div>
+          <div className="metric-card"><small>Role</small><strong>{identity.roles.join(", ")}</strong></div>
         </div>
-        <button className="button secondary" onClick={() => setApiKey("")} type="button">Clear API key for this session</button>
+        <button className="button secondary" onClick={signOut} type="button"><LogOut size={17} />Sign out</button>
       </section>
     </main>
   );

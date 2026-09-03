@@ -36,6 +36,25 @@ export type ApiErrorKind =
   | "network"
   | "unknown";
 
+export type UserRole = "admin" | "operator" | "viewer";
+export interface UserIdentity {
+  mode: "entra" | "api_key";
+  tenant_id?: string;
+  object_id?: string;
+  roles: UserRole[];
+}
+export interface WorkspaceUser {
+  object_id: string;
+  display_name: string;
+  role: UserRole;
+  enabled: boolean;
+}
+export interface UserDirectory {
+  tenant_id: string;
+  revision: number;
+  users: WorkspaceUser[];
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly kind: ApiErrorKind;
@@ -50,7 +69,7 @@ export class ApiError extends Error {
   }
 }
 
-function apiUrl(path: string): string {
+export function apiUrl(path: string): string {
   const base = getRuntimeConfig().apiBaseUrl.replace(/\/$/, "");
   return `${base}${path}`;
 }
@@ -78,7 +97,7 @@ export function toUserMessage(error: unknown): string {
       return "This artifact is not available for preview yet. It may still be uploading, missing, or only available for download.";
     }
     if (error.kind === "unauthorized") {
-      return "The API key is missing or invalid. Update the key in Settings and try again.";
+      return "Access denied. Sign in again or contact your workspace administrator.";
     }
     if (error.kind === "not_found") {
       return "The requested job or resource was not found in this Azure ML workspace.";
@@ -109,17 +128,26 @@ async function readJsonResponse<T>(response: Response, path: string): Promise<T>
 }
 
 export class MLOpsApiClient {
-  private readonly apiKey: string;
+  private readonly credential: string | (() => Promise<string>);
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
+  constructor(credential: string | (() => Promise<string>)) {
+    this.credential = credential;
+  }
+
+  private async authHeaders(): Promise<Record<string, string>> {
+    if (typeof this.credential === "string") return { "X-API-Key": this.credential };
+    try {
+      return { Authorization: `Bearer ${await this.credential()}` };
+    } catch {
+      throw new ApiError("Your sign-in session has expired.", 401, "unauthorized");
+    }
   }
 
   private async get<T>(path: string): Promise<T> {
     try {
       const response = await fetch(apiUrl(path), {
         headers: {
-          "X-API-Key": this.apiKey,
+          ...await this.authHeaders(),
           Accept: "application/json"
         }
       });
@@ -135,7 +163,7 @@ export class MLOpsApiClient {
       const response = await fetch(apiUrl(path), {
         method,
         headers: {
-          "X-API-Key": this.apiKey,
+          ...await this.authHeaders(),
           Accept: "application/json",
           "Content-Type": "application/json"
         },
@@ -150,6 +178,23 @@ export class MLOpsApiClient {
 
   health(): Promise<HealthResponse> {
     return this.get<HealthResponse>("/api/v1/health");
+  }
+
+  identity(): Promise<UserIdentity> {
+    return this.get("/api/v1/auth/me");
+  }
+
+  users(): Promise<UserDirectory> {
+    return this.get("/api/v1/users");
+  }
+
+  createUser(user: WorkspaceUser, expectedRevision: number): Promise<UserDirectory> {
+    return this.send("POST", "/api/v1/users", { ...user, expected_revision: expectedRevision });
+  }
+
+  updateUser(user: WorkspaceUser, expectedRevision: number): Promise<UserDirectory> {
+    const { object_id, ...change } = user;
+    return this.send("PUT", `/api/v1/users/${encodeURIComponent(object_id)}`, { ...change, expected_revision: expectedRevision });
   }
 
   configs(): Promise<ConfigListResponse> {

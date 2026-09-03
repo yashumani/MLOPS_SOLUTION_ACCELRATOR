@@ -4,12 +4,16 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from starlette.concurrency import run_in_threadpool
 
 from api.core.config import settings
-from api.routers import configs, health, pipelines
+from api.core.entra_auth import Principal
+from api.core.security import complete_audit, verify_api_key
+from api.routers import configs, health, pipelines, users
+from orchestration import operational_state
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,21 @@ async def _experiments_warm_loop(preload_count: int, ttl_seconds: int) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.validate_runtime_security()
+    operational_state.configure_database(settings.mlops_operational_state_db)
+    if settings.api_deployment_profile.strip().lower() == "multi_user":
+        binding = {
+            "tenant_id": settings.api_entra_tenant_id,
+            "subscription_id": settings.azure_subscription_id,
+            "resource_group": settings.azure_resource_group,
+            "workspace_name": settings.azure_workspace_name,
+        }
+        with operational_state.transaction() as connection:
+            existing = operational_state.get_document(connection, "configuration", "workspace")
+            if existing is not None and existing != binding:
+                raise RuntimeError("Operational state belongs to another tenant or workspace")
+            operational_state.put_document(connection, "configuration", "workspace", binding)
+        from api.services.user_access_service import initialize_users
+        await run_in_threadpool(initialize_users, settings)
 
     # Startup: eagerly create the ML client so first request is fast
     from api.core.azure_ml import get_ml_client
@@ -59,13 +78,14 @@ async def lifespan(app: FastAPI):
         )
         app.state.experiments_warmer = warmer_task
 
-    yield
-
-    # Shutdown: cancel the warmer cleanly
-    if warmer_task is not None:
-        warmer_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await warmer_task
+    try:
+        yield
+    finally:
+        if warmer_task is not None:
+            warmer_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await warmer_task
+        operational_state.configure_database("")
 
 
 app = FastAPI(
@@ -79,8 +99,50 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins(),
     allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["X-API-Key", "Content-Type"],
+    allow_headers=["Authorization", "X-API-Key", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def complete_actor_audit(request: Request, call_next):
+    try:
+        response = await call_next(request)
+    except Exception:
+        audit_id = getattr(request.state, "audit_id", None)
+        if audit_id is not None:
+            try:
+                await run_in_threadpool(complete_audit, audit_id, 500)
+            except Exception:
+                logger.exception("failed to record interrupted request audit %s", audit_id)
+        raise
+    audit_id = getattr(request.state, "audit_id", None)
+    if audit_id is not None:
+        try:
+            await run_in_threadpool(complete_audit, audit_id, response.status_code)
+        except Exception:
+            logger.exception("failed to complete request audit %s", audit_id)
+            return JSONResponse(status_code=503, content={"detail": "Request audit failed; inspect operation status before retrying"})
+    return response
+
+
+@app.get("/api/v1/auth/config", tags=["authentication"])
+async def authentication_config():
+    if settings.api_deployment_profile.strip().lower() != "multi_user":
+        return {"mode": "api_key"}
+    return {
+        "mode": "entra",
+        "tenant_id": settings.api_entra_tenant_id,
+        "client_id": settings.api_entra_spa_client_id,
+        "scope": f"api://{settings.api_entra_api_client_id}/{settings.api_entra_required_scope}",
+        "redirect_uri": settings.api_entra_redirect_uri,
+    }
+
+
+@app.get("/api/v1/auth/me", tags=["authentication"])
+async def authenticated_identity(principal=Depends(verify_api_key)):
+    if isinstance(principal, Principal):
+        return {"mode": "entra", **principal.as_dict()}
+    return {"mode": "api_key", "roles": ["operator"]}
 
 
 def _dashboard_url(request: Request) -> str:
@@ -150,9 +212,9 @@ async def root(request: Request):
             "pipelines_job_email_notification": "POST /api/v1/pipelines/jobs/{job_name}/notifications/email",
         },
         "auth": {
-            "header": "X-API-Key",
+            "header": "Authorization" if settings.api_deployment_profile.strip().lower() == "multi_user" else "X-API-Key",
             "deployment_profile": settings.api_deployment_profile,
-            "note": "Required for all /api/v1/* routes except /api/v1/health and /healthz.",
+            "note": "Required for operational routes; health and public authentication configuration are unauthenticated.",
         },
         "frontend": {
             "service": "Streamlit dashboard",
@@ -179,6 +241,7 @@ async def favicon():
 app.include_router(health.router)
 app.include_router(configs.router)
 app.include_router(pipelines.router)
+app.include_router(users.router)
 
 
 if __name__ == "__main__":

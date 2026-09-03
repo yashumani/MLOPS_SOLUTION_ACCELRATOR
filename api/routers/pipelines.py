@@ -5,11 +5,11 @@ import logging
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
-from api.core.security import verify_api_key
+from api.core.security import actor_tags, verify_api_key
 from api.schemas.pipeline import (
     AutoRetrainBaselineApprovalRequest,
     AutoRetrainBaselineApprovalResponse,
@@ -56,10 +56,11 @@ def _cleanup_download_artifacts(tmp: Path, archive: Path | None = None) -> None:
 # ── Submit ────────────────────────────────────────────────────
 
 @router.post("/submit", response_model=SubmitResponse, status_code=202)
-def submit(req: SubmitRequest):
+def submit(req: SubmitRequest, request: Request = None):
     """Submit a new pipeline job to Azure ML."""
     try:
-        return pipeline_service.submit_pipeline(req)
+        tags = actor_tags(request)
+        return pipeline_service.submit_pipeline(req, **({"internal_tags": tags} if tags else {}))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError as exc:
@@ -71,14 +72,15 @@ def submit(req: SubmitRequest):
 # ── Submit (async) ────────────────────────────────────────────
 
 @router.post("/submit/async", status_code=202)
-def submit_async(req: SubmitRequest):
+def submit_async(req: SubmitRequest, request: Request = None):
     """Enqueue a pipeline submission and return immediately with a request_id.
 
     Clients poll GET /submit/status/{request_id} until status='submitted',
     then switch to /jobs/{job_name} for live monitoring.
     """
     try:
-        return pipeline_service.submit_pipeline_async(req)
+        tags = actor_tags(request)
+        return pipeline_service.submit_pipeline_async(req, **({"actor_tags": tags} if tags else {}))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError as exc:
@@ -236,10 +238,11 @@ def build_auto_retrain_controller_plan(req: AutoRetrainControllerPlanRequest):
     "/auto-retrain/baselines/approve",
     response_model=AutoRetrainBaselineApprovalResponse,
 )
-def approve_auto_retrain_baseline(req: AutoRetrainBaselineApprovalRequest):
+def approve_auto_retrain_baseline(req: AutoRetrainBaselineApprovalRequest, request: Request = None):
     """Append an operator-approved drift baseline record to the decision ledger."""
     try:
-        return auto_retrain_service.approve_auto_retrain_baseline(req)
+        tags = actor_tags(request)
+        return auto_retrain_service.approve_auto_retrain_baseline(req, **({"actor_tags": tags} if tags else {}))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -393,10 +396,11 @@ def send_job_notification(job_name: str, req: NotificationEmailRequest | None = 
 # ── Resubmit (Phase 0d) ──────────────────────────────────────
 
 @router.post("/resubmit", response_model=SubmitResponse, status_code=202)
-def resubmit(req: ResubmitRequest):
+def resubmit(req: ResubmitRequest, request: Request = None):
     """Resubmit a pipeline job using the same configuration."""
     try:
-        return pipeline_service.resubmit_pipeline(req)
+        tags = actor_tags(request)
+        return pipeline_service.resubmit_pipeline(req, **({"actor_tags": tags} if tags else {}))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError as exc:

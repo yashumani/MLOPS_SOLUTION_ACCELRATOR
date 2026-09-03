@@ -71,6 +71,10 @@ _CANONICAL_SUBMITTER = _REPO_ROOT / "pipelines" / "submit_pipeline.py"
 _SAFE_CONFIG_NAME = re.compile(r"^[A-Za-z0-9_]+$")
 _SUBMIT_ERROR_LIMIT = 2000
 _PROTECTED_SUBMISSION_TAGS = {
+    "actor_tenant_id",
+    "actor_object_id",
+    "actor_roles",
+    "api_request_audit_id",
     "compiled_config_hash",
     "config_name",
     "dataset",
@@ -584,12 +588,12 @@ def _new_request_id() -> str:
     return f"req-{uuid.uuid4().hex[:12]}"
 
 
-def _submit_worker(request_id: str, req: SubmitRequest) -> None:
+def _submit_worker(request_id: str, req: SubmitRequest, actor_tags: dict[str, str] | None = None) -> None:
     """Background worker that performs the blocking Azure ML submission."""
     try:
         result = submit_pipeline(
             req,
-            internal_tags={"submission_request_id": request_id},
+            internal_tags={**dict(actor_tags or {}), "submission_request_id": request_id},
         )
         update_request_record(
             request_id,
@@ -619,7 +623,7 @@ def _submit_worker(request_id: str, req: SubmitRequest) -> None:
             )
 
 
-def submit_pipeline_async(req: SubmitRequest) -> dict:
+def submit_pipeline_async(req: SubmitRequest, *, actor_tags: dict[str, str] | None = None) -> dict:
     """Enqueue a pipeline submission and return immediately with a request_id."""
     request_id = _new_request_id()
     record = {
@@ -633,9 +637,10 @@ def submit_pipeline_async(req: SubmitRequest) -> dict:
         "studio_url": None,
         "error": None,
         "completed_at": None,
+        "actor_tags": dict(actor_tags or {}),
     }
     create_request_record(record)
-    _submit_executor.submit(_submit_worker, request_id, req)
+    _submit_executor.submit(_submit_worker, request_id, req, dict(actor_tags or {}))
     return dict(record)
 
 
@@ -1751,7 +1756,7 @@ def _original_config_name(original: Any, tags: dict[str, Any]) -> str:
     return raw_name
 
 
-def resubmit_pipeline(req: ResubmitRequest) -> SubmitResponse:
+def resubmit_pipeline(req: ResubmitRequest, *, actor_tags: dict[str, str] | None = None) -> SubmitResponse:
     """Replay an exact revision or explicitly branch current inputs as a new one."""
     ml_client = get_ml_client()
     original = ml_client.jobs.get(req.job_name)
@@ -1779,7 +1784,10 @@ def resubmit_pipeline(req: ResubmitRequest) -> SubmitResponse:
         force_rerun=req.force_rerun,
         tags={"resubmit_from": req.job_name},
     )
-    return submit_pipeline(submit_req, replay_context=replay_context)
+    return submit_pipeline(
+        submit_req, replay_context=replay_context,
+        **({"internal_tags": dict(actor_tags)} if actor_tags else {}),
+    )
 
 
 # ---------------------------------------------------------------------------

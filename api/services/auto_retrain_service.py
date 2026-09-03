@@ -411,6 +411,8 @@ def validate_baseline_job(
 
 def approve_auto_retrain_baseline(
     req: AutoRetrainBaselineApprovalRequest,
+    *,
+    actor_tags: dict[str, str] | None = None,
 ) -> AutoRetrainBaselineApprovalResponse:
     config_path = _resolve_config_path(req.config_name)
     metadata = load_config_metadata(config_path)
@@ -459,6 +461,7 @@ def approve_auto_retrain_baseline(
         },
         metadata={
             "approved_via": "api",
+            "actor_tags": dict(actor_tags or {}),
             "config_path": str(config_path),
             **verified_identity,
         },

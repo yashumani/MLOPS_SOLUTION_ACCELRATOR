@@ -16,6 +16,7 @@ from orchestration.auto_retrain_decision_ledger import (
     AutoRetrainDecisionRecord,
     build_decision_record,
     latest_approved_baseline_uri,
+    latest_decision_records,
     load_decision_records,
 )
 
@@ -23,6 +24,7 @@ from orchestration.auto_retrain_decision_ledger import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SUBMIT_PIPELINE = REPO_ROOT / "pipelines" / "submit_pipeline.py"
 DUPLICATE_CANDIDATE_STATUSES = {
+    "reconciliation_required",
     "submitting",
     "manual_pending",
     "submitted",
@@ -337,7 +339,7 @@ def find_duplicate_candidate_record(
     config_names = {metadata.config_stem, f"{metadata.config_stem}.yml"}
     matches = [
         record
-        for record in records
+        for record in latest_decision_records(records)
         if record.get("config_name") in config_names
         and record.get("task_type") == metadata.task_type
         and record.get("dataset_name") == metadata.dataset_name

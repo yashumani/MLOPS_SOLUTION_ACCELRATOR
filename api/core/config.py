@@ -1,6 +1,7 @@
 """Application settings loaded from environment variables."""
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings
 
@@ -14,12 +15,20 @@ class Settings(BaseSettings):
     cors_allow_origins: str = "http://localhost:8501,http://127.0.0.1:8501"
     api_deployment_profile: str = "development"
     api_config_mutation_enabled: bool = True
+    api_entra_tenant_id: str = ""
+    api_entra_api_client_id: str = ""
+    api_entra_spa_client_id: str = ""
+    api_entra_allowed_client_ids: str = ""
+    api_entra_required_scope: str = "access_as_user"
+    api_entra_redirect_uri: str = ""
+    api_user_allowlist_path: str = ""
 
     # Server-owned operational state. Production profiles must set absolute
     # paths backed by one durable mount.
     mlops_state_dir: str = ""
     mlops_submission_request_root: str = ""
     mlops_auto_retrain_ledger_root: str = ""
+    mlops_operational_state_db: str = ""
 
     # UI
     ui_base_url: str = ""
@@ -73,14 +82,8 @@ class Settings(BaseSettings):
             )
         if profile == "development":
             return
-        if profile == "multi_user":
-            raise RuntimeError(
-                "The multi_user API profile is not implemented: Entra/OIDC, "
-                "actor authorization, and transactional shared state are required"
-            )
-
         errors: list[str] = []
-        if len(self.api_key) < 32:
+        if profile == "private_single_operator" and len(self.api_key) < 32:
             errors.append("API_KEY must contain at least 32 characters")
         if self.api_reload:
             errors.append("API_RELOAD must be false")
@@ -103,9 +106,37 @@ class Settings(BaseSettings):
             if not raw_path.strip() or not Path(raw_path).expanduser().is_absolute():
                 errors.append(f"{name} must be an absolute durable path")
 
+        if profile == "multi_user":
+            from api.core.entra_auth import canonical_id, load_allowlist
+
+            try:
+                tenant = canonical_id(self.api_entra_tenant_id)
+                canonical_id(self.api_entra_api_client_id)
+                spa = canonical_id(self.api_entra_spa_client_id)
+                allowed = {canonical_id(item.strip()) for item in self.api_entra_allowed_client_ids.split(",") if item.strip()}
+                if spa not in allowed:
+                    raise ValueError("SPA client must be in API_ENTRA_ALLOWED_CLIENT_IDS")
+                bootstrap = load_allowlist(self.api_user_allowlist_path, tenant)
+                if len(bootstrap) != 1 or next(iter(bootstrap.values())) != ("admin",):
+                    raise ValueError("Bootstrap allowlist must contain exactly one admin")
+            except (OSError, ValueError, TypeError) as exc:
+                errors.append(f"Entra/OIDC and allowlist configuration is invalid: {exc}")
+            if not self.api_entra_required_scope or any(char.isspace() for char in self.api_entra_required_scope):
+                errors.append("API_ENTRA_REQUIRED_SCOPE must be one delegated scope")
+            redirect = urlparse(self.api_entra_redirect_uri)
+            redirect_origin = f"{redirect.scheme}://{redirect.netloc}"
+            if redirect.scheme != "https" or redirect_origin not in origins or redirect.query or redirect.fragment:
+                errors.append("API_ENTRA_REDIRECT_URI must be an explicit HTTPS URL on an allowed UI origin")
+            database = self.mlops_operational_state_db.strip()
+            if not database or not Path(database).expanduser().is_absolute() or database.startswith(("\\\\", "//")):
+                errors.append("MLOPS_OPERATIONAL_STATE_DB must be an absolute local-disk SQLite path")
+            for name, value in (("AZURE_SUBSCRIPTION_ID", self.azure_subscription_id), ("AZURE_RESOURCE_GROUP", self.azure_resource_group), ("AZURE_WORKSPACE_NAME", self.azure_workspace_name)):
+                if not value.strip():
+                    errors.append(f"{name} is required for workspace authorization")
+
         if errors:
             raise RuntimeError(
-                "Unsafe private_single_operator API configuration: " + "; ".join(errors)
+                f"Unsafe {profile} API configuration: " + "; ".join(errors)
             )
 
 

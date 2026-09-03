@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { Activity, BarChart3, Bell, ClipboardList, FileText, Gauge, Home, Play, Settings, SlidersHorizontal } from "lucide-react";
+import { Activity, BarChart3, Bell, ClipboardList, FileText, Gauge, Home, Play, Settings, SlidersHorizontal, Users } from "lucide-react";
+import { useApi } from "../services/ApiContext";
 import { useHealthQuery } from "../hooks/usePipelineQueries";
 import { StatusBadge } from "./StatusBadge";
 
@@ -17,6 +18,7 @@ const navItems = [
 ];
 
 export function Layout() {
+  const { identity } = useApi();
   const health = useHealthQuery();
   const apiStatus = health.isError ? "Disconnected" : health.data?.status ?? "Checking";
 
@@ -40,6 +42,7 @@ export function Layout() {
               </NavLink>
             );
           })}
+          {identity.mode === "entra" && identity.roles.includes("admin") && <NavLink to="/users"><Users size={17} />Users</NavLink>}
         </nav>
       </aside>
       <div className="workspace">

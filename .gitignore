@@ -17,3 +17,5 @@ react-ui/.vite/
 react-ui/*.tsbuildinfo
 react-ui/vite.config.js
 react-ui/vite.config.d.ts
+react-ui/test-results/
+react-ui/playwright-report/

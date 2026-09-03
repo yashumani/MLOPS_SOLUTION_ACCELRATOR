@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Iterable
 from uuid import uuid4
 
+from . import operational_state
+
 
 APPROVED_BASELINE_STATUSES = {"approved", "production", "baseline_approved"}
 REQUIRED_LEDGER_FIELDS = (
@@ -26,6 +28,7 @@ REQUIRED_LEDGER_FIELDS = (
 LEDGER_LOCK_TIMEOUT_SECONDS = 10.0
 LEDGER_LOCK_STALE_SECONDS = 15 * 60.0
 UNRESOLVED_CANDIDATE_STATUSES = {
+    "reconciliation_required",
     "submitting",
     "manual_pending",
     "submitted",
@@ -118,6 +121,11 @@ def append_decision_record(
     payload = record.as_dict() if isinstance(record, AutoRetrainDecisionRecord) else dict(record)
     path = Path(ledger_path)
     payload = validate_decision_record(payload, source=str(path))
+    if operational_state.database_path() is not None:
+        with operational_state.transaction() as connection:
+            namespace = _sqlite_ledger_namespace(connection, path)
+            operational_state.append_event(connection, namespace, payload)
+        return path
     with _ledger_lock(path):
         _append_decision_record_unlocked(path, payload)
     return path
@@ -134,17 +142,16 @@ def reserve_candidate_submission(
     payload = validate_decision_record(payload, source=str(path))
     if str(payload.get("promotion_status") or "").lower() != "submitting":
         raise ValueError("Candidate reservation must use promotion_status='submitting'")
+    if operational_state.database_path() is not None:
+        with operational_state.transaction() as connection:
+            namespace = _sqlite_ledger_namespace(connection, path)
+            records = operational_state.load_events(connection, namespace)
+            _reject_duplicate_reservation(records, payload)
+            operational_state.append_event(connection, namespace, payload)
+        return path
     with _ledger_lock(path):
         records = _load_decision_records_unlocked(path)
-        for existing in records:
-            if _is_unresolved_duplicate(existing, payload):
-                raise DecisionReservationConflict(
-                    "Candidate submission is already reserved for "
-                    f"config={payload['config_name']!r}, "
-                    f"dataset={payload['dataset_name']!r}, "
-                    f"baseline={payload.get('input_baseline_uri')!r}; "
-                    f"decision_id={existing.get('decision_id')!r}"
-                )
+        _reject_duplicate_reservation(records, payload)
         _append_decision_record_unlocked(path, payload)
     return path
 
@@ -152,8 +159,48 @@ def reserve_candidate_submission(
 def load_decision_records(ledger_path: str | Path) -> list[dict[str, Any]]:
     """Load a JSONL auto-retrain decision ledger."""
     path = Path(ledger_path)
+    if operational_state.database_path() is not None:
+        with operational_state.transaction() as connection:
+            namespace = _sqlite_ledger_namespace(connection, path)
+            return [validate_decision_record(value) for value in operational_state.load_events(connection, namespace)]
     with _ledger_lock(path):
         return _load_decision_records_unlocked(path)
+
+
+def _sqlite_ledger_namespace(connection: Any, path: Path) -> str:
+    namespace = "retrain_ledger:" + str(path.resolve())
+    operational_state.require_legacy_import(connection, namespace, path.exists())
+    return namespace
+
+
+def latest_decision_records(records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for record in records:
+        latest[str(record["decision_id"])] = record
+    return list(latest.values())
+
+
+def _reject_duplicate_reservation(records: Iterable[dict[str, Any]], payload: dict[str, Any]) -> None:
+    records = list(records)
+    if payload.get("trigger") == "automated_controller":
+        approved = latest_approved_baseline_uri(
+            records, config_name=payload["config_name"],
+            task_type=payload["task_type"], dataset_name=payload["dataset_name"],
+        )
+        if approved != payload.get("input_baseline_uri"):
+            raise DecisionReservationConflict("Approved baseline changed before reservation")
+    for existing in latest_decision_records(records):
+        source_decision = (payload.get("metadata") or {}).get("source_s14_decision_id")
+        same_source_decision = bool(source_decision) and source_decision == (
+            existing.get("metadata") or {}
+        ).get("source_s14_decision_id")
+        if existing.get("decision_id") == payload["decision_id"] or same_source_decision or _is_unresolved_duplicate(existing, payload):
+            raise DecisionReservationConflict(
+                "Candidate submission is already reserved for "
+                f"config={payload['config_name']!r}, dataset={payload['dataset_name']!r}, "
+                f"baseline={payload.get('input_baseline_uri')!r}; "
+                f"decision_id={existing.get('decision_id')!r}"
+            )
 
 
 def _load_decision_records_unlocked(path: Path) -> list[dict[str, Any]]:

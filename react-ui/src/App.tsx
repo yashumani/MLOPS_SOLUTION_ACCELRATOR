@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { ApiKeyGate } from "./components/ApiKeyGate";
+import { AuthenticationGate } from "./components/AuthenticationGate";
 import { Layout } from "./components/Layout";
 import { AutoRetrain } from "./pages/AutoRetrain";
 import { Configs } from "./pages/Configs";
@@ -11,10 +11,11 @@ import { Notifications } from "./pages/Notifications";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
 import { Submit } from "./pages/Submit";
+import { Users } from "./pages/Users";
 
 export function App() {
   return (
-    <ApiKeyGate>
+    <AuthenticationGate>
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Home />} />
@@ -28,9 +29,10 @@ export function App() {
           <Route path="logs" element={<Logs />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="users" element={<Users />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-    </ApiKeyGate>
+    </AuthenticationGate>
   );
 }
