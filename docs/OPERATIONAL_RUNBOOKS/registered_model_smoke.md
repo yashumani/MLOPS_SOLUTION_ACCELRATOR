@@ -24,10 +24,15 @@ $env:AZURE_COMPUTE = '<compute-name>'
 
 ```powershell
 python scripts/submit_registered_model_smoke.py `
-  --parent-job <completed-parent-job>
+  --parent-job <completed-parent-job> `
+  --output-datastore mlops_blob
 ```
 
 Add `--wait` when the caller should block until Azure reports a terminal state.
+The output datastore defaults to `mlops_blob`; the submitter binds every run to
+a unique path under `qualification/registered-model-smoke`. This avoids the
+workspace default datastore and records the exact evidence URI in the local
+submission record.
 The default evidence record is written under
 `$MLOPS_STATE_DIR/registered_model_smokes`, or `~/.mlops` when that variable is
 not set.

@@ -12,6 +12,7 @@ from scripts.registered_model_inference_smoke.score import (
 from scripts.submit_registered_model_smoke import (
     SCORE_ROOT,
     _environment_id,
+    build_evidence_output,
     validate_registry_info,
 )
 
@@ -131,3 +132,46 @@ def test_model_uri_and_environment_normalization() -> None:
     assert _environment_id("azureml:mlops-v3-unified:33") == (
         "azureml:mlops-v3-unified:33"
     )
+
+
+def test_smoke_evidence_uses_explicit_governed_datastore_path() -> None:
+    output = build_evidence_output(
+        datastore_name="mlops_blob",
+        scenario_id="classification-healthcare-heart-disease",
+        parent_job="parent_job_123",
+        submission_id="d" * 32,
+    )
+
+    assert output.type == "uri_folder"
+    assert output.mode == "rw_mount"
+    assert output.path == (
+        "azureml://datastores/mlops_blob/paths/qualification/"
+        "registered-model-smoke/classification-healthcare-heart-disease/"
+        f"parent_job_123/{'d' * 32}/evidence/"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("datastore_name", "../workspaceblobstore", "datastore"),
+        ("scenario_id", "classification/escape", "scenario"),
+        ("parent_job", "parent/job", "parent job"),
+        ("submission_id", "not-a-uuid", "submission ID"),
+    ],
+)
+def test_smoke_evidence_rejects_invalid_uri_segments(
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    kwargs = {
+        "datastore_name": "mlops_blob",
+        "scenario_id": "classification-healthcare-heart-disease",
+        "parent_job": "parent_job_123",
+        "submission_id": "d" * 32,
+    }
+    kwargs[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        build_evidence_output(**kwargs)

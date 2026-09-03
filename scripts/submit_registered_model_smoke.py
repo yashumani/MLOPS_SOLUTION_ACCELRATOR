@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any
+from uuid import uuid4
 
 from azure.ai.ml import MLClient, Output, command
 from azure.ai.ml.entities import UserIdentityConfiguration
@@ -28,10 +29,13 @@ from _azure_ctx import (  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 SCORE_ROOT = Path(__file__).resolve().parent / "registered_model_inference_smoke"
 DEFAULT_ENVIRONMENT = "mlops-v3-unified:33"
+DEFAULT_OUTPUT_DATASTORE = "mlops_blob"
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
 SCENARIO_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 JOB_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,254}$")
+DATASTORE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,254}$")
+SUBMISSION_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 
 def _require_sha256(name: str, value: Any) -> str:
@@ -116,6 +120,30 @@ def _environment_id(value: str) -> str:
     return normalized if normalized.startswith("azureml:") else f"azureml:{normalized}"
 
 
+def build_evidence_output(
+    *,
+    datastore_name: str,
+    scenario_id: str,
+    parent_job: str,
+    submission_id: str,
+) -> Output:
+    datastore = str(datastore_name).strip()
+    if DATASTORE_NAME_PATTERN.fullmatch(datastore) is None:
+        raise ValueError("output datastore name is invalid")
+    if SCENARIO_PATTERN.fullmatch(scenario_id) is None:
+        raise ValueError("qualification scenario is invalid")
+    if JOB_NAME_PATTERN.fullmatch(parent_job) is None:
+        raise ValueError("parent job name is invalid")
+    if SUBMISSION_ID_PATTERN.fullmatch(submission_id) is None:
+        raise ValueError("smoke submission ID is invalid")
+
+    path = (
+        f"azureml://datastores/{datastore}/paths/qualification/"
+        f"registered-model-smoke/{scenario_id}/{parent_job}/{submission_id}/evidence/"
+    )
+    return Output(type="uri_folder", mode="rw_mount", path=path)
+
+
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -131,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--parent-job", required=True)
     parser.add_argument("--environment", default=DEFAULT_ENVIRONMENT)
+    parser.add_argument("--output-datastore", default=DEFAULT_OUTPUT_DATASTORE)
     parser.add_argument("--result-json", type=Path)
     parser.add_argument("--wait", action="store_true")
     args = parser.parse_args(argv)
@@ -193,6 +222,17 @@ def main(argv: list[str] | None = None) -> int:
     short_commit = git_identity["commit"][:8]
     display_name = f"{short_commit}-registered-smoke-{scenario_id}"
     task_type = str(registry_info.get("task_type") or "unknown")
+    smoke_submission_id = uuid4().hex
+    try:
+        evidence_output = build_evidence_output(
+            datastore_name=args.output_datastore,
+            scenario_id=scenario_id,
+            parent_job=args.parent_job,
+            submission_id=smoke_submission_id,
+        )
+    except ValueError as exc:
+        print(f"Smoke submission preflight failed: {exc}", file=sys.stderr)
+        return 2
     smoke_job = command(
         code=str(SCORE_ROOT),
         command=(
@@ -209,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
             "code_sha": registry_info["code_sha"],
             "dataset_sha": registry_info["dataset_content_sha256"],
         },
-        outputs={"evidence": Output(type="uri_folder")},
+        outputs={"evidence": evidence_output},
         environment=_environment_id(args.environment),
         compute=context.compute,
         identity=UserIdentityConfiguration(),
@@ -225,6 +265,8 @@ def main(argv: list[str] | None = None) -> int:
             "execution_id": registry_info["execution_id"],
             "model_name": registry_info["model_name"],
             "model_version": registry_info["version"],
+            "output_datastore": args.output_datastore,
+            "smoke_submission_id": smoke_submission_id,
         },
     )
 
@@ -251,6 +293,9 @@ def main(argv: list[str] | None = None) -> int:
         "source_git_commit": git_identity["commit"],
         "environment": _environment_id(args.environment),
         "compute": context.compute,
+        "output_datastore": args.output_datastore,
+        "evidence_uri": evidence_output.path,
+        "smoke_submission_id": smoke_submission_id,
     }
     result_path = (args.result_json or _default_result_path(args.parent_job)).resolve()
     _write_json_atomic(result_path, result)
