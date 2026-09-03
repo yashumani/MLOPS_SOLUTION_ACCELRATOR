@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -29,6 +29,24 @@ DEFAULT_CATALOG = ROOT / "configs" / "qualification" / "industry_matrix_executio
 SUBMITTER = ROOT / "pipelines" / "submit_pipeline.py"
 TASK_TYPES = ("classification", "regression", "clustering")
 MATRIX_ID = "industry-qualification-20260902"
+LEGACY_SCHEDULE_NAMES = (
+    "auto-retrain-classification-telecom-churn-daily",
+    "auto-retrain-clustering-online-retail-daily",
+    "auto-retrain-regression-college-daily",
+)
+DATASTORE_CANARY_TAGS = {
+    "evidence_scope": "platform-recovery",
+    "shared_datastore_change_required": "true",
+}
+DATASTORE_CANARY_OUTPUT = "probe"
+DATASTORE_CANARY_MARKER = "workspace_datastore_probe.json"
+DATASTORE_CANARY_STATUS = "workspace_datastore_write_succeeded"
+RELEASE_GATE_MAX_AGE = timedelta(hours=24)
+RELEASE_GATE_CLOCK_SKEW = timedelta(minutes=5)
+
+
+class ReleaseGateError(RuntimeError):
+    """Raised when live Azure qualification gates are not satisfied."""
 
 
 @dataclass(frozen=True)
@@ -44,6 +62,189 @@ class Scenario:
 def _is_sha256(value: object) -> bool:
     text = str(value or "")
     return len(text) == 64 and all(char in "0123456789abcdef" for char in text.lower())
+
+
+def _enum_text(value: object) -> str:
+    return str(getattr(value, "value", value) or "")
+
+
+def _parse_utc_timestamp(value: object, *, field: str) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        raise ReleaseGateError(f"Datastore canary marker is missing {field}")
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ReleaseGateError(
+            f"Datastore canary marker has invalid {field}: {text!r}"
+        ) from exc
+    if parsed.tzinfo is None:
+        raise ReleaseGateError(
+            f"Datastore canary marker {field} must include a UTC offset"
+        )
+    return parsed.astimezone(timezone.utc)
+
+
+def _load_probe_marker(download_root: Path) -> tuple[dict[str, Any], str]:
+    markers = sorted(download_root.rglob(DATASTORE_CANARY_MARKER))
+    if len(markers) != 1:
+        raise ReleaseGateError(
+            "Datastore canary output download must contain exactly one "
+            f"{DATASTORE_CANARY_MARKER}; found {len(markers)}"
+        )
+    marker = markers[0]
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ReleaseGateError("Datastore canary marker is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ReleaseGateError("Datastore canary marker must be a JSON object")
+    if payload.get("schema_version") != "1.0":
+        raise ReleaseGateError("Datastore canary marker schema_version must be 1.0")
+    if payload.get("status") != DATASTORE_CANARY_STATUS:
+        raise ReleaseGateError(
+            "Datastore canary marker does not report a successful workspace write"
+        )
+    return payload, hashlib.sha256(marker.read_bytes()).hexdigest()
+
+
+def verify_live_release_gates(
+    client: Any,
+    *,
+    datastore_canary_job: str,
+    download_root: Path,
+    now_utc: datetime | None = None,
+) -> dict[str, Any]:
+    """Require schedule containment and both datastore transport checks."""
+
+    observed_at = (now_utc or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    schedule_records: list[dict[str, Any]] = []
+    violations: list[str] = []
+    for name in LEGACY_SCHEDULE_NAMES:
+        try:
+            schedule = client.schedules.get(name)
+        except Exception as exc:  # noqa: BLE001 - Azure read must fail closed
+            raise ReleaseGateError(
+                f"Could not verify legacy schedule {name!r}: {exc}"
+            ) from exc
+        enabled = getattr(schedule, "is_enabled", None)
+        provisioning_state = _enum_text(
+            getattr(schedule, "provisioning_state", None)
+        )
+        schedule_records.append(
+            {
+                "name": name,
+                "is_enabled": enabled,
+                "provisioning_state": provisioning_state,
+            }
+        )
+        if enabled is not False:
+            violations.append(f"{name} is_enabled={enabled!r}")
+        if provisioning_state.lower() != "succeeded":
+            violations.append(
+                f"{name} provisioning_state={provisioning_state!r}"
+            )
+    if violations:
+        raise ReleaseGateError(
+            "Legacy schedule containment is not verified: " + "; ".join(violations)
+        )
+
+    try:
+        canary = client.jobs.get(datastore_canary_job)
+    except Exception as exc:  # noqa: BLE001 - Azure read must fail closed
+        raise ReleaseGateError(
+            f"Could not verify datastore canary job {datastore_canary_job!r}: {exc}"
+        ) from exc
+    canary_status = _enum_text(getattr(canary, "status", None))
+    if canary_status.lower() != "completed":
+        raise ReleaseGateError(
+            f"Datastore canary {datastore_canary_job!r} is {canary_status!r}, "
+            "not 'Completed'"
+        )
+    canary_tags = {
+        str(key): str(value)
+        for key, value in (getattr(canary, "tags", None) or {}).items()
+    }
+    invalid_tags = [
+        f"{key}={canary_tags.get(key)!r}"
+        for key, expected in DATASTORE_CANARY_TAGS.items()
+        if canary_tags.get(key) != expected
+    ]
+    if invalid_tags:
+        raise ReleaseGateError(
+            "Datastore canary identity tags are invalid: " + "; ".join(invalid_tags)
+        )
+
+    artifact_root = download_root / "workspaceartifactstore"
+    try:
+        client.jobs.download(datastore_canary_job, download_path=artifact_root)
+    except Exception as exc:  # noqa: BLE001 - transport check must fail closed
+        raise ReleaseGateError(
+            "Datastore canary default-artifact download failed; "
+            f"workspaceartifactstore is not verified: {exc}"
+        ) from exc
+    artifact_files = sorted(path for path in artifact_root.rglob("*") if path.is_file())
+    if not artifact_files:
+        raise ReleaseGateError(
+            "Datastore canary default-artifact download returned no files; "
+            "workspaceartifactstore is not verified"
+        )
+
+    output_root = download_root / "workspaceblobstore"
+    try:
+        client.jobs.download(
+            datastore_canary_job,
+            download_path=output_root,
+            output_name=DATASTORE_CANARY_OUTPUT,
+        )
+    except Exception as exc:  # noqa: BLE001 - transport check must fail closed
+        raise ReleaseGateError(
+            "Datastore canary probe output download failed; "
+            f"workspaceblobstore is not verified: {exc}"
+        ) from exc
+    marker, marker_sha256 = _load_probe_marker(output_root)
+    marker_created_at = _parse_utc_timestamp(
+        marker.get("created_at"), field="created_at"
+    )
+    marker_age = observed_at - marker_created_at
+    if marker_age > RELEASE_GATE_MAX_AGE:
+        raise ReleaseGateError(
+            "Datastore canary is stale: "
+            f"age {marker_age.total_seconds():.0f}s exceeds "
+            f"{RELEASE_GATE_MAX_AGE.total_seconds():.0f}s"
+        )
+    if marker_age < -RELEASE_GATE_CLOCK_SKEW:
+        raise ReleaseGateError(
+            "Datastore canary marker timestamp is too far in the future"
+        )
+
+    return {
+        "state": "passed",
+        "observed_at_utc": observed_at.isoformat(),
+        "legacy_schedules": schedule_records,
+        "datastore_canary": {
+            "job_name": datastore_canary_job,
+            "status": canary_status,
+            "tags": {key: canary_tags[key] for key in DATASTORE_CANARY_TAGS},
+            "default_artifact_file_count": len(artifact_files),
+            "probe_output": DATASTORE_CANARY_OUTPUT,
+            "probe_marker_sha256": marker_sha256,
+            "probe_created_at_utc": marker_created_at.isoformat(),
+            "probe_age_seconds": max(0, int(marker_age.total_seconds())),
+        },
+    }
+
+
+def _create_ml_client(context: Any) -> Any:
+    from azure.ai.ml import MLClient
+    from azure.identity import AzureCliCredential
+
+    return MLClient(
+        AzureCliCredential(),
+        context.subscription_id,
+        context.resource_group,
+        context.workspace_name,
+    )
 
 
 def _scenario_from_record(record: dict[str, Any]) -> Scenario:
@@ -210,6 +411,13 @@ def _parser() -> argparse.ArgumentParser:
         help="Disable component reuse without bypassing duplicate-submission guards.",
     )
     parser.add_argument("--continue-on-submission-error", action="store_true")
+    parser.add_argument(
+        "--datastore-canary-job",
+        help=(
+            "Required with --execute. The fresh completed workspace datastore "
+            "recovery canary whose default artifacts and probe output must download."
+        ),
+    )
     parser.add_argument("--result-json", type=Path)
     return parser
 
@@ -236,6 +444,13 @@ def main(argv: list[str] | None = None) -> int:
     if not args.execute:
         print("Read-only plan complete. Pass --execute to submit through the canonical guard.")
         return 0
+    if not str(args.datastore_canary_job or "").strip():
+        print(
+            "Submission preflight failed: --datastore-canary-job is required "
+            "with --execute",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         context = load_azure_context()
@@ -265,8 +480,36 @@ def main(argv: list[str] | None = None) -> int:
             "compute": context.compute,
         },
         "requested_count": len(scenarios),
+        "release_gates": {
+            "state": "checking",
+            "datastore_canary_job": args.datastore_canary_job,
+        },
         "submissions": [],
     }
+    _write_json_atomic(result_path, summary)
+
+    try:
+        client = _create_ml_client(context)
+        with tempfile.TemporaryDirectory(prefix="mlops-qualification-gates-") as temp:
+            summary["release_gates"] = verify_live_release_gates(
+                client,
+                datastore_canary_job=args.datastore_canary_job,
+                download_root=Path(temp),
+            )
+    except Exception as exc:  # noqa: BLE001 - Azure gate failures become evidence
+        summary["release_gates"] = {
+            "state": "blocked",
+            "datastore_canary_job": args.datastore_canary_job,
+            "error": str(exc),
+        }
+        summary["completed_at_utc"] = datetime.now(timezone.utc).isoformat()
+        summary["accepted_count"] = 0
+        summary["complete"] = False
+        _write_json_atomic(result_path, summary)
+        print(f"Submission release gate failed: {exc}", file=sys.stderr)
+        print(f"Submission evidence: {result_path}")
+        return 2
+    _write_json_atomic(result_path, summary)
 
     exit_code = 0
     with tempfile.TemporaryDirectory(prefix="mlops-qualification-matrix-") as tmp:

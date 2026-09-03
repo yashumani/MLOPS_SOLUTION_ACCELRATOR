@@ -175,6 +175,7 @@ az ml job download \
 - Current-checkout classification, regression, and clustering SDK dry-runs passed. This is graph-construction proof only.
 - Exact-source classification, regression, and clustering canaries at `6447648a` completed with downloaded pipeline artifacts and exact registered-model smoke tests.
 - Twelve qualification scenarios remain. Do not submit them until the legacy daily schedules are contained and the two workspace-default artifact datastores pass their recovery canary.
+- `scripts/batch_submit_all.py --execute` now requires `--datastore-canary-job`. It rechecks the three schedules and both datastore download paths live, and exits before submission unless the fresh canary evidence passes.
 - First-cycle, second-cycle, and `s14` jobs named elsewhere in the docs are historical May 2026 evidence for earlier revisions, not current-source or deployed proof.
 
 ## Troubleshooting

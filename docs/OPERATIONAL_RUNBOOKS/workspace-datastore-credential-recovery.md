@@ -83,6 +83,26 @@ Do not submit classification, regression, or clustering diagnostics until all
 three checks pass. A successful `mlops_blob` write does not validate either
 workspace-default datastore.
 
+The canonical qualification runner enforces this boundary live. After the
+approved schedule containment and a successful fresh canary, pass that exact
+job name on every qualification wave:
+
+```powershell
+& $python scripts\batch_submit_all.py `
+  --scenario '<qualification-scenario-id>' `
+  --execute `
+  --datastore-canary-job '<completed-canary-job-name>' `
+  --result-json '<wave-submission-evidence.json>'
+```
+
+Before the first submission, the runner re-reads all three legacy schedules
+and requires each to be disabled with provisioning state `Succeeded`. It then
+requires the named canary to be `Completed`, downloads its default artifacts
+through `workspaceartifactstore`, downloads the named `probe` output through
+`workspaceblobstore`, validates `workspace_datastore_probe.json`, and rejects a
+probe older than 24 hours. Any missing, stale, unreadable, or nonconforming
+evidence exits before a qualification job is submitted.
+
 ## Rollback
 
 If the bounded canary still fails, do not rotate keys or alter role assignments
