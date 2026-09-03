@@ -1,6 +1,42 @@
 # Runbook: Monitor Azure ML Jobs
 
-Current as of: 2026-08-02
+Current as of: 2026-09-03
+
+## Monitor A Qualification Wave
+
+Use the canonical JSON written by `scripts/batch_submit_all.py`. The monitor
+reloads an in-progress manifest, queries the same submitted job handles, and
+writes a structured status snapshot after every poll.
+
+```powershell
+python scripts\monitor_batch.py `
+  --submissions '<wave-submission-evidence.json>' `
+  --sub '93044a08-5661-4f1b-b424-5eafe066a9d1' `
+  --rg 'mvpv1' `
+  --ws 'mlops-accelerator' `
+  --interval 5 `
+  --max-hours 8 `
+  --output-dir '<wave-monitor-evidence>'
+```
+
+Monitor outputs are:
+
+- `monitor-summary.json`: current machine-readable state and every job status.
+- `monitor_status.log`: append-only observations.
+- `BATCH_DONE.txt`: written only when all expected jobs are terminal.
+- `FAILURES.txt`: written when submission or terminal job failure is observed.
+- `BATCH_TIMEOUT.txt`: written when terminal evidence is not reached in time.
+
+Exit code `0` means every expected parent is `Completed`. Exit code `1` means a
+submission or terminal job failed, `2` means the manifest/context is invalid,
+`3` means the bounded monitor timed out, and `4` means a `--once` poll was not
+terminal. A timeout or query error is not permission to resubmit; resume
+monitoring the same job handles.
+
+Parent completion is only the first acceptance gate. Download and validate the
+execution, split, final evaluation, quality, registration, drift, and S14
+artifacts, then run registered-model inference against the exact numeric model
+version before accepting the scenario.
 
 ## Check Parent Job
 
