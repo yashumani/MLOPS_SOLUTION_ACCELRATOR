@@ -12,6 +12,7 @@ from scripts.registered_model_inference_smoke.score import (
 from scripts.submit_registered_model_smoke import (
     SCORE_ROOT,
     _environment_id,
+    _refresh_after_stream,
     build_evidence_output,
     validate_registry_info,
 )
@@ -175,3 +176,21 @@ def test_smoke_evidence_rejects_invalid_uri_segments(
 
     with pytest.raises(ValueError, match=message):
         build_evidence_output(**kwargs)
+
+
+def test_stream_observer_failure_falls_back_to_authoritative_status(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class Jobs:
+        @staticmethod
+        def stream(_job_name: str) -> None:
+            raise UnicodeEncodeError("charmap", "\u258e", 0, 1, "unsupported")
+
+        @staticmethod
+        def get(job_name: str) -> SimpleNamespace:
+            return SimpleNamespace(name=job_name, status="Completed")
+
+    result = _refresh_after_stream(SimpleNamespace(jobs=Jobs()), "smoke-job")
+
+    assert result.status == "Completed"
+    assert "Smoke stream warning" in capsys.readouterr().err

@@ -151,11 +151,27 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def _configure_utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
+def _refresh_after_stream(client: MLClient, job_name: str):
+    try:
+        client.jobs.stream(job_name)
+    except Exception as exc:  # noqa: BLE001 - status refresh remains authoritative
+        print(f"Smoke stream warning: {exc}", file=sys.stderr)
+    return client.jobs.get(job_name)
+
+
 def _default_result_path(parent_job: str) -> Path:
     return get_state_dir() / "registered_model_smokes" / f"{parent_job}.json"
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_utf8_stdio()
     parser = argparse.ArgumentParser()
     parser.add_argument("--parent-job", required=True)
     parser.add_argument("--environment", default=DEFAULT_ENVIRONMENT)
@@ -272,13 +288,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         created = client.jobs.create_or_update(smoke_job)
-        if args.wait:
-            client.jobs.stream(created.name)
-            created = client.jobs.get(created.name)
     except Exception as exc:  # noqa: BLE001 - SDK error is preserved in evidence
         print(f"Smoke submission failed: {exc}", file=sys.stderr)
         return 1
 
+    result_path = (args.result_json or _default_result_path(args.parent_job)).resolve()
     result = {
         "schema_version": "1.0",
         "submitted_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -297,8 +311,20 @@ def main(argv: list[str] | None = None) -> int:
         "evidence_uri": evidence_output.path,
         "smoke_submission_id": smoke_submission_id,
     }
-    result_path = (args.result_json or _default_result_path(args.parent_job)).resolve()
     _write_json_atomic(result_path, result)
+
+    if args.wait:
+        try:
+            created = _refresh_after_stream(client, created.name)
+        except Exception as exc:  # noqa: BLE001 - preserve submitted job evidence
+            print(f"Smoke status refresh failed: {exc}", file=sys.stderr)
+            print(json.dumps(result, indent=2))
+            print(f"Submission evidence: {result_path}")
+            return 1
+        result["status"] = created.status
+        result["observed_at_utc"] = datetime.now(timezone.utc).isoformat()
+        _write_json_atomic(result_path, result)
+
     print(json.dumps(result, indent=2))
     print(f"Submission evidence: {result_path}")
     return 0 if not args.wait or created.status == "Completed" else 1

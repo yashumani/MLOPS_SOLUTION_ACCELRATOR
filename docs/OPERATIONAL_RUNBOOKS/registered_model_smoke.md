@@ -33,6 +33,10 @@ The output datastore defaults to `mlops_blob`; the submitter binds every run to
 a unique path under `qualification/registered-model-smoke`. This avoids the
 workspace default datastore and records the exact evidence URI in the local
 submission record.
+The submission record is written immediately after Azure accepts the job and is
+updated after terminal status observation. If SDK log streaming fails, the
+submitter warns and refreshes the authoritative job status without submitting a
+duplicate.
 The default evidence record is written under
 `$MLOPS_STATE_DIR/registered_model_smokes`, or `~/.mlops` when that variable is
 not set.
