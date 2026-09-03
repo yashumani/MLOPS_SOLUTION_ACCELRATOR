@@ -11,9 +11,9 @@ Azure environment: `azureml:mlops-v3-unified:33`
 Status: **not production-release ready**.
 
 The source contracts and Release Candidate CI pass at code release candidate
-`327a6d4e`. The unified Azure runtime, immutable 15-scenario catalog, and one
+`ed5edb06`. The unified Azure runtime, immutable 15-scenario catalog, and one
 complete Azure canary per task type also pass. The remaining release path is
-blocked by two owner-approved workspace actions, 12 unexecuted industry
+blocked by two workspace actions requiring owner approval, 12 unexecuted industry
 scenarios, the API/retraining deployment decisions, and final production
 approval.
 
@@ -25,14 +25,15 @@ review. Azure ML compute owns model execution.
 
 | Gate | Evidence | State |
 | --- | --- | --- |
-| Source publication and CI | Fork code candidate `327a6d4e`; GitHub run `33782215205` | Backend and React jobs passed |
-| Current source validation | Non-Azure CI-equivalent backend suite: 543 passed; focused API/security/state suite: 73 passed | Passed locally and in hosted CI |
+| Source publication and CI | Fork code candidate `ed5edb06`; GitHub run `33786495046` | Backend and React jobs passed |
+| Current source validation | Non-Azure CI-equivalent backend suite: 552 passed; focused qualification runner/monitor suite: 29 passed | Passed locally and in hosted CI |
 | React UI | Five tests, TypeScript lint, and production build | Passed locally and in hosted CI |
 | Qualification batch monitoring | Canonical submission JSON, fail-closed status/timeout semantics, structured evidence, and read-only smoke against three accepted Azure parents | Passed |
+| Qualification execution release gate | Live schedule state, canary identity/status, default-artifact download, named probe download, marker integrity, and freshness are required before submission | Passed; live negative smoke refused with zero submissions |
 | Azure access | Subscription, workspace, compute, datastore, jobs, and model registry readable | Passed |
 | Runtime | `mlops-v3-unified:33` on `mlopsv2computecluster` | Passed |
 | Qualification catalog | Five industries each for classification, regression, and clustering | Passed |
-| Exact-head graph preflight | All 15 scenarios pass canonical `--dry_run` at `327a6d4e`; submitted count is zero | Passed |
+| Exact-head graph preflight | All 15 scenarios pass canonical `--dry_run` at `ed5edb06`; submitted count is zero | Passed |
 | Classification canary | `clever_parsnip_bkxp5z6gl6`; model version 4; smoke `jolly_honey_b8p6z98b67` | Passed |
 | Regression canary | `goofy_planet_yz78rj7tqz`; model version 3; smoke `goofy_toe_wp29x5h9vy` | Passed |
 | Clustering canary | `joyful_pumpkin_f4cm3x626m`; model version 1; smoke `jovial_mangos_bchzbq8qj1` | Passed |
@@ -40,9 +41,11 @@ review. Azure ML compute owns model execution.
 | Full industry matrix | Three accepted; 12 not executed | Incomplete |
 | Production endpoint/promotion | No approval and no production action | Intentionally stopped |
 
-A read-only refresh after CI confirmed all three schedules remain enabled. It
-also confirmed `workspaceblobstore` and `workspaceartifactstore` retain their
-June 16, 2025 AccountKey records; no repair was applied.
+A read-only refresh and the exact-code live release-gate smoke confirmed all
+three schedules remain enabled. The smoke exited `2`, recorded gate state
+`blocked`, and submitted zero jobs. The refresh also confirmed
+`workspaceblobstore` and `workspaceartifactstore` retain their June 16, 2025
+AccountKey records; no repair was applied.
 
 ## Active Blockers By Impact
 
@@ -92,7 +95,9 @@ If unresolved, all three task types have representative proof but the required
 five-industry breadth per task remains unverified. After schedule containment
 and datastore repair, execute the six two-parent waves through
 `scripts/batch_submit_all.py` and require exact-version registered-model smoke
-evidence for every accepted scenario.
+evidence for every accepted scenario. The runner now refuses `--execute`
+unless all three schedules are disabled and the named fresh datastore canary
+proves both workspace-default download paths.
 
 ### Production API And Retraining Topology
 
@@ -139,10 +144,12 @@ focused immutable reruns extend that estimate.
 
 The release evidence bundle is stored outside the source tree at:
 
-`snapshots/mlops-v33-final-preflight/327a6d4e/`
+`snapshots/mlops-v33-final-preflight/ed5edb06/`
 
 The exact-head directory contains the 15 canonical dry-run logs and summary,
-plus the qualification-monitor smoke evidence for the three accepted parents.
+plus the live zero-submission release-gate refusal. Qualification-monitor smoke
+evidence for the three accepted parents remains under the previous exact-head
+checkpoint.
 The accepted Azure canary, data-asset, schedule, datastore, controller, queue,
 and owner-action evidence remains indexed under the qualified runtime evidence
 directory `snapshots/mlops-v33-final-preflight/6447648a/`.
