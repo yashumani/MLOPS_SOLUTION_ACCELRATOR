@@ -431,6 +431,12 @@ Outputs:
 Expected behavior:
 
 - Use the workspace-provided Azure ML MLflow tracking URI unchanged with `azureml-mlflow`.
+- Package the `ModelBundle` runtime modules, signature, and raw input example so
+  the exact registered version can load outside the repository checkout.
+- Persist execution, source, recipe-catalog, dataset, and registration-run
+  identities on the model version and in `registry_info`.
+- Leave every registered version unassigned; stage and alias promotion is a
+  separate manual operator action.
 - Skip or report registration blockers instead of silently failing.
 
 ### S13 - Drift Monitor

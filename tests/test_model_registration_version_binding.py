@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +17,7 @@ from sklearn.dummy import DummyClassifier
 import src.steps.s12_model_registration as s12
 from src.orchestration.contracts import ExecutionManifest
 from src.utils.model_bundle import ModelBundle, save_model_bundle
+from utils.model_bundle import ModelBundle as RuntimeModelBundle
 
 
 class _RegistryClient:
@@ -22,6 +25,7 @@ class _RegistryClient:
         self.search_results = list(search_results or [])
         self.search_calls = []
         self.tag_versions = []
+        self.tags = {}
         self.transition_versions = []
 
     def get_latest_versions(self, *_args, **_kwargs):
@@ -31,8 +35,9 @@ class _RegistryClient:
         self.search_calls.append(kwargs)
         return self.search_results
 
-    def set_model_version_tag(self, *, version, **_kwargs):
+    def set_model_version_tag(self, *, version, key, value, **_kwargs):
         self.tag_versions.append(str(version))
+        self.tags[key] = value
 
     def transition_model_version_stage(self, *, version, **_kwargs):
         self.transition_versions.append(str(version))
@@ -157,6 +162,11 @@ def test_exact_bundle_logging_infers_signature_and_uses_raw_example(
     assert captured["sk_model"] is bundle
     assert captured["registered_model_name"] == "signed"
     assert captured["signature"] is not None
+    assert captured["serialization_format"] == "cloudpickle"
+    assert len(captured["code_paths"]) == 1
+    code_path = Path(captured["code_paths"][0])
+    assert code_path.name == "utils"
+    assert (code_path / "model_bundle.py").is_file()
     assert captured["input_example"].equals(
         pd.DataFrame([{"feature": 0.0}, {"feature": 1.0}])
     )
@@ -186,7 +196,67 @@ def test_registration_uses_version_returned_by_log_model(monkeypatch, tmp_path) 
     assert result["version"] == "7"
     assert client.search_calls == []
     assert set(client.tag_versions) == {"7"}
-    assert client.transition_versions == ["7"]
+    assert client.transition_versions == []
+    assert result["stage"] == "None"
+    assert result["lifecycle_stage"] == "Unassigned"
+    assert result["promotion_mode"] == "manual"
+    assert result["promotion_performed"] is False
+    assert result["model_uri"].endswith("/7")
+    assert result["execution_id"]
+    assert client.tags["execution_id"] == result["execution_id"]
+    assert client.tags["code_sha"] == "code-sha"
+
+
+def test_packaged_model_bundle_loads_without_repository_on_pythonpath(
+    tmp_path,
+) -> None:
+    raw = pd.DataFrame({"feature": [0.0, 1.0]})
+    estimator = DummyClassifier(strategy="most_frequent").fit(
+        raw,
+        ["stay", "churn"],
+    )
+    bundle = RuntimeModelBundle(
+        estimator=estimator,
+        task_type="classification",
+        candidate_id="isolated-load",
+        input_schema={
+            "columns": [{"name": "feature", "dtype": "float64"}],
+            "column_order": ["feature"],
+        },
+        input_example=[{"feature": 0.0}],
+    )
+    model_path = tmp_path / "model"
+    s12.mlflow.sklearn.save_model(
+        sk_model=bundle,
+        path=str(model_path),
+        serialization_format="cloudpickle",
+        code_paths=s12._model_bundle_code_paths(),
+        pip_requirements=[],
+    )
+
+    clean_cwd = tmp_path / "clean"
+    clean_cwd.mkdir()
+    environment = os.environ.copy()
+    for name in ("PYTHONPATH", "MLFLOW_TRACKING_URI", "MLFLOW_REGISTRY_URI"):
+        environment.pop(name, None)
+    command = (
+        "import json, mlflow.pyfunc, pandas as pd; "
+        f"model = mlflow.pyfunc.load_model({str(model_path)!r}); "
+        "result = model.predict(pd.DataFrame([{'feature': 0.0}])); "
+        "print(json.dumps(result.tolist()))"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", command],
+        cwd=clean_cwd,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout.strip()) == ["churn"]
 
 
 def test_registration_requires_version_returned_by_log_model(
@@ -944,7 +1014,7 @@ def test_s12_environment_uses_hashed_lock_and_build_smoke_checks() -> None:
         if "==" in line
     }
 
-    assert component["version"] == 13
+    assert component["version"] == 14
     assert component["environment"] == "azureml:mlops-v3-registration:2"
     assert requirements
     assert all("==" in requirement for requirement in requirements)

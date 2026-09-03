@@ -118,6 +118,7 @@ Quality gate defaults are warn-only unless blocking is explicitly enabled.
 ```yaml
 registry:
   block_on_quality_fail: false
+  pass_aliases: [champion]
   min_quality:
     classification: 0.50
     regression: 0.0
@@ -128,6 +129,8 @@ Rules:
 
 - Do not raise thresholds casually; this can block otherwise valid jobs.
 - `s12` handles model registration and emits `registry_info`.
+- `pass_aliases` records the aliases an operator may apply after review; `s12`
+  never applies an alias or MLflow stage automatically.
 - Registration skip/block reasons should be documented in `registry_info`.
 
 ## Drift Config

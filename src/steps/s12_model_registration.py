@@ -51,6 +51,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 _MLFLOW_SKLEARN_LOG_MODEL = mlflow.sklearn.log_model
+_MODEL_BUNDLE_CODE_PATH = Path(__file__).resolve().parent.parent / "utils"
+
+
+def _model_bundle_code_paths() -> list[str]:
+    """Return package roots required to load a ModelBundle outside this repo."""
+    if not _MODEL_BUNDLE_CODE_PATH.is_dir():
+        raise RuntimeError(
+            f"ModelBundle code path does not exist: {_MODEL_BUNDLE_CODE_PATH}"
+        )
+    return [str(_MODEL_BUNDLE_CODE_PATH)]
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -223,6 +233,8 @@ def _log_exact_model_bundle(bundle: Any, model_name: str) -> Any:
         registered_model_name=model_name,
         signature=signature,
         input_example=input_example,
+        code_paths=_model_bundle_code_paths(),
+        serialization_format="cloudpickle",
     )
 
 
@@ -580,7 +592,13 @@ class ModelRegistry:
         # Extract dataset name from cfg first, fall back to filename parsing
         self.dataset_name = self._extract_dataset_name(config_name)
         # K11: also expose explicit registry model name override if cfg provides one.
-        self.model_name_override = (self.cfg.get("registry", {}) or {}).get("model_name")
+        registry_cfg = self.cfg.get("registry", {}) or {}
+        self.model_name_override = registry_cfg.get("model_name")
+        self.requested_promotion_aliases = tuple(
+            str(alias).strip()
+            for alias in (registry_cfg.get("pass_aliases") or [])
+            if str(alias).strip()
+        )
     
     def _extract_dataset_name(self, config_name: str) -> str:
         """Resolve dataset name with the following precedence:
@@ -701,37 +719,50 @@ class ModelRegistry:
                 model_version,
                 manifest,
                 metadata,
+                execution_manifest=execution_manifest,
+                registration_run_id=run_id,
             )
             if promotion_allowed:
-                self.client.transition_model_version_stage(
-                    name=model_name,
-                    version=model_version,
-                    stage="Staging",
-                    archive_existing_versions=False
+                logger.info(
+                    "Passing model registered without a stage or alias; "
+                    "promotion remains an explicit operator action"
                 )
-                logger.info("📈 Passing model promoted to 'Staging' stage")
-                stage = "Staging"
-                stage_backend = "mlflow_model_stage"
+                stage_backend = "manual_promotion_required"
             else:
-                stage = "None"
                 stage_backend = "quality_warning_no_promotion"
                 logger.info("⚠️ Warning model registered without promotion")
+            stage = "None"
+            requested_aliases = (
+                list(getattr(self, "requested_promotion_aliases", ()))
+                if promotion_allowed
+                else []
+            )
             
             # Build registry info
             registry_info = {
                 "model_name": model_name,
                 "version": model_version,
+                "model_uri": f"models:/{model_name}/{model_version}",
                 "stage": stage,
-                "lifecycle_stage": (
-                    "Staging" if promotion_allowed else "Unassigned"
-                ),
+                "lifecycle_stage": "Unassigned",
                 "quality_decision": quality_decision,
                 "promotion_allowed": promotion_allowed,
+                "promotion_mode": "manual",
+                "promotion_performed": False,
+                "requested_promotion_aliases": requested_aliases,
                 "algorithm": metadata["algorithm"],
                 "task_type": task_type,
                 "metrics": metadata["metrics"],
                 "dataset": self.dataset_name,
                 "config": self.config_name,
+                "registration_run_id": run_id,
+                "execution_id": execution_manifest.execution_id,
+                "config_hash": execution_manifest.config_hash,
+                "code_sha": execution_manifest.code_sha,
+                "recipe_catalog_hash": execution_manifest.recipe_catalog_hash,
+                "dataset_content_sha256": str(
+                    execution_manifest.dataset.get("content_sha256") or ""
+                ),
                 "registration_backend": registration_backend,
                 "stage_backend": stage_backend,
             }
@@ -793,13 +824,10 @@ class ModelRegistry:
             model_path,
         )
         tags = self._build_model_metadata_tags(manifest, metadata)
-        quality_decision = resolve_quality_decision(manifest)
         tags.update(
             {
                 "source_run_id": str(run_id),
-                "lifecycle_stage": (
-                    "Staging" if quality_decision == "pass" else "Unassigned"
-                ),
+                "lifecycle_stage": "Unassigned",
                 "registration_backend": "azureml_sdk",
             }
         )
@@ -850,9 +878,16 @@ class ModelRegistry:
         model_version: str,
         manifest: Dict[str, Any],
         metadata: Dict[str, Any],
+        execution_manifest: ExecutionManifest | None = None,
+        registration_run_id: str | None = None,
     ):
         """Add metadata tags to registered model version."""
-        tags = self._build_model_metadata_tags(manifest, metadata)
+        tags = self._build_model_metadata_tags(
+            manifest,
+            metadata,
+            execution_manifest=execution_manifest,
+            registration_run_id=registration_run_id,
+        )
         failures = []
 
         # Set tags on model version
@@ -880,6 +915,8 @@ class ModelRegistry:
         self,
         manifest: Dict[str, Any],
         metadata: Dict[str, Any] = None,
+        execution_manifest: ExecutionManifest | None = None,
+        registration_run_id: str | None = None,
     ) -> Dict[str, str]:
         """Build string tags shared by MLflow and Azure ML SDK registration."""
         metadata = metadata or _resolve_registration_metadata(manifest)
@@ -894,7 +931,24 @@ class ModelRegistry:
             "promotion_allowed": str(
                 resolve_quality_decision(manifest) == "pass"
             ).lower(),
+            "promotion_mode": "manual",
+            "promotion_performed": "false",
+            "lifecycle_stage": "Unassigned",
         }
+        if execution_manifest is not None:
+            tags.update(
+                {
+                    "execution_id": execution_manifest.execution_id,
+                    "config_hash": execution_manifest.config_hash,
+                    "code_sha": execution_manifest.code_sha,
+                    "recipe_catalog_hash": execution_manifest.recipe_catalog_hash,
+                    "dataset_content_sha256": str(
+                        execution_manifest.dataset.get("content_sha256") or ""
+                    ),
+                }
+            )
+        if registration_run_id:
+            tags["registration_run_id"] = str(registration_run_id)
         bundle = manifest.get("model_bundle") or {}
         if isinstance(bundle, dict) and bundle.get("bundle_id"):
             tags["model_bundle_id"] = bundle["bundle_id"]

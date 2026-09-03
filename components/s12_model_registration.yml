@@ -1,12 +1,12 @@
 name: v3_s12_model_registration
-version: 13
+version: 14
 display_name: V3 Stage 12 - Model Registry
 type: command
 is_deterministic: false
 description: |
   Registers the exact champion model version with metadata and run lineage.
-  QualityDecision=warn registers without aliases or promotion; only pass may
-  receive a Staging lifecycle marker. QualityDecision=block never registers.
+  Passing and warning models remain unassigned until an operator promotes
+  them. QualityDecision=block never registers.
 
 inputs:
   champion_manifest:

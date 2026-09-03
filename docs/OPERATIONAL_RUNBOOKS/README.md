@@ -11,6 +11,7 @@ These runbooks are operator-focused. They require all submissions to go through 
 | `monitor_jobs.md` | Check parent job status, child steps, and download artifacts. |
 | `resubmit_failed_jobs.md` | Diagnose and resubmit failed configs safely. |
 | `auto_retrain.md` | Operate baseline chaining, s13/s14 outputs, and controller dry-runs. |
+| `registered_model_smoke.md` | Verify an exact registered version can load and predict in an isolated Azure job. |
 
 ## Workspace Defaults
 
