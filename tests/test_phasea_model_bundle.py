@@ -95,6 +95,59 @@ def test_phasea_clustering_selection_is_sampled_then_refit(monkeypatch) -> None:
     assert metrics["full_refit_rows"] == total_rows
 
 
+def test_phasea_clustering_refits_pycaret_float32_state_on_small_dataset(
+    monkeypatch,
+) -> None:
+    observed: dict[str, object] = {"fit_calls": 0}
+
+    class _DtypeStrictModel:
+        def __init__(self):
+            self.fitted_dtype = np.dtype(np.float32)
+
+        def fit(self, data):
+            observed["fit_calls"] = int(observed["fit_calls"]) + 1
+            observed["fit_rows"] = len(data)
+            self.fitted_dtype = data.to_numpy().dtype
+            return self
+
+        def predict(self, data):
+            input_dtype = data.to_numpy().dtype
+            if input_dtype != self.fitted_dtype:
+                raise ValueError(
+                    "Buffer dtype mismatch, expected 'const double' but got 'float'"
+                )
+            return np.arange(len(data)) % 2
+
+    module = types.ModuleType("pycaret.clustering")
+    module.setup = lambda **_kwargs: None
+    module.create_model = lambda *_args, **_kwargs: _DtypeStrictModel()
+    module.pull = lambda: pd.DataFrame({"Silhouette": [0.42]})
+    monkeypatch.setitem(sys.modules, "pycaret.clustering", module)
+    monkeypatch.setattr(sklearn.metrics, "silhouette_score", lambda *_a, **_k: 0.42)
+    monkeypatch.setattr(
+        sklearn.metrics,
+        "davies_bouldin_score",
+        lambda *_args, **_kwargs: 0.73,
+    )
+
+    frame = pd.DataFrame(
+        {
+            "feature_a": np.arange(20, dtype=np.float64),
+            "feature_b": np.arange(20, dtype=np.float64) % 3,
+        }
+    )
+
+    model, _leaderboard, metrics = train_clustering_baseline(
+        frame,
+        random_seed=17,
+    )
+
+    assert observed["fit_calls"] == 1
+    assert observed["fit_rows"] == len(frame)
+    assert model.fitted_dtype == np.dtype(np.float64)
+    assert metrics["full_refit_rows"] == len(frame)
+
+
 def _raw_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {

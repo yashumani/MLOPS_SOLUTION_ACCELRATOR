@@ -99,8 +99,11 @@ def train_clustering_baseline(
     )
     best = create_model("kmeans")
     leaderboard = pull()
-    if selection_rows < len(numeric_frame):
-        best.fit(numeric_frame)
+    # PyCaret may fit its internal clustering frame as float32 even when the
+    # supplied discovery frame is float64. Refit the selected estimator on the
+    # declared full representation so fitted state and inference input dtypes
+    # are consistent, including when the bounded sample contains every row.
+    best.fit(numeric_frame)
 
     predictions = best.predict(numeric_frame)
     silhouette = silhouette_score(
