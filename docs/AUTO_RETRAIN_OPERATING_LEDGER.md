@@ -89,7 +89,13 @@ The records below prove behavior of the exact earlier revisions and jobs named i
 | Three-task rotation proof | Completed regression `heroic_pepper_pxnq07lm2s`, classification `sleepy_cheetah_wshcvqkwbs`, and clustering `good_nutmeg_7fm8xk8rgd` with clean display names prefixed `auto_retrain_rotation_`. |
 | `s14` planned schedule table | Downloaded `retrain_decision` and `decision_ledger_record` for all three rotation jobs; each table has 3 rows, exactly one current schedule, current schedule names match the approved catalog, and ledger metadata matches the decision payload table. |
 
-For the current revision, classification/regression/clustering SDK dry-runs passed, but the 2026-08-02 Azure canary was rejected before job creation by `ReadOnlyDisabledSubscription`. Exact-source Azure runtime acceptance remains blocked.
+The subscription blocker is closed. Exact-source classification, regression,
+and clustering canaries at `6447648a` completed with separate S13/S14 outputs,
+and the controller refused all three `should_submit=false` decisions before
+submission or ledger mutation. A 2026-09-03 live audit found the three named
+daily schedules below enabled and still running legacy static S1-S13 graphs.
+Those schedules are historical implementations, not compliant release
+automation, and require owner-approved disablement.
 
 ## Historical Three-Task Rotation Evidence
 

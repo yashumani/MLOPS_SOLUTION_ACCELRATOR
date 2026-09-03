@@ -22,3 +22,15 @@ async def verify_api_key(api_key: str = Depends(_header)) -> str:
             detail="Invalid or missing API key",
         )
     return api_key
+
+
+async def require_config_mutation_enabled() -> None:
+    """Refuse checkout mutation unless the deployment explicitly enables it."""
+    if not settings.api_config_mutation_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Config mutation is disabled for this deployment; use the "
+                "reviewed Git configuration workflow"
+            ),
+        )

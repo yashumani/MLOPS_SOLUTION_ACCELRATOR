@@ -121,8 +121,10 @@ Primary surfaces:
 
 ## Current Validation Notes
 
-- Current-checkout local tests and classification/regression/clustering Azure ML SDK graph dry-runs are preflight evidence only.
-- Workspace and compute inventory have current Azure read-plane evidence.
-- The current exact-source Azure canary was rejected before job creation by `ReadOnlyDisabledSubscription`; therefore the current revision has no Azure pipeline-runtime acceptance.
+- Current-checkout local tests and Azure ML SDK graph dry-runs remain preflight evidence only.
+- Subscription, workspace, compute, datastore, jobs, and registry have current Azure read-plane evidence.
+- Exact-source classification, regression, and clustering canaries at `6447648a` completed with exact registered-model smoke tests. Twelve industry scenarios remain unexecuted.
+- Three enabled legacy Azure schedules still build static S1-S13 graphs and bypass the active S14/controller ownership boundary.
+- The two workspace-default artifact datastores fail write/upload and SDK artifact-download probes because their stored account-key credentials are stale.
 - May 2026 drift and `s14` jobs in `AUTO_RETRAIN_OPERATING_LEDGER.md` are historical Azure evidence for earlier revisions, not current-source or deployed proof.
-- Registered raw-input model and deployed-inference acceptance remain separate and unproven for the current revision.
+- Deployed-inference acceptance remains separate and unproven.

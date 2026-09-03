@@ -18,7 +18,7 @@ export function Settings() {
           <div className="metric-card"><small>API base URL</small><strong>{config.apiBaseUrl}</strong></div>
           <div className="metric-card"><small>UI base URL</small><strong>{config.uiBaseUrl}</strong></div>
           <div className="metric-card"><small>Environment</small><strong>{config.environment}</strong></div>
-          <div className="metric-card"><small>API key mode</small><strong>{config.apiKey ? "Runtime config" : "In-memory prompt"}</strong></div>
+          <div className="metric-card"><small>API key storage</small><strong>In-memory session only</strong></div>
         </div>
         <button className="button secondary" onClick={() => setApiKey("")} type="button">Clear API key for this session</button>
       </section>

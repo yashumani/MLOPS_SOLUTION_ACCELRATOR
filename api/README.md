@@ -45,6 +45,17 @@ uvicorn api.main:app --host 127.0.0.1 --port 8000
 All `/api/v1/pipelines/*` and `/api/v1/configs/*` endpoints require an
 `X-API-Key` header matching the `API_KEY` environment variable.
 
+`API_DEPLOYMENT_PROFILE=development` preserves the local workflow. The only
+implemented release profile is `private_single_operator`: one private API
+process and one controller writer, explicit HTTPS origins, a server key of at
+least 32 characters, config mutation disabled, and absolute durable paths for
+submitter state, request records, retraining decisions, and notification
+reports. Startup rejects an unsafe private profile. `multi_user` fails closed
+until Entra/OIDC authorization and transactional shared state are implemented.
+
+The React UI never reads a key from Vite or public runtime configuration. The
+operator enters it for the in-memory browser session.
+
 ## Environment Variables
 
 See [`.env.example`](../.env.example) for the full list.

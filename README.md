@@ -46,6 +46,7 @@ python pipelines/submit_pipeline.py \
 ## Documentation
 
 - [Documentation index](docs/README.md)
+- [Current production release status](docs/PRODUCTION_RELEASE_STATUS_2026-09-03.md)
 - [Product requirements](docs/PROJECT_REQUIREMENTS.md)
 - [Pipeline stages](docs/PIPELINE_STAGES.md)
 - [Pipeline I/O contracts](docs/PIPELINE_IO_CONTRACTS.md)

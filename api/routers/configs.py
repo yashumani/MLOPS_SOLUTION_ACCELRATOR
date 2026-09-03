@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from api.core.security import verify_api_key
+from api.core.security import require_config_mutation_enabled, verify_api_key
 from api.schemas.config import (
     ConfigDetail,
     ConfigListResponse,
@@ -105,7 +105,12 @@ async def get_config(config_name: str):
         raise HTTPException(status_code=404, detail=str(exc))
 
 
-@router.post("/{config_name}", response_model=ConfigDetail, status_code=201)
+@router.post(
+    "/{config_name}",
+    response_model=ConfigDetail,
+    status_code=201,
+    dependencies=[Depends(require_config_mutation_enabled)],
+)
 async def create_config(config_name: str, body: ConfigWriteRequest):
     """Create a new config. Fails with 409 if it already exists."""
     try:
@@ -116,7 +121,11 @@ async def create_config(config_name: str, body: ConfigWriteRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.put("/{config_name}", response_model=ConfigDetail)
+@router.put(
+    "/{config_name}",
+    response_model=ConfigDetail,
+    dependencies=[Depends(require_config_mutation_enabled)],
+)
 async def update_config(config_name: str, body: ConfigWriteRequest):
     """Overwrite an existing config. Refused if a non-terminal job is using it."""
     _guard_no_running_jobs(config_name)
@@ -128,7 +137,10 @@ async def update_config(config_name: str, body: ConfigWriteRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.delete("/{config_name}")
+@router.delete(
+    "/{config_name}",
+    dependencies=[Depends(require_config_mutation_enabled)],
+)
 async def delete_config(config_name: str):
     """Delete a config. Refused if a non-terminal job is using it."""
     _guard_no_running_jobs(config_name)

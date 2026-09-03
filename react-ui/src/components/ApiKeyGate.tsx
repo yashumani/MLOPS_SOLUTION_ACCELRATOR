@@ -2,15 +2,13 @@ import { FormEvent, ReactNode, useMemo, useState } from "react";
 import { KeyRound } from "lucide-react";
 import { MLOpsApiClient } from "../services/apiClient";
 import { ApiContext } from "../services/ApiContext";
-import { getRuntimeConfig } from "../services/runtimeConfig";
 
 interface ApiKeyGateProps {
   children: ReactNode;
 }
 
 export function ApiKeyGate({ children }: ApiKeyGateProps) {
-  const runtimeConfig = getRuntimeConfig();
-  const [apiKey, setApiKey] = useState(runtimeConfig.apiKey);
+  const [apiKey, setApiKey] = useState("");
   const [draft, setDraft] = useState("");
   const api = useMemo(() => new MLOpsApiClient(apiKey), [apiKey]);
 

@@ -1,5 +1,8 @@
 # Production Release Status
 
+> Superseded by `PRODUCTION_RELEASE_STATUS_2026-09-03.md`. This file is retained
+> as the September 2 checkpoint and must not be used as current release state.
+
 Date: 2026-09-02  
 Branch: `codex_ys/mlops-pipeline-correctness`  
 Starting baseline: `eb739444f9d439b75232e0342f5d5c52ab86986c`  

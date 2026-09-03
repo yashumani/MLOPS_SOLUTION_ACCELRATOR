@@ -33,9 +33,10 @@ async def _experiments_warm_loop(preload_count: int, ttl_seconds: int) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings.validate_runtime_security()
+
     # Startup: eagerly create the ML client so first request is fast
     from api.core.azure_ml import get_ml_client
-    from api.core.config import settings
 
     try:
         get_ml_client()
@@ -150,6 +151,7 @@ async def root(request: Request):
         },
         "auth": {
             "header": "X-API-Key",
+            "deployment_profile": settings.api_deployment_profile,
             "note": "Required for all /api/v1/* routes except /api/v1/health and /healthz.",
         },
         "frontend": {

@@ -143,9 +143,11 @@ Set `registry.block_on_quality_fail: true` only when you intentionally want weak
 ## Current Auto-Retrain Status
 
 - Current-checkout classification, regression, and clustering SDK dry-runs passed, which proves graph construction only.
-- The 2026-08-02 exact-source Azure canary was rejected before job creation by `ReadOnlyDisabledSubscription`; current Azure runtime acceptance remains blocked.
+- Exact-source classification, regression, and clustering canaries at `6447648a` completed, including exact registered-model raw-input smoke tests.
+- Three legacy daily schedules bypass S14/controller policy and the two workspace-default artifact datastores fail authentication probes. Qualification remains paused pending owner-approved containment and repair.
+- Three of 15 industry scenarios are accepted; the other 12 passed canonical dry-run preflight but have not executed.
 - May 2026 first-cycle, second-cycle, and three-task rotation jobs in `AUTO_RETRAIN_OPERATING_LEDGER.md` are historical Azure evidence for earlier revisions.
-- No current-revision registered-model or deployed-inference claim follows from those historical jobs.
+- No deployed-inference claim follows from canary or historical job evidence.
 
 ## More Detail
 

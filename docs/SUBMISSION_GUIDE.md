@@ -173,7 +173,8 @@ az ml job download \
 ## Current Evidence
 
 - Current-checkout classification, regression, and clustering SDK dry-runs passed. This is graph-construction proof only.
-- The 2026-08-02 exact-source Azure canary was rejected before job creation by `ReadOnlyDisabledSubscription`; no current-revision Azure pipeline artifact exists.
+- Exact-source classification, regression, and clustering canaries at `6447648a` completed with downloaded pipeline artifacts and exact registered-model smoke tests.
+- Twelve qualification scenarios remain. Do not submit them until the legacy daily schedules are contained and the two workspace-default artifact datastores pass their recovery canary.
 - First-cycle, second-cycle, and `s14` jobs named elsewhere in the docs are historical May 2026 evidence for earlier revisions, not current-source or deployed proof.
 
 ## Troubleshooting
@@ -184,7 +185,8 @@ az ml job download \
 | Submission pauses before job name | NFS/code snapshot delay. | Wait; 10-12 minutes can be normal. |
 | Active job guard blocks submission | Same experiment has active job. | Wait or use audited `--force` only if intentional. |
 | `ModuleNotFoundError: pydash` before graph creation | Wrong local Python environment. | Use `/anaconda/envs/mlops_pipeline_v2/bin/python`. |
-| `ReadOnlyDisabledSubscription` | Azure subscription is disabled/read-only even if cached CLI state says enabled. | Restore billing/subscription state and verify a fresh ARM GET reports `Enabled` before retrying. |
+| `ReadOnlyDisabledSubscription` | Azure subscription is disabled/read-only even if cached CLI state says enabled. | Historical recovery path: restore billing/subscription state and verify a fresh ARM GET reports `Enabled`. The 2026-09-03 release check shows this blocker closed. |
+| Default output upload or artifact download reports signature mismatch | Stored credentials on `workspaceblobstore` or `workspaceartifactstore` are stale. | Obtain approval and follow `OPERATIONAL_RUNBOOKS/workspace-datastore-credential-recovery.md`; do not rotate storage keys. |
 | `comparison_drift.available=false` | No prior baseline provided or baseline invalid. | Supply approved `--drift_baseline_in`. |
 | `s14` absent from Studio | Job was submitted before `s14` graph change. | Submit a fresh run after graph update. |
 

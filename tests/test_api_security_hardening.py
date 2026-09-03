@@ -40,6 +40,74 @@ def test_verify_api_key_uses_configured_secret(monkeypatch):
     assert exc_info.value.status_code == 401
 
 
+def test_private_api_profile_accepts_only_hardened_single_operator_config(tmp_path):
+    from api.core.config import Settings
+
+    settings = Settings(
+        _env_file=None,
+        api_deployment_profile="private_single_operator",
+        api_key="x" * 32,
+        api_reload=False,
+        api_config_mutation_enabled=False,
+        cors_allow_origins="https://mlops-ui.example.test",
+        ui_base_url="https://mlops-ui.example.test",
+        mlops_state_dir=str(tmp_path / "submitter"),
+        mlops_submission_request_root=str(tmp_path / "requests"),
+        mlops_auto_retrain_ledger_root=str(tmp_path / "retrain"),
+        notification_report_dir=str(tmp_path / "notifications"),
+    )
+
+    settings.validate_runtime_security()
+
+
+def test_private_api_profile_rejects_unsafe_defaults():
+    from api.core.config import Settings
+
+    settings = Settings(
+        _env_file=None,
+        api_deployment_profile="private_single_operator",
+        api_key="short",
+    )
+
+    with pytest.raises(RuntimeError, match="Unsafe private_single_operator") as exc_info:
+        settings.validate_runtime_security()
+    message = str(exc_info.value)
+    assert "API_KEY" in message
+    assert "API_CONFIG_MUTATION_ENABLED" in message
+    assert "MLOPS_SUBMISSION_REQUEST_ROOT" in message
+
+
+def test_multi_user_api_profile_fails_closed():
+    from api.core.config import Settings
+
+    settings = Settings(_env_file=None, api_deployment_profile="multi_user")
+
+    with pytest.raises(RuntimeError, match="Entra/OIDC"):
+        settings.validate_runtime_security()
+
+
+def test_config_mutation_can_be_disabled_by_deployment(monkeypatch):
+    from api.core import security
+
+    monkeypatch.setattr(security.settings, "api_config_mutation_enabled", False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(security.require_config_mutation_enabled())
+    assert exc_info.value.status_code == 403
+
+
+def test_react_runtime_cannot_embed_backend_api_key():
+    repo_root = Path(__file__).resolve().parents[1]
+    runtime_source = (repo_root / "react-ui/src/services/runtimeConfig.ts").read_text()
+    public_config = (repo_root / "react-ui/public/runtime-config.js").read_text()
+    gate_source = (repo_root / "react-ui/src/components/ApiKeyGate.tsx").read_text()
+
+    assert "VITE_API_KEY" not in runtime_source
+    assert "runtime.apiKey" not in runtime_source
+    assert "apiKey:" not in public_config
+    assert "runtimeConfig.apiKey" not in gate_source
+
+
 def test_root_endpoint_returns_api_metadata():
     from fastapi.testclient import TestClient
 
@@ -125,6 +193,28 @@ def test_healthz_liveness_probe_returns_ok():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_application_lifespan_runs_runtime_security_validation(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.core import azure_ml
+    from api.core.config import settings
+    from api.main import app
+
+    validated: list[object] = []
+    monkeypatch.setattr(azure_ml, "get_ml_client", lambda: object())
+    monkeypatch.setattr(settings, "experiment_cache_enabled", False)
+    monkeypatch.setattr(
+        type(settings),
+        "validate_runtime_security",
+        lambda current: validated.append(current),
+    )
+
+    with TestClient(app) as client:
+        assert client.get("/healthz").status_code == 200
+
+    assert validated == [settings]
 
 
 def test_config_mutation_guard_fails_closed_when_status_check_fails(monkeypatch):

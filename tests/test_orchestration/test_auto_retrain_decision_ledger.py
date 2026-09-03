@@ -1,5 +1,6 @@
 import pytest
 
+from orchestration import auto_retrain_decision_ledger as ledger
 from orchestration.auto_retrain_decision_ledger import (
     DecisionReservationConflict,
     append_decision_record,
@@ -159,3 +160,86 @@ def test_candidate_reservation_requires_submitting_status(tmp_path):
 
     with pytest.raises(ValueError, match="submitting"):
         reserve_candidate_submission(ledger_path, pending)
+
+
+def test_ledger_retries_windows_permission_error_for_existing_lock(monkeypatch, tmp_path):
+    ledger_path = tmp_path / "auto_retrain_decisions.jsonl"
+    lock_path = ledger_path.with_name(ledger_path.name + ".lock")
+    record = build_decision_record(
+        config_name="config_regression_college_azureml",
+        task_type="regression",
+        dataset_name="college",
+        decision={"outcome": "refresh_baseline"},
+    )
+    real_open = ledger.os.open
+    injected = False
+
+    def windows_open(path, flags, mode=0o777):
+        nonlocal injected
+        if not injected and str(path).endswith(".lock"):
+            injected = True
+            lock_path.write_text("{}", encoding="utf-8")
+            raise PermissionError(13, "simulated Windows lock contention", path)
+        return real_open(path, flags, mode)
+
+    def release_contended_lock(_seconds):
+        lock_path.unlink(missing_ok=True)
+
+    monkeypatch.setattr(ledger.os, "open", windows_open)
+    monkeypatch.setattr(ledger.time, "sleep", release_contended_lock)
+
+    append_decision_record(ledger_path, record)
+
+    assert injected is True
+    assert len(load_decision_records(ledger_path)) == 1
+    assert not lock_path.exists()
+
+
+def test_ledger_retries_windows_permission_error_when_lock_disappears(monkeypatch, tmp_path):
+    ledger_path = tmp_path / "auto_retrain_decisions.jsonl"
+    record = build_decision_record(
+        config_name="config_regression_college_azureml",
+        task_type="regression",
+        dataset_name="college",
+        decision={"outcome": "refresh_baseline"},
+    )
+    real_open = ledger.os.open
+    injected = False
+
+    def windows_open(path, flags, mode=0o777):
+        nonlocal injected
+        if not injected and str(path).endswith(".lock"):
+            injected = True
+            raise PermissionError(13, "simulated released Windows lock", path)
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(ledger.os, "open", windows_open)
+
+    append_decision_record(ledger_path, record)
+
+    assert injected is True
+    assert len(load_decision_records(ledger_path)) == 1
+
+
+def test_ledger_surfaces_persistent_permission_error(monkeypatch, tmp_path):
+    ledger_path = tmp_path / "auto_retrain_decisions.jsonl"
+    record = build_decision_record(
+        config_name="config_regression_college_azureml",
+        task_type="regression",
+        dataset_name="college",
+        decision={"outcome": "refresh_baseline"},
+    )
+    attempts = 0
+
+    def denied_open(path, flags, mode=0o777):
+        nonlocal attempts
+        attempts += 1
+        raise PermissionError(13, "simulated directory permission failure", path)
+
+    monkeypatch.setattr(ledger.os, "open", denied_open)
+    monkeypatch.setattr(ledger.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(PermissionError, match="simulated directory permission failure"):
+        append_decision_record(ledger_path, record)
+
+    assert attempts == 20

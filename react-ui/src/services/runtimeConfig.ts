@@ -2,7 +2,6 @@ export interface RuntimeConfig {
   apiBaseUrl: string;
   uiBaseUrl: string;
   environment: string;
-  apiKey: string;
 }
 
 declare global {
@@ -17,7 +16,6 @@ export function getRuntimeConfig(): RuntimeConfig {
     apiBaseUrl:
       runtime.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000",
     uiBaseUrl: runtime.uiBaseUrl ?? import.meta.env.VITE_UI_BASE_URL ?? window.location.origin,
-    environment: runtime.environment ?? import.meta.env.VITE_ENV ?? "dev",
-    apiKey: runtime.apiKey ?? import.meta.env.VITE_API_KEY ?? ""
+    environment: runtime.environment ?? import.meta.env.VITE_ENV ?? "dev"
   };
 }

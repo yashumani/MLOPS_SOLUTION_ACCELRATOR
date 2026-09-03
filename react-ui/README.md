@@ -25,9 +25,10 @@ Open the Azure ML application proxy URL:
 https://mlopspipelinev2-8501.eastus2.instances.azureml.ms/
 ```
 
-The app prompts for the API key if `runtime-config.js` does not provide one.
-For production, use a proper auth or backend-for-frontend layer rather than
-embedding a static API key in the browser bundle.
+The app always prompts for the API key and keeps it only in React memory for the
+current browser session. `runtime-config.js` and Vite build variables must never
+carry the backend credential. Public or multi-user production requires proper
+Entra/OIDC authentication rather than a shared browser-entered key.
 
 For Azure ML application proxy access, `public/runtime-config.js` leaves
 `apiBaseUrl` empty. Browser API calls stay on the UI origin (`/api/...`) and the

@@ -193,6 +193,7 @@ def _ledger_lock(path: Path):
     lock_path = path.with_name(path.name + ".lock")
     token = str(uuid4())
     deadline = time.monotonic() + LEDGER_LOCK_TIMEOUT_SECONDS
+    missing_lock_permission_errors = 0
     while True:
         try:
             descriptor = os.open(
@@ -214,16 +215,38 @@ def _ledger_lock(path: Path):
                 handle.flush()
                 os.fsync(handle.fileno())
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError) as exc:
+            # Windows can report EACCES rather than EEXIST while another
+            # process owns an O_EXCL lock file. A successful stat confirms
+            # contention; a missing lock preserves genuine directory errors.
             try:
-                age = time.time() - lock_path.stat().st_mtime
-                if age > LEDGER_LOCK_STALE_SECONDS:
-                    lock_path.unlink()
-                    continue
+                lock_stat = lock_path.stat()
             except FileNotFoundError:
+                if isinstance(exc, PermissionError):
+                    missing_lock_permission_errors += 1
+                    if missing_lock_permission_errors >= 20:
+                        raise exc
+                    time.sleep(0.01)
                 continue
+            except PermissionError:
+                lock_stat = None
+            missing_lock_permission_errors = 0
+            if (
+                lock_stat is not None
+                and time.time() - lock_stat.st_mtime > LEDGER_LOCK_STALE_SECONDS
+            ):
+                try:
+                    lock_path.unlink()
+                except FileNotFoundError:
+                    continue
+                except PermissionError:
+                    pass
+                else:
+                    continue
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"Timed out waiting for decision ledger lock: {lock_path}")
+                raise TimeoutError(
+                    f"Timed out waiting for decision ledger lock: {lock_path}"
+                ) from exc
             time.sleep(0.05)
     try:
         yield

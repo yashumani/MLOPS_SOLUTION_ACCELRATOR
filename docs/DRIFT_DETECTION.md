@@ -2,7 +2,7 @@
 
 > **Branch:** `codex_ys/mlops-pipeline-correctness`
 > **Step IDs:** `s13` (drift monitor) and `s14` (retrain decision gate)
-> **Feature Status:** Implemented and wired in source; current exact-source Azure pipeline acceptance is pending.
+> **Feature Status:** Implemented and wired; representative exact-source Azure acceptance passed for all three task types, while full matrix and compliant schedule deployment remain pending.
 > **Current posture:** Drift alerts are non-blocking by default. `s13` emits drift and baseline artifacts, `s14` emits retrain decision artifacts, and Azure ML submission remains behind an explicit controller gate. The external controller resolves approved baselines and builds canonical submissions, while model promotion remains manual.
 
 ## Configured Thresholds
@@ -490,7 +490,12 @@ Historical Azure finding (May 2026): Azure ML job metadata can omit `outputs.dri
 
 Historical second-cycle proof completed on 2026-05-16 with regression job `loyal_owl_0h0rz9krcn`. That earlier revision combined policy/trigger fields inside `drift_report`; the active contract no longer does so. The job remains baseline-comparison history, not current-source S13/S14 or deployment proof.
 
-Current classification, regression, and clustering canonical SDK dry-runs emit separate `s13` and `s14` artifacts. An exact-source Azure canary attempted on 2026-08-02 was rejected before job creation by `ReadOnlyDisabledSubscription`; no current-revision Azure runtime claim is valid until that external blocker is cleared and outputs are downloaded.
+Current classification, regression, and clustering exact-source canaries at
+`6447648a` completed with separate `s13` and `s14` artifacts. Each current S14
+decision was `refresh_baseline` with `should_submit=false`, and the external
+controller correctly refused submission without mutating its ledger. Three
+enabled legacy Azure schedules remain noncompliant: they execute static S1-S13
+graphs without S14 or the controller and must be disabled before release.
 
 The controller entrypoint is `scripts/run_auto_retrain_controller.py`. It resolves the latest approved baseline from the JSONL decision ledger, checks for active jobs, builds the canonical `pipelines/submit_pipeline.py` command, and appends a pending decision record only after a successful submit.
 

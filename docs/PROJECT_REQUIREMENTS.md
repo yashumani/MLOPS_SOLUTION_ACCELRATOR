@@ -1,6 +1,6 @@
 # Project Requirements
 
-Current as of: 2026-08-02
+Current as of: 2026-09-03
 
 This document adapts the workspace requirement notes into the active V3 product contract. Older workspace notes mention forecasting, a 13-step `s00`-`s12` pipeline, and fixed recipe counts; those claims are not authoritative for the current repository. The active graph ends at `s14`; `s00`, `s05t`, `s07`, and `s11` are reserved, legacy, or inactive.
 
@@ -163,14 +163,18 @@ Acceptance:
 
 | Evidence level | Current status | What it proves |
 |---|---|---|
-| Local unit/contract tests | Passed on the current working tree | Python contracts and focused behavior only; no Azure runtime proof. |
-| Azure ML SDK graph dry-runs | Classification, regression, and clustering graph builds passed | Config compilation, component loading, and DAG construction only. |
-| Azure read plane | Workspace and compute inventory were readable | Resource existence and compute configuration only. |
-| Exact-source Azure pipeline | Blocked before job creation by `ReadOnlyDisabledSubscription` | No current-revision pipeline-runtime acceptance exists. |
-| Registered raw-input model | Not proven for the current revision | Requires an exact-source successful job plus bundle download/registration checks. |
+| Local unit/contract tests | Current branch passes the non-Azure CI-equivalent suite | Python contracts and focused behavior only; no additional Azure runtime proof. |
+| Azure ML SDK graph dry-runs | All 15 qualification scenarios build; 12 pending scenarios passed the canonical dry-run | Config compilation, component loading, and DAG construction only. |
+| Azure read plane | Subscription, workspace, compute, datastore, jobs, and registry are readable | Resource availability only. |
+| Exact-source Azure pipeline | Classification, regression, and clustering canaries completed at `6447648a`; 12 scenarios remain | Representative runtime acceptance exists; full five-industry coverage does not. |
+| Registered raw-input model | Exact numeric-version smoke tests passed for all three representative canaries | Registration and raw-input loading for those exact runs only. |
 | Deployed inference | Not proven | Requires a separately deployed endpoint and bounded inference verification. |
 
-May 2026 drift and `s14` job records are historical Azure evidence for earlier revisions. They remain useful operating history but do not close current-source Azure, registered-model, or deployed-inference acceptance.
+The former subscription blocker is closed. Current release blockers are the three
+enabled legacy schedules that bypass `s14`, stale credentials on the two
+workspace-default artifact datastores, the remaining 12 qualification
+scenarios, the production API topology decision, and final deployment/promotion
+approval. See `PRODUCTION_RELEASE_STATUS_2026-09-03.md`.
 
 ## Documentation Requirements
 

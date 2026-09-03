@@ -1,6 +1,6 @@
 # V3 Operational Documentation
 
-Current as of: 2026-08-02
+Current as of: 2026-09-03
 Repository: `SAVYMINDS/YS_MVP`
 Branch: `codex_ys/mlops-pipeline-correctness`
 
@@ -12,6 +12,7 @@ Important placement note: `docs/` is excluded from Azure ML code uploads by `.am
 
 | Need | Document |
 |---|---|
+| See the current release decision, blockers, and critical path | `PRODUCTION_RELEASE_STATUS_2026-09-03.md` |
 | Understand the active pipeline architecture | `design_overview.md` |
 | Understand every pipeline stage and function | `PIPELINE_STAGES.md` |
 | Understand component inputs, outputs, and artifacts | `PIPELINE_IO_CONTRACTS.md` |
@@ -24,6 +25,7 @@ Important placement note: `docs/` is excluded from Azure ML code uploads by `.am
 
 | Document | Purpose |
 |---|---|
+| `PRODUCTION_RELEASE_STATUS_2026-09-03.md` | Current verified release gates, blocker impact, owner actions, and critical path. |
 | `PIPELINE_STAGES.md` | Stage-by-stage guide for `s01` through terminal `s14`, with `s00`, `s07`, and `s11` marked inactive/reserved. |
 | `PIPELINE_IO_CONTRACTS.md` | Pipeline-level inputs/outputs, stage artifacts, drift baseline contract, and retrain decision ledger shape. |
 | `CONFIGURATION_REFERENCE.md` | Config sections, task isolation, recipe rules, Phase A/B/C settings, registry gates, and drift baseline chaining. |
@@ -73,14 +75,17 @@ Current terminal step: `s14` retrain decision gate.
 
 | Proof level | Current status |
 |---|---|
-| Local unit/contract tests | Current-checkout preflight only; not Azure proof. |
-| Azure ML SDK dry-runs | Classification, regression, and clustering graph construction passed; no job execution. |
-| Azure read plane | Workspace and compute inventory were readable. |
-| Exact-source Azure pipeline | Blocked before job creation by `ReadOnlyDisabledSubscription`; no current-revision Azure runtime proof. |
-| Registered model | No current-revision raw-input registration proof. |
+| Local unit/contract tests | Current branch passes the non-Azure CI-equivalent suite; not additional Azure proof. |
+| Azure ML SDK dry-runs | All 15 scenarios build; the 12 pending scenarios pass canonical dry-run preflight. |
+| Azure read plane | Subscription, workspace, compute, datastore, jobs, and registry are readable. |
+| Exact-source Azure pipeline | Three task canaries completed at `6447648a`; 12 industry scenarios remain. |
+| Registered model | Exact numeric-version raw-input smoke tests pass for all three task canaries. |
 | Deployed inference | No current-revision endpoint proof. |
 
-Named May 2026 drift and rotation jobs in the operating ledger are historical Azure evidence for earlier revisions. They must not be presented as proof for the current dirty checkout or any deployment.
+Named May 2026 drift and rotation jobs in the operating ledger remain historical.
+Three live legacy schedules, stale workspace-default datastore credentials, the
+remaining matrix, API topology, and deployment approval are active release
+gates. See `PRODUCTION_RELEASE_STATUS_2026-09-03.md`.
 
 ## Documentation Rules
 

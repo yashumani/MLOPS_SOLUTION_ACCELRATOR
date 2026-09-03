@@ -110,11 +110,13 @@ Review:
 | Promote candidate model | Final evaluation evidence, registry evidence, manual approval. |
 | Block action | Missing baseline, invalid report, active job guard, failed quality gate, or task-specific warning. |
 
-## Historical Azure State And Current Blocker
+## Azure State And Current Blockers
 
 - May 2026 first-cycle, second-cycle, and `s14` rotation jobs are historical evidence for their exact earlier revisions.
 - Their downloaded schedule tables describe planned schedules; they are not proof of current Azure schedule state.
-- Current-checkout SDK dry-runs passed, but the 2026-08-02 exact-source canary was rejected before job creation by `ReadOnlyDisabledSubscription`.
+- Exact-source classification, regression, and clustering canaries at `6447648a` completed with S13/S14 evidence and exact registered-model smoke tests.
+- A live 2026-09-03 audit found all three legacy daily schedules enabled. Each runs a static S1-S13 graph and bypasses S14/controller policy. Disable, do not delete, these schedules after explicit owner approval.
+- The two workspace-default artifact datastores have stale stored account-key credentials. Complete their bounded recovery canary before qualification resumes.
 - Do not approve a historical baseline for current reuse without exact model/data/config/code identity review.
 
 ## Do Not
