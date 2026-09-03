@@ -36,7 +36,9 @@ monitoring the same job handles.
 Parent completion is only the first acceptance gate. Download and validate the
 execution, split, final evaluation, quality, registration, drift, and S14
 artifacts, then run registered-model inference against the exact numeric model
-version before accepting the scenario.
+version before accepting the scenario. Use
+`OPERATIONAL_RUNBOOKS/qualification_evidence.md` to bind those outputs into a
+fail-closed scenario or full-matrix acceptance report.
 
 ## Check Parent Job
 

@@ -32,7 +32,7 @@ Important placement note: `docs/` is excluded from Azure ML code uploads by `.am
 | `SUBMISSION_GUIDE.md` | Canonical `submit_pipeline.py` usage, dry-run, baseline-chained submissions, monitoring, downloads, and troubleshooting. |
 | `PROJECT_REQUIREMENTS.md` | Current functional and non-functional requirements adapted from workspace notes and corrected for the active `s14` graph. |
 | `AUTO_RETRAIN_OPERATING_LEDGER.md` | Safe auto-retrain architecture, current Azure evidence, ledger rules, controller flow, and next validation. |
-| `OPERATIONAL_RUNBOOKS/` | Operator runbooks for monitoring jobs, resubmitting failed runs, and auto-retrain operations. |
+| `OPERATIONAL_RUNBOOKS/` | Operator runbooks for monitoring jobs, qualification evidence, resubmitting failed runs, and auto-retrain operations. |
 
 ## Supporting Production Docs
 
