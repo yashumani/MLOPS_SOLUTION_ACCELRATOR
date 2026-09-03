@@ -11,7 +11,7 @@ Azure environment: `azureml:mlops-v3-unified:33`
 Status: **not production-release ready**.
 
 The source contracts and Release Candidate CI pass at code release candidate
-`e82f42d6`. The unified Azure runtime, immutable 15-scenario catalog, and one
+`327a6d4e`. The unified Azure runtime, immutable 15-scenario catalog, and one
 complete Azure canary per task type also pass. The remaining release path is
 blocked by two owner-approved workspace actions, 12 unexecuted industry
 scenarios, the API/retraining deployment decisions, and final production
@@ -25,13 +25,14 @@ review. Azure ML compute owns model execution.
 
 | Gate | Evidence | State |
 | --- | --- | --- |
-| Source publication and CI | Fork code candidate `e82f42d6`; GitHub run `33779003942` | Backend and React jobs passed |
-| Current source validation | Non-Azure CI-equivalent backend suite: 527 passed; focused API/security/state suite: 73 passed | Passed locally and in hosted CI |
+| Source publication and CI | Fork code candidate `327a6d4e`; GitHub run `33782215205` | Backend and React jobs passed |
+| Current source validation | Non-Azure CI-equivalent backend suite: 543 passed; focused API/security/state suite: 73 passed | Passed locally and in hosted CI |
 | React UI | Five tests, TypeScript lint, and production build | Passed locally and in hosted CI |
+| Qualification batch monitoring | Canonical submission JSON, fail-closed status/timeout semantics, structured evidence, and read-only smoke against three accepted Azure parents | Passed |
 | Azure access | Subscription, workspace, compute, datastore, jobs, and model registry readable | Passed |
 | Runtime | `mlops-v3-unified:33` on `mlopsv2computecluster` | Passed |
 | Qualification catalog | Five industries each for classification, regression, and clustering | Passed |
-| Exact-head graph preflight | All 15 scenarios pass canonical `--dry_run` at `e82f42d6`; submitted count is zero | Passed |
+| Exact-head graph preflight | All 15 scenarios pass canonical `--dry_run` at `327a6d4e`; submitted count is zero | Passed |
 | Classification canary | `clever_parsnip_bkxp5z6gl6`; model version 4; smoke `jolly_honey_b8p6z98b67` | Passed |
 | Regression canary | `goofy_planet_yz78rj7tqz`; model version 3; smoke `goofy_toe_wp29x5h9vy` | Passed |
 | Clustering canary | `joyful_pumpkin_f4cm3x626m`; model version 1; smoke `jovial_mangos_bchzbq8qj1` | Passed |
@@ -138,9 +139,10 @@ focused immutable reruns extend that estimate.
 
 The release evidence bundle is stored outside the source tree at:
 
-`snapshots/mlops-v33-final-preflight/e82f42d6/`
+`snapshots/mlops-v33-final-preflight/327a6d4e/`
 
-The exact-head directory contains the 15 canonical dry-run logs and summary.
+The exact-head directory contains the 15 canonical dry-run logs and summary,
+plus the qualification-monitor smoke evidence for the three accepted parents.
 The accepted Azure canary, data-asset, schedule, datastore, controller, queue,
 and owner-action evidence remains indexed under the qualified runtime evidence
 directory `snapshots/mlops-v33-final-preflight/6447648a/`.
