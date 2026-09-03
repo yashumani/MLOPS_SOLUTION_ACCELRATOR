@@ -10,11 +10,12 @@ Azure environment: `azureml:mlops-v3-unified:33`
 
 Status: **not production-release ready**.
 
-The source contracts, Release Candidate CI at qualified SHA `6447648a`, unified
-Azure runtime, immutable 15-scenario catalog, and one complete Azure canary per
-task type pass. The remaining release path is blocked by two owner-approved
-workspace actions, 12 unexecuted industry scenarios, the API/retraining
-deployment decisions, and final production approval.
+The source contracts and Release Candidate CI pass at code release candidate
+`e82f42d6`. The unified Azure runtime, immutable 15-scenario catalog, and one
+complete Azure canary per task type also pass. The remaining release path is
+blocked by two owner-approved workspace actions, 12 unexecuted industry
+scenarios, the API/retraining deployment decisions, and final production
+approval.
 
 No model training or dataset-scale processing was run locally. Local validation
 is limited to unit/contract tests, graph compilation, UI checks, and source
@@ -24,19 +25,23 @@ review. Azure ML compute owns model execution.
 
 | Gate | Evidence | State |
 | --- | --- | --- |
-| Source publication and CI | Fork branch at `6447648a`; GitHub run `33710595921` | Passed for the qualified runtime SHA |
-| Current source validation | Non-Azure CI-equivalent backend suite: 525 passed; focused API/security/state suite: 71 passed | Passed locally; hosted CI required after commit |
-| React UI | Five tests, TypeScript lint, and production build | Passed locally; hosted CI required after commit |
+| Source publication and CI | Fork code candidate `e82f42d6`; GitHub run `33779003942` | Backend and React jobs passed |
+| Current source validation | Non-Azure CI-equivalent backend suite: 527 passed; focused API/security/state suite: 73 passed | Passed locally and in hosted CI |
+| React UI | Five tests, TypeScript lint, and production build | Passed locally and in hosted CI |
 | Azure access | Subscription, workspace, compute, datastore, jobs, and model registry readable | Passed |
 | Runtime | `mlops-v3-unified:33` on `mlopsv2computecluster` | Passed |
 | Qualification catalog | Five industries each for classification, regression, and clustering | Passed |
-| Pending graph preflight | All 12 pending scenarios pass canonical `--dry_run` and immutable config/data audits | Passed |
+| Exact-head graph preflight | All 15 scenarios pass canonical `--dry_run` at `e82f42d6`; submitted count is zero | Passed |
 | Classification canary | `clever_parsnip_bkxp5z6gl6`; model version 4; smoke `jolly_honey_b8p6z98b67` | Passed |
 | Regression canary | `goofy_planet_yz78rj7tqz`; model version 3; smoke `goofy_toe_wp29x5h9vy` | Passed |
 | Clustering canary | `joyful_pumpkin_f4cm3x626m`; model version 1; smoke `jovial_mangos_bchzbq8qj1` | Passed |
 | S14/controller refusal | All three `should_submit=false` decisions refused before submission or ledger mutation | Passed |
 | Full industry matrix | Three accepted; 12 not executed | Incomplete |
 | Production endpoint/promotion | No approval and no production action | Intentionally stopped |
+
+A read-only refresh after CI confirmed all three schedules remain enabled. It
+also confirmed `workspaceblobstore` and `workspaceartifactstore` retain their
+June 16, 2025 AccountKey records; no repair was applied.
 
 ## Active Blockers By Impact
 
@@ -133,9 +138,9 @@ focused immutable reruns extend that estimate.
 
 The release evidence bundle is stored outside the source tree at:
 
-`snapshots/mlops-v33-final-preflight/6447648a/`
+`snapshots/mlops-v33-final-preflight/e82f42d6/`
 
-It includes pipeline and registered-model evidence for all three canaries,
-canonical dry-run and data-asset audits for the remaining 12 scenarios, live
-schedule and legacy-runtime audits, the datastore probe, controller refusal
-evidence, the six-wave execution queue, and owner action instructions.
+The exact-head directory contains the 15 canonical dry-run logs and summary.
+The accepted Azure canary, data-asset, schedule, datastore, controller, queue,
+and owner-action evidence remains indexed under the qualified runtime evidence
+directory `snapshots/mlops-v33-final-preflight/6447648a/`.
