@@ -2044,8 +2044,11 @@ def train_pycaret_variant(
                 verbose=False,
             )
             leaderboard = pull()
-            if selection_rows < len(df_cluster):
-                best_model.fit(df_cluster)
+            # PyCaret may retain float32 fitted state even though the declared
+            # variant representation is float64. Always refit on that complete
+            # representation so the bundled estimator and preprocessor agree
+            # during locked-test and registered-model inference.
+            best_model.fit(df_cluster)
             actual_runtime = time.time() - start_time
             timed_out = actual_runtime > time_budget
             silhouette_column = next(
