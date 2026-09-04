@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
+from azure.core.exceptions import ResourceNotFoundError
 
 from orchestration import automated_retrain_controller as controller
 from orchestration.auto_retrain_controller import AzureSubmissionContext
@@ -155,6 +156,57 @@ def test_discovery_is_ordered_bounded_and_experiment_scoped(scenario):
     assert controller.discover_completed_runs(scenario.client, scenario.context, "watched", now=scenario.now, max_age_seconds=86400) == ["parent"]
     assert calls[0][0] == ("sub", "rg", "ws", "watched")
     assert calls[0][1].order_by == "endTimeUtc desc"
+
+
+def test_discovery_supports_item_paged_responses(scenario):
+    class Pages:
+        def __init__(self):
+            self.continuation_token = None
+            self._pages = iter([
+                ([SimpleNamespace(run_id="parent", status="Completed", parent_run_id=None, end_time_utc=scenario.now)], "next"),
+                ([SimpleNamespace(run_id="child", status="Completed", parent_run_id="parent", end_time_utc=scenario.now-timedelta(minutes=1))], None),
+            ])
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            page, self.continuation_token = next(self._pages)
+            return iter(page)
+
+    class Paged:
+        def by_page(self):
+            return Pages()
+
+    query = lambda *args, **kwargs: Paged()
+    scenario.client.jobs._runs_operations = SimpleNamespace(_operation=SimpleNamespace(get_by_query_by_experiment_name=query))
+    assert controller.discover_completed_runs(
+        scenario.client, scenario.context, "watched", now=scenario.now,
+        max_age_seconds=86400,
+    ) == ["parent"]
+
+
+def test_discovery_treats_only_missing_experiment_as_empty(scenario):
+    missing = ResourceNotFoundError("Experiment watched not found in workspace ws")
+    missing.status_code = 404
+    scenario.client.jobs._runs_operations = SimpleNamespace(
+        _operation=SimpleNamespace(get_by_query_by_experiment_name=lambda *args, **kwargs: (_ for _ in ()).throw(missing))
+    )
+    assert controller.discover_completed_runs(
+        scenario.client, scenario.context, "watched", now=scenario.now,
+        max_age_seconds=86400,
+    ) == []
+
+    unrelated = ResourceNotFoundError("Workspace ws not found")
+    unrelated.status_code = 404
+    scenario.client.jobs._runs_operations = SimpleNamespace(
+        _operation=SimpleNamespace(get_by_query_by_experiment_name=lambda *args, **kwargs: (_ for _ in ()).throw(unrelated))
+    )
+    with pytest.raises(ResourceNotFoundError, match="Workspace ws not found"):
+        controller.discover_completed_runs(
+            scenario.client, scenario.context, "watched", now=scenario.now,
+            max_age_seconds=86400,
+        )
 
 
 def test_scan_limit_never_silently_truncates(scenario):

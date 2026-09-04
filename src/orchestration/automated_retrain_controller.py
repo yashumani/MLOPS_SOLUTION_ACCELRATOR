@@ -41,6 +41,7 @@ def utc_timestamp(value: Any) -> datetime:
 def discover_completed_runs(client, context: AzureSubmissionContext, experiment: str, *, now: datetime, max_age_seconds: int, max_runs: int = 200) -> list[str]:
     """Use the existing Run History SDK adapter; never truncate silently."""
     from azure.ai.ml._restclient.runhistory.models import QueryParams
+    from azure.core.exceptions import ResourceNotFoundError
 
     operation = client.jobs._runs_operations._operation
     continuation = None
@@ -49,21 +50,18 @@ def discover_completed_runs(client, context: AzureSubmissionContext, experiment:
     scanned = 0
     previous_end: datetime | None = None
     cutoff = now - timedelta(seconds=max_age_seconds)
-    while True:
-        response = operation.get_by_query_by_experiment_name(
-            context.subscription_id, context.resource_group, context.workspace_name, experiment,
-            body=QueryParams(filter="status eq 'Completed'", order_by="endTimeUtc desc", top=min(100, max_runs), continuation_token=continuation),
-            connection_timeout=10, read_timeout=30,
-        )
-        if response.value is None:
+
+    def consume(runs) -> bool:
+        nonlocal scanned, previous_end
+        if runs is None:
             raise RuntimeError("Run History returned no run collection")
-        for run in response.value:
+        for run in runs:
             ended = utc_timestamp(run.end_time_utc)
             if previous_end is not None and ended > previous_end:
                 raise RuntimeError("Run History ordering could not be verified")
             previous_end = ended
             if ended < cutoff:
-                return names
+                return True
             scanned += 1
             if scanned > max_runs:
                 raise RuntimeError("Recent-run scan limit exceeded; no submissions permitted")
@@ -71,14 +69,54 @@ def discover_completed_runs(client, context: AzureSubmissionContext, experiment:
                 if not run.run_id or run.status != "Completed":
                     raise RuntimeError("Invalid completed parent in Run History")
                 names.append(run.run_id)
-        continuation = response.continuation_token
-        if not continuation:
-            return names
-        if continuation in seen_tokens:
-            raise RuntimeError("Run History repeated a continuation token")
-        seen_tokens.add(continuation)
-        if len(seen_tokens) >= 10:
-            raise RuntimeError("Run History page limit exceeded")
+        return False
+
+    def query(token=None):
+        return operation.get_by_query_by_experiment_name(
+            context.subscription_id, context.resource_group, context.workspace_name, experiment,
+            body=QueryParams(filter="status eq 'Completed'", order_by="endTimeUtc desc", top=min(100, max_runs), continuation_token=token),
+            connection_timeout=10, read_timeout=30,
+        )
+
+    try:
+        response = query()
+        if not hasattr(response, "value") and hasattr(response, "by_page"):
+            pages = response.by_page()
+            if not hasattr(pages, "continuation_token"):
+                raise RuntimeError("Run History page iterator has no continuation token")
+            while True:
+                try:
+                    page = next(pages)
+                except StopIteration:
+                    return names
+                if consume(page):
+                    return names
+                continuation = pages.continuation_token
+                if not continuation:
+                    return names
+                if continuation in seen_tokens:
+                    raise RuntimeError("Run History repeated a continuation token")
+                seen_tokens.add(continuation)
+                if len(seen_tokens) >= 10:
+                    raise RuntimeError("Run History page limit exceeded")
+
+        while True:
+            if consume(response.value):
+                return names
+            continuation = response.continuation_token
+            if not continuation:
+                return names
+            if continuation in seen_tokens:
+                raise RuntimeError("Run History repeated a continuation token")
+            seen_tokens.add(continuation)
+            if len(seen_tokens) >= 10:
+                raise RuntimeError("Run History page limit exceeded")
+            response = query(continuation)
+    except ResourceNotFoundError as exc:
+        missing = f"experiment {experiment} not found in workspace {context.workspace_name}".casefold()
+        if getattr(exc, "status_code", None) == 404 and missing in str(exc).casefold():
+            return []
+        raise
 
 
 def _observe(job_name: str, config_name: str, status: str, **details) -> dict:
