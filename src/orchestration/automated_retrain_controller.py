@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 from dataclasses import dataclass, replace
@@ -110,7 +111,7 @@ def validate_source_job(job, target: WatchTarget, payload: dict, *, now: datetim
         raise AutoRetrainControllerError("S14 decision is stale, future-dated, or predates its source job")
 
 
-def process_source_job(client, target: WatchTarget, job_name: str, *, context: AzureSubmissionContext, ledger: Path, execute: bool = False, max_age_seconds: int = 86400, timeout_seconds: int = 3600, now: datetime | None = None) -> dict:
+def process_source_job(client, target: WatchTarget, job_name: str, *, context: AzureSubmissionContext, ledger: Path, execute: bool = False, max_age_seconds: int = 86400, timeout_seconds: int = 3600, now: datetime | None = None, credential_mode: str | None = None) -> dict:
     """Evaluate one downloaded S14; the ledger serializes competing controllers."""
     now = now or datetime.now(timezone.utc)
     job = client.jobs.get(job_name)
@@ -147,7 +148,11 @@ def process_source_job(client, target: WatchTarget, job_name: str, *, context: A
         result_path = folder / "submission-result.json"
         command = [*plan.command, "--result_json", str(result_path)]
         try:
-            result = subprocess.run(command, cwd=str(REPO_ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, shell=False, timeout=timeout_seconds)
+            child_environment = None
+            if credential_mode:
+                child_environment = dict(os.environ)
+                child_environment["MLOPS_AZURE_CREDENTIAL_MODE"] = credential_mode
+            result = subprocess.run(command, cwd=str(REPO_ROOT), env=child_environment, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, shell=False, timeout=timeout_seconds)
             if result.returncode != 0:
                 raise RuntimeError(f"Canonical submitter returned {result.returncode}")
             submitted = json.loads(result_path.read_text(encoding="utf-8"))

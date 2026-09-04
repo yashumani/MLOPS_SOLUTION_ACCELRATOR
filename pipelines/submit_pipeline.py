@@ -21,11 +21,6 @@ from azure.core.exceptions import (
     ServiceRequestError,
     ServiceResponseError,
 )
-from azure.identity import (
-    ChainedTokenCredential,
-    ManagedIdentityCredential,
-    AzureCliCredential,
-)
 import yaml
 
 # Direct CLI execution puts ``pipelines/`` on sys.path, not the repository's
@@ -37,6 +32,8 @@ for _import_root in (_BOOTSTRAP_REPO_ROOT, _BOOTSTRAP_SRC_ROOT):
     _import_root_text = str(_import_root)
     if _import_root_text not in sys.path:
         sys.path.insert(0, _import_root_text)
+
+from utils.azure_helper import get_ml_client, resolve_credential_mode
 
 # Module logger — used for non-fatal warnings instead of bare except: pass
 logger = logging.getLogger("submit_pipeline")
@@ -1720,6 +1717,11 @@ def main():
         default_datastore=default_datastore,
         force_rerun=args.force_rerun,
     )
+    credential_mode = resolve_credential_mode()
+    if credential_mode == "azureml_obo":
+        from azure.ai.ml.entities import UserIdentityConfiguration
+
+        job.identity = UserIdentityConfiguration()
 
     # 🚀 Set display names for Phase B step (variant runner)
     if not use_phase1_pipeline:
@@ -1835,14 +1837,11 @@ def main():
             force_audit_id = _record_force_audit(args, _force_user)
             job.tags["force_audit_id"] = force_audit_id
 
-        ml_client = MLClient(
-            ChainedTokenCredential(
-                ManagedIdentityCredential(),
-                AzureCliCredential(process_timeout=60),
-            ),
-            subscription_id=args.subscription_id,
-            resource_group_name=args.resource_group,
-            workspace_name=args.workspace_name,
+        ml_client = get_ml_client(
+            args.subscription_id,
+            args.resource_group,
+            args.workspace_name,
+            credential_mode=credential_mode,
         )
 
         # ---------- Duplicate-submission guard: active-job check ----------

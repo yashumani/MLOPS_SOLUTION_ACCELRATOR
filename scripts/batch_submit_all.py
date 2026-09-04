@@ -16,15 +16,21 @@ from typing import Any, Iterable
 
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+ROOT = Path(__file__).resolve().parents[1]
+for _import_root in (ROOT / "src", Path(__file__).resolve().parent):
+    _import_root_text = str(_import_root)
+    if _import_root_text not in sys.path:
+        sys.path.insert(0, _import_root_text)
+
 from _azure_ctx import (  # noqa: E402
     MissingAzureContextError,
     get_state_dir,
     load_azure_context,
 )
+from _source_identity import SourceIdentityError, load_source_identity  # noqa: E402
+from utils.azure_helper import get_ml_client  # noqa: E402
 
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CATALOG = ROOT / "configs" / "qualification" / "industry_matrix_execution_catalog.yml"
 SUBMITTER = ROOT / "pipelines" / "submit_pipeline.py"
 TASK_TYPES = ("classification", "regression", "clustering")
@@ -236,11 +242,7 @@ def verify_live_release_gates(
 
 
 def _create_ml_client(context: Any) -> Any:
-    from azure.ai.ml import MLClient
-    from azure.identity import AzureCliCredential
-
-    return MLClient(
-        AzureCliCredential(),
+    return get_ml_client(
         context.subscription_id,
         context.resource_group,
         context.workspace_name,
@@ -364,21 +366,7 @@ def build_submission_command(
 
 
 def _git_identity() -> dict[str, Any]:
-    def run(*args: str) -> str:
-        return subprocess.run(
-            ["git", *args],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-
-    status = run("status", "--porcelain")
-    return {
-        "commit": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-        "dirty": bool(status),
-    }
+    return load_source_identity(ROOT)
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
@@ -455,7 +443,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         context = load_azure_context()
         git_identity = _git_identity()
-    except (MissingAzureContextError, OSError, subprocess.SubprocessError) as exc:
+    except (
+        MissingAzureContextError,
+        SourceIdentityError,
+        OSError,
+        subprocess.SubprocessError,
+    ) as exc:
         print(f"Submission preflight failed: {exc}", file=sys.stderr)
         return 2
     if git_identity["dirty"]:

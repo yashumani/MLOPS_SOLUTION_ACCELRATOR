@@ -20,6 +20,7 @@ from orchestration import operational_state as state
 from orchestration.auto_retrain_controller import AzureSubmissionContext
 from orchestration.automated_retrain_controller import WatchTarget, discover_completed_runs, process_source_job
 from orchestration.auto_retrain_schedule_catalog import PLANNED_AUTO_RETRAIN_SCHEDULES
+from utils.azure_helper import get_ml_client, resolve_credential_mode
 
 
 def load_targets(path: Path) -> list[WatchTarget]:
@@ -91,11 +92,22 @@ def main(argv: list[str] | None = None) -> int:
         binding = {"tenant_id": os.environ["AZURE_TENANT_ID"], "subscription_id": context.subscription_id, "resource_group": context.resource_group, "workspace_name": context.workspace_name}
         if not args.initialize_state:
             state.bind_workspace(binding)
-        from azure.ai.ml import MLClient
-        from azure.identity import ManagedIdentityCredential
-        # The deployed service never falls back to a developer's cached CLI identity.
-        credential = ManagedIdentityCredential(client_id=os.environ.get("AZURE_CLIENT_ID") or None)
-        client = MLClient(credential, context.subscription_id, context.resource_group, context.workspace_name)
+        credential_mode = resolve_credential_mode(
+            os.environ.get("MLOPS_CONTROLLER_CREDENTIAL_MODE")
+            or os.environ.get("MLOPS_AZURE_CREDENTIAL_MODE")
+            or "managed_identity"
+        )
+        if credential_mode not in {"managed_identity", "azureml_obo"}:
+            raise ValueError(
+                "Controller credential mode must be managed_identity or azureml_obo"
+            )
+        # The deployed controller never falls back to a developer's cached CLI identity.
+        client = get_ml_client(
+            context.subscription_id,
+            context.resource_group,
+            context.workspace_name,
+            credential_mode=credential_mode,
+        )
         if args.initialize_state:
             client.workspaces.get(context.workspace_name)
             initialized = state.bind_workspace(binding, initialize=True)
@@ -110,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             discovered = [(target, discover_completed_runs(client, context, target.experiment_name, now=now, max_age_seconds=args.max_age_seconds, max_runs=args.max_runs)) for target in targets]
             for target, jobs in discovered:
                 for job_name in jobs:
-                    report = process_source_job(client, target, job_name, context=context, ledger=ledger, execute=args.execute, now=now, max_age_seconds=args.max_age_seconds)
+                    report = process_source_job(client, target, job_name, context=context, ledger=ledger, execute=args.execute, now=now, max_age_seconds=args.max_age_seconds, credential_mode=credential_mode)
                     print(json.dumps(report, sort_keys=True), flush=True)
             if args.once:
                 return 0

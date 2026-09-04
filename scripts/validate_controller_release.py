@@ -20,11 +20,20 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
+from utils.azure_helper import get_ml_client
+
 TEST_FILES = (
+    "test_azure_helper_credentials.py",
     "test_controller_archive_bootstrap.py",
     "test_controller_state_bootstrap.py",
     "test_automated_retrain_controller.py",
     "test_operational_state.py",
+    "test_qualification_data_asset_audit.py",
+    "test_qualification_archive_bootstrap.py",
+    "test_qualification_evidence_collection.py",
+    "test_qualification_wave.py",
+    "test_qualification_wave_merge.py",
+    "test_source_identity.py",
     "test_orchestration/test_auto_retrain_controller.py",
 )
 TEST_TOOLS = (
@@ -93,16 +102,29 @@ def main() -> int:
         report["checks"]["remote_contract_tests"] = "passed"
         save()
 
-        from azure.ai.ml import MLClient
-        from azure.identity import ManagedIdentityCredential
         from orchestration.auto_retrain_controller import AzureSubmissionContext
         from orchestration.automated_retrain_controller import discover_completed_runs
         from scripts.batch_submit_all import verify_live_release_gates
 
         context = AzureSubmissionContext(*(os.environ[name] for name in ("AZURE_SUBSCRIPTION_ID", "AZURE_RESOURCE_GROUP", "AZURE_WORKSPACE_NAME", "AZURE_COMPUTE")))
-        client = MLClient(ManagedIdentityCredential(client_id=os.environ.get("AZURE_CLIENT_ID") or None), context.subscription_id, context.resource_group, context.workspace_name)
+        credential_mode = (
+            os.environ.get("MLOPS_CONTROLLER_CREDENTIAL_MODE")
+            or os.environ.get("MLOPS_AZURE_CREDENTIAL_MODE")
+            or "managed_identity"
+        )
+        if credential_mode not in {"managed_identity", "azureml_obo"}:
+            raise RuntimeError(
+                "Controller preflight requires managed_identity or azureml_obo"
+            )
+        report["credential_mode"] = credential_mode
+        client = get_ml_client(
+            context.subscription_id,
+            context.resource_group,
+            context.workspace_name,
+            credential_mode=credential_mode,
+        )
         client.workspaces.get(context.workspace_name)
-        report["checks"]["managed_identity_workspace_read"] = "passed"
+        report["checks"]["controller_workspace_read"] = "passed"
         report["release_gates"] = verify_live_release_gates(client, datastore_canary_job=args.datastore_canary_job, download_root=output / "datastore-evidence")
         report["checks"]["live_datastore_and_schedule_gates"] = "passed"
         save()

@@ -16,17 +16,22 @@ from uuid import uuid4
 
 from azure.ai.ml import MLClient, Output, command
 from azure.ai.ml.entities import UserIdentityConfiguration
-from azure.identity import AzureCliCredential
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+ROOT = Path(__file__).resolve().parents[1]
+for _import_root in (ROOT / "src", Path(__file__).resolve().parent):
+    _import_root_text = str(_import_root)
+    if _import_root_text not in sys.path:
+        sys.path.insert(0, _import_root_text)
+
 from _azure_ctx import (  # noqa: E402
     MissingAzureContextError,
     get_state_dir,
     load_azure_context,
 )
+from _source_identity import load_source_identity  # noqa: E402
+from utils.azure_helper import get_ml_client  # noqa: E402
 
 
-ROOT = Path(__file__).resolve().parents[1]
 SCORE_ROOT = Path(__file__).resolve().parent / "registered_model_inference_smoke"
 DEFAULT_ENVIRONMENT = "mlops-v3-unified:33"
 DEFAULT_OUTPUT_DATASTORE = "mlops_blob"
@@ -97,22 +102,11 @@ def _load_downloaded_registry_info(download_root: Path) -> dict[str, Any]:
     )
 
 
-def _git_identity() -> dict[str, str]:
-    def run(*args: str) -> str:
-        return subprocess.run(
-            ["git", *args],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-
-    if run("status", "--porcelain"):
+def _git_identity() -> dict[str, Any]:
+    identity = load_source_identity(ROOT)
+    if identity["dirty"]:
         raise RuntimeError("Registered-model smoke submission requires a clean worktree")
-    return {
-        "commit": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-    }
+    return identity
 
 
 def _environment_id(value: str) -> str:
@@ -199,8 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    client = MLClient(
-        AzureCliCredential(),
+    client = get_ml_client(
         context.subscription_id,
         context.resource_group,
         context.workspace_name,

@@ -76,16 +76,12 @@ def test_invalid_binding_is_rejected(configured, change):
 
 
 def test_initialization_checks_managed_identity_access_and_never_submits(configured, monkeypatch):
-    import azure.ai.ml
-    import azure.identity
     calls = []
-    credential = object()
-    monkeypatch.setattr(azure.identity, "ManagedIdentityCredential", lambda **kwargs: credential)
-    def make_client(actual_credential, subscription, group, workspace):
-        assert actual_credential is credential
+    def make_client(subscription, group, workspace, *, credential_mode):
         assert (subscription, group, workspace) == tuple(configured[key] for key in ("subscription_id", "resource_group", "workspace_name"))
+        assert credential_mode == "managed_identity"
         return SimpleNamespace(workspaces=SimpleNamespace(get=lambda name: calls.append(name)))
-    monkeypatch.setattr(azure.ai.ml, "MLClient", make_client)
+    monkeypatch.setattr(daemon, "get_ml_client", make_client)
     monkeypatch.setattr(daemon, "process_source_job", lambda *args, **kwargs: pytest.fail("initialization submitted"))
     assert daemon.main(["--initialize-state"]) == 0
     assert calls == ["test-workspace"]
@@ -93,13 +89,36 @@ def test_initialization_checks_managed_identity_access_and_never_submits(configu
 
 
 def test_failed_azure_access_does_not_initialize_state(configured, monkeypatch):
-    import azure.ai.ml
     def deny(name):
         raise RuntimeError("access denied")
-    monkeypatch.setattr(azure.ai.ml, "MLClient", lambda *args: SimpleNamespace(workspaces=SimpleNamespace(get=deny)))
+    monkeypatch.setattr(
+        daemon,
+        "get_ml_client",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            workspaces=SimpleNamespace(get=deny)
+        ),
+    )
     assert daemon.main(["--initialize-state"]) == 2
     with state.transaction() as connection:
         assert state.get_document(connection, "configuration", "workspace") is None
+
+
+def test_obo_controller_mode_is_explicit_and_propagated(configured, monkeypatch):
+    observed = {}
+    monkeypatch.setenv("MLOPS_CONTROLLER_CREDENTIAL_MODE", "azureml_obo")
+    monkeypatch.delenv("MLOPS_AZURE_CREDENTIAL_MODE", raising=False)
+
+    def make_client(*_args, credential_mode):
+        observed["credential_mode"] = credential_mode
+        return SimpleNamespace(
+            workspaces=SimpleNamespace(get=lambda _name: None)
+        )
+
+    monkeypatch.setattr(daemon, "get_ml_client", make_client)
+
+    assert daemon.main(["--initialize-state"]) == 0
+    assert observed["credential_mode"] == "azureml_obo"
+    assert "MLOPS_AZURE_CREDENTIAL_MODE" not in daemon.os.environ
 
 
 @pytest.mark.parametrize("flags", [["--initialize-state", "--execute"], ["--initialize-state", "--once"], ["--initialize-state", "--manifest", "unreviewed.yml"], ["--once"]])

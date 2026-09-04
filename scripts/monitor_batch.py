@@ -15,6 +15,11 @@ import time
 from typing import Any, Callable, Iterable
 
 
+ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
 TERMINAL_STATUSES = {
     "Completed",
     "Failed",
@@ -195,18 +200,13 @@ def load_submission_manifest(
 
 
 def get_ml_client(subscription_id: str, resource_group: str, workspace_name: str):
-    from azure.ai.ml import MLClient
-    from azure.identity import (
-        AzureCliCredential,
-        ChainedTokenCredential,
-        ManagedIdentityCredential,
-    )
+    from utils.azure_helper import get_ml_client as create_ml_client
 
-    credential = ChainedTokenCredential(
-        ManagedIdentityCredential(),
-        AzureCliCredential(),
+    return create_ml_client(
+        subscription_id,
+        resource_group,
+        workspace_name,
     )
-    return MLClient(credential, subscription_id, resource_group, workspace_name)
 
 
 def poll_jobs(client: Any, jobs: Iterable[Submission]) -> list[PollResult]:

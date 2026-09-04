@@ -100,6 +100,30 @@ def test_competing_controllers_submit_once_and_never_promote(scenario, monkeypat
     assert latest["approved_for_future_baseline"] is False
 
 
+def test_controller_propagates_explicit_credential_mode_to_submitter(
+    scenario,
+    monkeypatch,
+):
+    captured = {}
+
+    def submit(command, **kwargs):
+        captured["credential_mode"] = kwargs["env"][
+            "MLOPS_AZURE_CREDENTIAL_MODE"
+        ]
+        return _successful_submit(command, **kwargs)
+
+    monkeypatch.setattr(controller.subprocess, "run", submit)
+
+    result = _process(
+        scenario,
+        execute=True,
+        credential_mode="azureml_obo",
+    )
+
+    assert result["status"] == "submitted"
+    assert captured["credential_mode"] == "azureml_obo"
+
+
 @pytest.mark.parametrize("failure", ["timeout", "exit", "missing_result", "identity"])
 def test_ambiguous_submission_requires_reconciliation_and_blocks_replay(scenario, monkeypatch, failure):
     def submit(command, **kwargs):
