@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Pipeline data flow",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/SAVYMINDS/YS_MVP",
+      "revision": "282537e43b9693287bb9924a9896aab071f60a26"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      60,
+      75
+    ],
+    "cols": 4,
+    "cellW": 230,
+    "cellH": 105,
+    "gapX": 120,
+    "gapY": 150
+  },
+  "components": [
+    {
+      "id": "ingestion",
+      "type": "backend",
+      "label": "S01 · Ingest + profile",
+      "sublabel": "Configured Azure ML input",
+      "col": 0,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/stage1_ingestion.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "split_prepare",
+      "type": "backend",
+      "label": "S02 · Split + prepare",
+      "sublabel": "Stable row IDs / split manifest",
+      "col": 1,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/stage2_preparation.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "training_outputs",
+      "type": "database",
+      "label": "Training partitions",
+      "sublabel": "Raw + prepared training rows",
+      "col": 2,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "pipelines/pipeline_builder.py",
+          "line": 319
+        }
+      ]
+    },
+    {
+      "id": "candidate_phases",
+      "type": "backend",
+      "label": "Train candidate bundles",
+      "sublabel": "Phase A / Phase B / Phase C",
+      "col": 3,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "pipelines/pipeline_builder.py",
+          "line": 334
+        }
+      ]
+    },
+    {
+      "id": "locked_partition",
+      "type": "database",
+      "label": "Locked final test",
+      "sublabel": "Raw holdout + row identity",
+      "col": 1,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "pipelines/pipeline_builder.py",
+          "line": 326
+        }
+      ]
+    },
+    {
+      "id": "final_evaluation",
+      "type": "backend",
+      "label": "S10 · Final evaluation",
+      "sublabel": "Freeze by CV; test once",
+      "col": 3,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/final_evaluation.py",
+          "line": 1234
+        }
+      ]
+    },
+    {
+      "id": "preprocessing_reports",
+      "type": "backend",
+      "label": "S03 / S04 · Transform",
+      "sublabel": "Preprocessing + features",
+      "col": 2,
+      "row": 2,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "pipelines/pipeline_builder.py",
+          "line": 331
+        }
+      ]
+    },
+    {
+      "id": "drift_reference",
+      "type": "database",
+      "label": "Training reference",
+      "sublabel": "S13 drift input + reports",
+      "col": 3,
+      "row": 2,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "pipelines/pipeline_builder.py",
+          "line": 437
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "ingest_prepare",
+      "from": "ingestion",
+      "to": "split_prepare",
+      "label": "Prepare",
+      "variant": "emphasis"
+    },
+    {
+      "id": "split_train",
+      "from": "split_prepare",
+      "to": "training_outputs",
+      "label": "Train rows",
+      "variant": "emphasis"
+    },
+    {
+      "id": "train_candidates",
+      "from": "training_outputs",
+      "to": "candidate_phases",
+      "label": "Raw rows",
+      "variant": "emphasis"
+    },
+    {
+      "id": "lock_test",
+      "from": "split_prepare",
+      "to": "locked_partition",
+      "label": "Lock test",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "test_evaluate",
+      "from": "locked_partition",
+      "to": "final_evaluation",
+      "label": "Holdout + split identity",
+      "variant": "security"
+    },
+    {
+      "id": "candidates_evaluate",
+      "from": "candidate_phases",
+      "to": "final_evaluation",
+      "label": "A / B / C bundles",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "prepare_reports",
+      "from": "training_outputs",
+      "to": "preprocessing_reports",
+      "label": "Prepared rows",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "reference_reports",
+      "from": "preprocessing_reports",
+      "to": "drift_reference",
+      "label": "Train output"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Actual graph wiring",
+      "items": [
+        "14 component invocations; grouped here by purpose",
+        "Raw training rows feed the candidate branches directly"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "No test leakage",
+      "items": [
+        "Learned transformations fit only training partitions",
+        "The final test does not rank candidates or tune recipes"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Downstream outputs",
+      "items": [
+        "S12 registers the exact final model bundle",
+        "S13 emits drift; S14 emits a retraining decision"
+      ]
+    }
+  ]
+}

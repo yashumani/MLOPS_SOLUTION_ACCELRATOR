@@ -1,0 +1,27 @@
+[
+  {
+    "file": "overview.html",
+    "inlineScripts": 2,
+    "syntax": "pass"
+  },
+  {
+    "file": "pipeline.html",
+    "inlineScripts": 2,
+    "syntax": "pass"
+  },
+  {
+    "file": "search.html",
+    "inlineScripts": 2,
+    "syntax": "pass"
+  },
+  {
+    "file": "operations.html",
+    "inlineScripts": 2,
+    "syntax": "pass"
+  },
+  {
+    "file": "release.html",
+    "inlineScripts": 2,
+    "syntax": "pass"
+  }
+]

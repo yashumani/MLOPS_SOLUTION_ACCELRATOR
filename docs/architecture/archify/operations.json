@@ -1,0 +1,329 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Operator controls and retraining",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/SAVYMINDS/YS_MVP",
+      "revision": "282537e43b9693287bb9924a9896aab071f60a26"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      60,
+      75
+    ],
+    "cols": 4,
+    "cellW": 230,
+    "cellH": 105,
+    "gapX": 120,
+    "gapY": 150
+  },
+  "components": [
+    {
+      "id": "registered_bundle",
+      "type": "cloud",
+      "label": "S12 · Model registry",
+      "sublabel": "Exact bundle / quality gate",
+      "col": 0,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/s12_model_registration.py",
+          "line": 1016
+        }
+      ]
+    },
+    {
+      "id": "drift_evidence",
+      "type": "backend",
+      "label": "S13 · Drift evidence",
+      "sublabel": "Compare / candidate baseline",
+      "col": 1,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/s13_drift_monitor.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "retrain_policy",
+      "type": "backend",
+      "label": "S14 · Policy decision",
+      "sublabel": "Decision + ledger artifacts",
+      "col": 2,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/s14_retrain_decision.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "external_controller",
+      "type": "backend",
+      "label": "External controller",
+      "sublabel": "Validate / reserve / dedup",
+      "col": 3,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/orchestration/automated_retrain_controller.py",
+          "line": 113
+        }
+      ]
+    },
+    {
+      "id": "operator_views",
+      "type": "frontend",
+      "label": "React / Streamlit",
+      "sublabel": "Submit / inspect / approve",
+      "col": 0,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "react-ui/src/App.tsx",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "operations_api",
+      "type": "backend",
+      "label": "FastAPI operations",
+      "sublabel": "Jobs / configs / roles / drift",
+      "col": 1,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "api/routers/pipelines.py",
+          "line": 58
+        }
+      ]
+    },
+    {
+      "id": "durable_records",
+      "type": "database",
+      "label": "Durable SQLite",
+      "sublabel": "Requests / decisions / audit",
+      "col": 2,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/orchestration/operational_state.py",
+          "line": 62
+        }
+      ]
+    },
+    {
+      "id": "guarded_submit",
+      "type": "backend",
+      "label": "Canonical submitter",
+      "sublabel": "Explicit execution mode",
+      "col": 3,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/orchestration/automated_retrain_controller.py",
+          "line": 129
+        }
+      ]
+    },
+    {
+      "id": "report_package",
+      "type": "backend",
+      "label": "Reports + notifications",
+      "sublabel": "Markdown / JSON / CSV",
+      "col": 1,
+      "row": 2,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "api/services/notification_service.py",
+          "line": 403
+        }
+      ]
+    },
+    {
+      "id": "smtp_service",
+      "type": "external",
+      "label": "SMTP delivery",
+      "sublabel": "Explicit send-email action",
+      "col": 2,
+      "row": 2,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "api/services/notification_service.py",
+          "line": 449
+        }
+      ]
+    },
+    {
+      "id": "candidate_retrain",
+      "type": "cloud",
+      "label": "Candidate retraining",
+      "sublabel": "Promotion remains manual",
+      "col": 3,
+      "row": 2,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/orchestration/automated_retrain_controller.py",
+          "line": 160
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "registry_drift",
+      "from": "registered_bundle",
+      "to": "drift_evidence",
+      "label": "Registry info",
+      "variant": "emphasis"
+    },
+    {
+      "id": "drift_policy",
+      "from": "drift_evidence",
+      "to": "retrain_policy",
+      "label": "Drift report",
+      "variant": "emphasis"
+    },
+    {
+      "id": "policy_controller",
+      "from": "retrain_policy",
+      "to": "external_controller",
+      "label": "S14 output",
+      "variant": "emphasis"
+    },
+    {
+      "id": "controller_cli",
+      "from": "external_controller",
+      "to": "guarded_submit",
+      "label": "Guarded submit",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "cli_candidate",
+      "from": "guarded_submit",
+      "to": "candidate_retrain",
+      "label": "Candidate job",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "ui_operations",
+      "from": "operator_views",
+      "to": "operations_api",
+      "label": "HTTP API"
+    },
+    {
+      "id": "operations_state",
+      "from": "operations_api",
+      "to": "durable_records",
+      "label": "Persist state"
+    },
+    {
+      "id": "read_drift",
+      "from": "operations_api",
+      "to": "drift_evidence",
+      "label": "Read artifacts",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "build_report",
+      "from": "operations_api",
+      "to": "report_package",
+      "label": "Build report",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "send_report",
+      "from": "report_package",
+      "to": "smtp_service",
+      "label": "Email"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Controller boundaries",
+      "items": [
+        "S14 never submits a nested training job",
+        "Controller claims the ledger; uncertainty requires reconciliation"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Operator capabilities",
+      "items": [
+        "Inspect jobs, metrics, artifacts, configs and users",
+        "Approve comparison baselines; inspect schedule readback"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "What this does not prove",
+      "items": [
+        "UI/API and controller are source implementations",
+        "A baseline approval does not promote a production model"
+      ]
+    }
+  ]
+}

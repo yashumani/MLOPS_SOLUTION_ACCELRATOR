@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Release validation and evidence",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/SAVYMINDS/YS_MVP",
+      "revision": "282537e43b9693287bb9924a9896aab071f60a26"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      60,
+      75
+    ],
+    "cols": 4,
+    "cellW": 230,
+    "cellH": 105,
+    "gapX": 120,
+    "gapY": 150
+  },
+  "components": [
+    {
+      "id": "git_revision",
+      "type": "database",
+      "label": "Frozen source revision",
+      "sublabel": "Code + config + data identity",
+      "col": 0,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "pipelines/submit_pipeline.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "hosted_ci",
+      "type": "cloud",
+      "label": "GitHub Actions CI",
+      "sublabel": "Backend / React / audits / E2E",
+      "col": 1,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": ".github/workflows/release-candidate-ci.yml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "azure_qualification",
+      "type": "cloud",
+      "label": "Azure qualification",
+      "sublabel": "Canaries + 15-scenario matrix",
+      "col": 2,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "scripts/batch_submit_all.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "evidence_verifier",
+      "type": "backend",
+      "label": "Evidence verifier",
+      "sublabel": "Lineage / quality / completeness",
+      "col": 3,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "scripts/verify_qualification_evidence.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "dataset_acquisition",
+      "type": "external",
+      "label": "Dataset acquisition",
+      "sublabel": "UCI + OpenML source jobs",
+      "col": 0,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "scripts/acquire_uci_release_matrix.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "asset_staging",
+      "type": "backend",
+      "label": "Stage + profile data",
+      "sublabel": "Fingerprint / register assets",
+      "col": 1,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "scripts/register_qualification_data_assets.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "scenario_catalog",
+      "type": "database",
+      "label": "Qualification catalog",
+      "sublabel": "5 scenarios for each task",
+      "col": 2,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "configs/qualification/industry_matrix_execution_catalog.yml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "runtime_lock",
+      "type": "database",
+      "label": "Pinned runtime",
+      "sublabel": "Environment + dependency lock",
+      "col": 1,
+      "row": 2,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "config/mlops_v3_unified_environment/conda_v33.yml",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "registered_smoke",
+      "type": "cloud",
+      "label": "Registered-model smoke",
+      "sublabel": "Load exact version / predict",
+      "col": 3,
+      "row": 2,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "scripts/submit_registered_model_smoke.py",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "source_ci",
+      "from": "git_revision",
+      "to": "hosted_ci",
+      "label": "Push / PR",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ci_gate",
+      "from": "hosted_ci",
+      "to": "azure_qualification",
+      "label": "Release gate",
+      "variant": "dashed"
+    },
+    {
+      "id": "verify_runs",
+      "from": "azure_qualification",
+      "to": "evidence_verifier",
+      "label": "Run evidence",
+      "variant": "emphasis"
+    },
+    {
+      "id": "acquire_stage",
+      "from": "dataset_acquisition",
+      "to": "asset_staging",
+      "label": "Acquire"
+    },
+    {
+      "id": "stage_catalog",
+      "from": "asset_staging",
+      "to": "scenario_catalog",
+      "label": "Bind assets"
+    },
+    {
+      "id": "catalog_matrix",
+      "from": "scenario_catalog",
+      "to": "azure_qualification",
+      "label": "Submit configs",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "lock_ci",
+      "from": "runtime_lock",
+      "to": "hosted_ci",
+      "label": "Pinned deps",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "registry_smoke",
+      "from": "azure_qualification",
+      "to": "registered_smoke",
+      "label": "Registry output",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "smoke_verify",
+      "from": "registered_smoke",
+      "to": "evidence_verifier",
+      "label": "Inference proof",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Separate evidence gates",
+      "items": [
+        "CI does not launch Azure qualification automatically",
+        "Controller preflight and live recovery need their own proof"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Verification contract",
+      "items": [
+        "Named outputs, hashes, run identity and model version",
+        "Quality thresholds and frozen-test integrity must agree"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Release boundary",
+      "items": [
+        "This view describes tooling, not current release readiness",
+        "Registration and inference smoke do not deploy an endpoint"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "diagram": "overview",
+    "checks": 9,
+    "errors": 0,
+    "warnings": 0,
+    "sourceReferences": 19,
+    "specHashMatches": true,
+    "htmlHashMatches": true,
+    "visualHashMatches": true,
+    "desktopChecks": 4,
+    "captures": 4
+  },
+  {
+    "diagram": "pipeline",
+    "checks": 9,
+    "errors": 0,
+    "warnings": 0,
+    "sourceReferences": 8,
+    "specHashMatches": true,
+    "htmlHashMatches": true,
+    "visualHashMatches": true,
+    "desktopChecks": 4,
+    "captures": 4
+  },
+  {
+    "diagram": "search",
+    "checks": 9,
+    "errors": 0,
+    "warnings": 0,
+    "sourceReferences": 8,
+    "specHashMatches": true,
+    "htmlHashMatches": true,
+    "visualHashMatches": true,
+    "desktopChecks": 4,
+    "captures": 4
+  },
+  {
+    "diagram": "operations",
+    "checks": 9,
+    "errors": 0,
+    "warnings": 0,
+    "sourceReferences": 11,
+    "specHashMatches": true,
+    "htmlHashMatches": true,
+    "visualHashMatches": true,
+    "desktopChecks": 4,
+    "captures": 4
+  },
+  {
+    "diagram": "release",
+    "checks": 9,
+    "errors": 0,
+    "warnings": 0,
+    "sourceReferences": 9,
+    "specHashMatches": true,
+    "htmlHashMatches": true,
+    "visualHashMatches": true,
+    "desktopChecks": 4,
+    "captures": 4
+  }
+]

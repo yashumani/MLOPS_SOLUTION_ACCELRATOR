@@ -1,0 +1,13 @@
+{
+  "sources": [
+    {
+      "file": "coverage.md",
+      "pinnedSourceReferences": 102
+    },
+    {
+      "file": "index.html",
+      "pinnedSourceReferences": 27
+    }
+  ],
+  "errors": []
+}

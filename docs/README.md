@@ -12,6 +12,7 @@ Important placement note: `docs/` is excluded from Azure ML code uploads by `.am
 
 | Need | Document |
 |---|---|
+| Explore the full project through five interactive diagrams and a capability catalog | [Interactive project map](architecture/archify/index.html) |
 | See the current release decision, blockers, and critical path | `PRODUCTION_RELEASE_STATUS_2026-09-03.md` |
 | Understand the active pipeline architecture | `design_overview.md` |
 | Understand every pipeline stage and function | `PIPELINE_STAGES.md` |

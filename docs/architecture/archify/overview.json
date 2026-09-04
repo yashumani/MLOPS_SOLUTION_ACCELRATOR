@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MLOps Solution Accelerator V3",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/SAVYMINDS/YS_MVP",
+      "revision": "282537e43b9693287bb9924a9896aab071f60a26"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      60,
+      75
+    ],
+    "cols": 4,
+    "cellW": 230,
+    "cellH": 105,
+    "gapX": 120,
+    "gapY": 150
+  },
+  "components": [
+    {
+      "id": "operator_interfaces",
+      "type": "frontend",
+      "label": "Operator interfaces",
+      "sublabel": "React + Streamlit",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "react-ui/src/App.tsx",
+          "line": 16
+        },
+        {
+          "path": "ui/app.py",
+          "line": 1
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    },
+    {
+      "id": "management_api",
+      "type": "backend",
+      "label": "Management API",
+      "sublabel": "FastAPI / jobs / configs",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "api/main.py",
+          "line": 95
+        },
+        {
+          "path": "api/services/pipeline_service.py",
+          "line": 526
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    },
+    {
+      "id": "canonical_submission",
+      "type": "backend",
+      "label": "Canonical submitter",
+      "sublabel": "Compile + graph preflight",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "pipelines/submit_pipeline.py",
+          "line": 1026
+        },
+        {
+          "path": "pipelines/submit_pipeline.py",
+          "line": 1867
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    },
+    {
+      "id": "azure_execution",
+      "type": "cloud",
+      "label": "Azure ML pipeline",
+      "sublabel": "Search / evaluate / register",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "pipelines/pipeline_builder.py",
+          "line": 277
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    },
+    {
+      "id": "access_controls",
+      "type": "security",
+      "label": "Access controls",
+      "sublabel": "Entra ID + role checks",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "api/core/entra_auth.py",
+          "line": 1
+        },
+        {
+          "path": "api/core/security.py",
+          "line": 1
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    },
+    {
+      "id": "config_catalog",
+      "type": "database",
+      "label": "Configs + recipes",
+      "sublabel": "Task / search / quality policy",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "src/orchestration/config_compiler.py",
+          "line": 357
+        },
+        {
+          "path": "src/orchestration/config_schema.py",
+          "line": 1
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    },
+    {
+      "id": "dataset_sources",
+      "type": "database",
+      "label": "Azure ML data inputs",
+      "sublabel": "Datastore paths / data assets",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "pipelines/pipeline_builder.py",
+          "line": 280
+        },
+        {
+          "path": "src/steps/stage1_ingestion.py",
+          "line": 1
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    },
+    {
+      "id": "operational_database",
+      "type": "database",
+      "label": "Operational state",
+      "sublabel": "SQLite / requests / decisions",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        {
+          "path": "src/orchestration/operational_state.py",
+          "line": 62
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    },
+    {
+      "id": "retrain_controller",
+      "type": "backend",
+      "label": "Retraining controller",
+      "sublabel": "Policy / dedup / reconciliation",
+      "row": 2,
+      "col": 2,
+      "sources": [
+        {
+          "path": "src/orchestration/automated_retrain_controller.py",
+          "line": 40
+        },
+        {
+          "path": "scripts/run_auto_retrain_daemon.py",
+          "line": 1
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    },
+    {
+      "id": "run_evidence",
+      "type": "cloud",
+      "label": "Run + model artifacts",
+      "sublabel": "MLflow / registry / drift",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        {
+          "path": "src/steps/s12_model_registration.py",
+          "line": 1
+        },
+        {
+          "path": "src/steps/s13_drift_monitor.py",
+          "line": 1
+        },
+        {
+          "path": "src/steps/s14_retrain_decision.py",
+          "line": 1
+        }
+      ],
+      "size": [
+        230,
+        105
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "ui_api",
+      "from": "operator_interfaces",
+      "to": "management_api",
+      "label": "HTTP API",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api_submit",
+      "from": "management_api",
+      "to": "canonical_submission",
+      "label": "CLI call",
+      "variant": "emphasis"
+    },
+    {
+      "id": "submit_job",
+      "from": "canonical_submission",
+      "to": "azure_execution",
+      "label": "Azure SDK",
+      "variant": "emphasis"
+    },
+    {
+      "id": "verify_access",
+      "from": "access_controls",
+      "to": "management_api",
+      "label": "Authorize",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "compile_config",
+      "from": "config_catalog",
+      "to": "canonical_submission",
+      "label": "Compile",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "ingest_data",
+      "from": "dataset_sources",
+      "to": "azure_execution",
+      "label": "Read input",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "persist_requests",
+      "from": "management_api",
+      "to": "operational_database",
+      "label": "Persist",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "controller_state",
+      "from": "retrain_controller",
+      "to": "operational_database",
+      "label": "Claim / record"
+    },
+    {
+      "id": "controller_submit",
+      "from": "retrain_controller",
+      "to": "canonical_submission",
+      "label": "Guarded retry",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "publish_evidence",
+      "from": "azure_execution",
+      "to": "run_evidence",
+      "label": "Emit artifacts",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "inspect_evidence",
+      "from": "run_evidence",
+      "to": "retrain_controller",
+      "label": "Read decisions"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Product scope",
+      "items": [
+        "Classification, regression and clustering",
+        "Searches the full preprocessing + model configuration"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Selection integrity",
+      "items": [
+        "Training/CV evidence selects one champion",
+        "Locked test evaluates the frozen champion once"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Evidence boundary",
+      "items": [
+        "Source map at 282537e4; live deployment is not asserted",
+        "Release CI and Azure qualification are separate checks"
+      ]
+    }
+  ]
+}

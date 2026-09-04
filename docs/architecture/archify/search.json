@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Candidate search and model selection",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/SAVYMINDS/YS_MVP",
+      "revision": "282537e43b9693287bb9924a9896aab071f60a26"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      60,
+      75
+    ],
+    "cols": 4,
+    "cellW": 230,
+    "cellH": 105,
+    "gapX": 120,
+    "gapY": 150
+  },
+  "components": [
+    {
+      "id": "strict_config",
+      "type": "backend",
+      "label": "Compile configuration",
+      "sublabel": "Task / metric / caps / seed",
+      "col": 0,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/orchestration/config_compiler.py",
+          "line": 357
+        }
+      ]
+    },
+    {
+      "id": "immutable_catalog",
+      "type": "database",
+      "label": "Candidate catalog",
+      "sublabel": "Semantic recipes + identity",
+      "col": 1,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/utils/recipe_catalog.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "round_zero",
+      "type": "backend",
+      "label": "Round 0 · Feasibility",
+      "sublabel": "Reject invalid transformations",
+      "col": 2,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/s06_phaseb_variant_runner.py",
+          "line": 1075
+        }
+      ]
+    },
+    {
+      "id": "round_one",
+      "type": "backend",
+      "label": "Round 1 · Proxy score",
+      "sublabel": "Rank + prune within budgets",
+      "col": 3,
+      "row": 0,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/s06_phaseb_variant_runner.py",
+          "line": 1249
+        }
+      ]
+    },
+    {
+      "id": "phase_b_train",
+      "type": "backend",
+      "label": "S06 · Full training",
+      "sublabel": "Phase B champion + leaderboard",
+      "col": 3,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/s06_phaseb_variant_runner.py",
+          "line": 3289
+        }
+      ]
+    },
+    {
+      "id": "phase_c_hpo",
+      "type": "backend",
+      "label": "S08 / S09 · Optuna",
+      "sublabel": "Same-family HPO / Phase C",
+      "col": 3,
+      "row": 2,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/phasec_optuna_hpo.py",
+          "line": 463
+        }
+      ]
+    },
+    {
+      "id": "phase_a_train",
+      "type": "backend",
+      "label": "S05a / S05b · Baseline",
+      "sublabel": "PyCaret + supported FLAML",
+      "col": 0,
+      "row": 1,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "pipelines/pipeline_builder.py",
+          "line": 334
+        }
+      ]
+    },
+    {
+      "id": "phase_a_bundle",
+      "type": "database",
+      "label": "S05z · Best baseline",
+      "sublabel": "Phase A self-contained bundle",
+      "col": 0,
+      "row": 2,
+      "size": [
+        230,
+        105
+      ],
+      "sources": [
+        {
+          "path": "src/steps/aggregate_baseline.py",
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "compile_catalog",
+      "from": "strict_config",
+      "to": "immutable_catalog",
+      "label": "Normalize",
+      "variant": "emphasis"
+    },
+    {
+      "id": "catalog_feasibility",
+      "from": "immutable_catalog",
+      "to": "round_zero",
+      "label": "Screen",
+      "variant": "emphasis"
+    },
+    {
+      "id": "feasible_proxy",
+      "from": "round_zero",
+      "to": "round_one",
+      "label": "Survivors",
+      "variant": "emphasis"
+    },
+    {
+      "id": "proxy_full",
+      "from": "round_one",
+      "to": "phase_b_train",
+      "label": "Round 2 set",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "full_hpo",
+      "from": "phase_b_train",
+      "to": "phase_c_hpo",
+      "label": "Champion recipe",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "config_baseline",
+      "from": "strict_config",
+      "to": "phase_a_train",
+      "label": "Baseline config",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "aggregate_a",
+      "from": "phase_a_train",
+      "to": "phase_a_bundle",
+      "label": "Compare CV",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "End-to-end candidates",
+      "items": [
+        "Imputation, encoding, scaling, features and estimator",
+        "Planner can add data-profile priors; budgets cap work"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "One selection contract",
+      "items": [
+        "A, B and C bundles carry comparable training/CV evidence",
+        "S10 selects one bundle before final-test prediction"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Runtime boundaries",
+      "items": [
+        "Clustering skips FLAML; time series is outside the graph",
+        "Preprocessing cache, seeds and MLflow preserve traceability"
+      ]
+    }
+  ]
+}

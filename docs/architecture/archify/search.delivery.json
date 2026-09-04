@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Users\\yashu\\Documents\\MLOPS Solution Accelerator Workflow\\azureml-notebook-codebase\\mlops-solution-accelerator-v3\\docs\\architecture\\archify\\search.json",
+  "output": "C:\\Users\\yashu\\Documents\\MLOPS Solution Accelerator Workflow\\azureml-notebook-codebase\\mlops-solution-accelerator-v3\\docs\\architecture\\archify\\search.html",
+  "specification": {
+    "sha256": "6bcaf2ed476a2686cffd602d02bf8467f6595c28f24fa62535f8dd4a4d233efc",
+    "bytes": 5744
+  },
+  "artifact": {
+    "sha256": "22e7e7f6ed3b0790f6496dfbdd7cbd01376060eb715410e022da1090f26d62be",
+    "bytes": 712116
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/SAVYMINDS/YS_MVP",
+    "revision": "282537e43b9693287bb9924a9896aab071f60a26",
+    "references": 8
+  }
+}
