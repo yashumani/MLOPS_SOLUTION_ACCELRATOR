@@ -68,7 +68,7 @@ def _verified_archive_identity(root: Path) -> dict[str, Any]:
         raise SourceIdentityError("MLOPS_SOURCE_ROOT is required")
     source_root = Path(source_root_text).resolve()
     if source_root != root.resolve():
-        raise SourceIdentityError("MLOPS_SOURCE_ROOT does not match executable source")
+        raise SourceIdentityError("Configured source root does not match executable source")
     archive_text = os.environ.get("MLOPS_SOURCE_ARCHIVE_PATH", "").strip()
     archive = Path(archive_text).resolve() if archive_text else None
     if archive is None or not archive.is_file():
