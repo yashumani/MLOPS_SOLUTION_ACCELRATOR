@@ -23,6 +23,8 @@ def configured(monkeypatch, tmp_path):
     monkeypatch.setenv("MLOPS_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("MLOPS_OPERATIONAL_STATE_DB", str(tmp_path / "state.sqlite3"))
     monkeypatch.setenv("MLOPS_AUTO_RETRAIN_LEDGER", str(tmp_path / "ledger.jsonl"))
+    monkeypatch.delenv("MLOPS_CONTROLLER_CREDENTIAL_MODE", raising=False)
+    monkeypatch.delenv("MLOPS_AZURE_CREDENTIAL_MODE", raising=False)
     return binding
 
 
