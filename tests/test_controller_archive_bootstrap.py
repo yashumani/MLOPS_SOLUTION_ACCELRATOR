@@ -33,6 +33,7 @@ def test_job_embeds_the_reviewed_bootstrap_without_changing_its_arguments():
     compile(payload, "bootstrap_controller_archive.py", "exec")
     assert command[3:] == [
         "${{inputs.source_archive}}", "${{outputs.evidence}}", job["tags"]["archive_sha256"],
+        "${{inputs.datastore_canary_job}}",
     ]
 
 
@@ -42,13 +43,35 @@ def test_bootstrap_refuses_execution_outside_an_azure_job(monkeypatch):
         bootstrap.main()
 
 
+def test_bootstrap_rejects_invalid_datastore_canary_before_archive_access(
+    monkeypatch, tmp_path
+):
+    archive = tmp_path / "absent.zip"
+    output = tmp_path / "evidence"
+    monkeypatch.setenv("AZUREML_RUN_ID", "test-bootstrap")
+    monkeypatch.setattr(
+        bootstrap.sys,
+        "argv",
+        ["bootstrap", str(archive), str(output), "0" * 64, "invalid/canary"],
+    )
+
+    with pytest.raises(ValueError, match="canary job name"):
+        bootstrap.main()
+
+    assert not output.exists()
+
+
 def test_checksum_mismatch_cannot_extract_or_run_source(monkeypatch, tmp_path):
     archive = tmp_path / "source.zip"
     archive.write_bytes(b"untrusted archive")
     output = tmp_path / "evidence"
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AZUREML_RUN_ID", "test-bootstrap")
-    monkeypatch.setattr(bootstrap.sys, "argv", ["bootstrap", str(archive), str(output), "0" * 64])
+    monkeypatch.setattr(
+        bootstrap.sys,
+        "argv",
+        ["bootstrap", str(archive), str(output), "0" * 64, "canary-job"],
+    )
     monkeypatch.setattr(bootstrap.runpy, "run_path", lambda *args, **kwargs: pytest.fail("unverified source executed"))
     with pytest.raises(RuntimeError, match="checksum mismatch"):
         bootstrap.main()

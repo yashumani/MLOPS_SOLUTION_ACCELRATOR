@@ -4,21 +4,31 @@
 import hashlib
 import json
 import os
+import re
 import runpy
 import sys
 import zipfile
 from pathlib import Path
 
 
+JOB_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,254}$")
+
+
 def main() -> None:
     if not os.environ.get("AZUREML_RUN_ID"):
         raise RuntimeError("Archive bootstrap must execute inside an Azure ML job")
-    if len(sys.argv) != 4:
-        raise ValueError("Expected archive path, evidence path, and archive SHA-256")
+    if len(sys.argv) != 5:
+        raise ValueError(
+            "Expected archive path, evidence path, archive SHA-256, and "
+            "datastore canary job"
+        )
     archive, output = map(Path, sys.argv[1:3])
     expected = sys.argv[3]
+    datastore_canary = sys.argv[4].strip()
     if len(expected) != 64 or any(value not in "0123456789abcdef" for value in expected):
         raise ValueError("Expected a lowercase archive SHA-256")
+    if JOB_NAME_PATTERN.fullmatch(datastore_canary) is None:
+        raise ValueError("Datastore canary job name is invalid")
     if archive.stat().st_size > 67108864:
         raise RuntimeError("Source archive exceeds the reviewed compressed size bound")
     actual = hashlib.sha256(archive.read_bytes()).hexdigest()
@@ -46,7 +56,7 @@ def main() -> None:
         "--config", "config_qualification_classification_healthcare_heart_disease_azureml.yml",
         "--config", "config_qualification_regression_education_final_grade_azureml.yml",
         "--config", "config_qualification_clustering_retail_transaction_segments_azureml.yml",
-        "--datastore-canary-job", "verify-workspace-datastores-70e5c60f-approved-20260903",
+        "--datastore-canary-job", datastore_canary,
     ]
     runpy.run_path(sys.argv[0], run_name="__main__")
 

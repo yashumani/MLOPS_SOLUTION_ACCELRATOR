@@ -11,12 +11,13 @@ command: >-
   --config config_qualification_classification_healthcare_heart_disease_azureml.yml
   --config config_qualification_regression_education_final_grade_azureml.yml
   --config config_qualification_clustering_retail_transaction_segments_azureml.yml
-  --datastore-canary-job verify-workspace-datastores-70e5c60f-approved-20260903
+  --datastore-canary-job ${{inputs.datastore_canary_job}}
 inputs:
   test_suite:
     type: uri_folder
     path: ../../tests
     mode: download
+  datastore_canary_job: release-datastore-canary-c7f9cb27-20260904a
 outputs:
   evidence:
     type: uri_folder
@@ -24,7 +25,7 @@ outputs:
 environment: azureml:mlops-v3-unified:33
 compute: azureml:mlopsv2computecluster
 identity:
-  type: managed
+  type: user_identity
 resources:
   instance_count: 1
 limits:
@@ -35,6 +36,7 @@ environment_variables:
   AZURE_RESOURCE_GROUP: mvpv1
   AZURE_WORKSPACE_NAME: mlops-accelerator
   AZURE_COMPUTE: mlopsv2computecluster
+  MLOPS_CONTROLLER_CREDENTIAL_MODE: azureml_obo
 tags:
   evidence_scope: controller-preflight
   source_base_sha: dc969f129b619ead6e7a8f651929592db29718b8
