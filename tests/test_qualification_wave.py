@@ -66,7 +66,7 @@ def test_wave_runs_all_remote_acceptance_steps(
         compute=SimpleNamespace(
             get=lambda name: SimpleNamespace(
                 name=name,
-                scale_settings=SimpleNamespace(max_instances=2),
+                max_instances=2,
             )
         )
     )

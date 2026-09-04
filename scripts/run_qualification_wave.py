@@ -81,11 +81,7 @@ def main(argv: list[str] | None = None) -> int:
             context.workspace_name,
         )
         compute = client.compute.get(context.compute)
-        maximum_nodes = getattr(
-            getattr(compute, "scale_settings", None),
-            "max_instances",
-            None,
-        )
+        maximum_nodes = getattr(compute, "max_instances", None)
         if not isinstance(maximum_nodes, int) or maximum_nodes < 2:
             raise RuntimeError(
                 "Qualification orchestration requires cluster max_instances >= 2"
