@@ -35,14 +35,64 @@ guards to make a test pass.
 
 ## Progress
 
+Planning refresh: canonical branch and clean worktree were rechecked at
+`6190c5e07b7fe2f405c14e744598b5277c7d2978`. Azure and hosted-CI results below
+are recorded terminal evidence from the preceding execution, not fresh cloud
+checks in this planning turn. No release gate is complete.
+
 | Milestone | State | Exit evidence |
 | --- | --- | --- |
 | Recover scope and current source | Complete | Clean starting feature branch; exact-commit hosted CI already passed |
 | Establish Azure-only execution session | Complete | `mlopspipelinev2` Running; managed-identity workspace/cluster reads succeeded; all three legacy schedules disabled |
 | Controller bootstrap correction and remote preflight | Tests passed; live access blocked | Corrected Azure job `controller-preflight-dc969f12-20260904b`: 56 tests passed, 0 failures/errors/skips; managed-identity workspace read denied |
+| Publish controller corrections and regression tests | Published; hosted CI passed | Commit `6190c5e07b7fe2f405c14e744598b5277c7d2978`, CI `33823964566`: 652 backend tests passed, 1 Windows-only test skipped; 7 UI unit and 3 browser tests passed |
+| Transfer published source for fresh Azure validation | Unverified after authentication failure | New archive upload returned `NoAuthenticationInformation`; verify existence and integrity before any job uses it |
 | Automated retraining acceptance | Pending | Live discovery, submission/refusal, replay/concurrency, restart and recovery evidence |
 | Final-source qualification | Pending | 15 accepted scenarios at one Git and uploaded source identity |
 | Final release acceptance | Pending | Complete evidence report, operational recovery proof, exact-commit green CI, no unresolved release-blocking findings |
+
+### Next Execution Order
+
+| Order | Work and owner | Completion check and dependency |
+| --- | --- | --- |
+| 1 | Agent: diagnose archive-upload authentication with read-only identity, configuration-presence and blob-metadata checks. Never print credentials. | Explain the specific failure; verify the new immutable blob and SHA-256 before submission. No blind retries, key rotation or permission changes. |
+| 2 | Owner: approve workspace-only Reader for the cluster identity and approve supervised controller hosting with idle shutdown disabled. Agent: apply only approved changes and verify them. | Fresh managed-identity workspace read succeeds; persistent storage and service lifecycle are verified. These are two separate shared-resource approval boundaries. |
+| 3 | Agent: run the expanded Azure preflight and controller acceptance. | All 59 focused tests in the published candidate pass on Azure, then real discovery, one permitted submission, refusal/replay/concurrency, terminal candidate evidence and restart/recovery pass. Test count alone is not acceptance. |
+| 4 | Agent: finish any resulting corrections, obtain green exact-commit CI and freeze source/config/data/environment identities. | One final Git commit and uploaded source checksum are recorded. Do not mix the earlier archive or CI results into proof for changed source. |
+| 5 | Agent: qualify all 15 catalog scenarios on Azure in bounded waves. | Start with one scenario per task, at most two active parent pipelines; then complete the remaining 12. Require terminal success and exact registered-model raw-input inference for every scenario. |
+| 6 | Agent: consolidate and verify final release evidence. | Complete-matrix verifier exits 0 with `release_matrix_accepted: true`; controller acceptance, lineage, isolation, registration, drift and recovery evidence all pass; no unresolved release-blocking findings. |
+
+The first checkpoint is prerequisite resolution, not another full training run.
+Do not spend cluster time repeating a known permission failure. Recheck live
+datastore/schedule gates before qualification; historical health is not a
+substitute for the existing freshness checks. Record durations from the first
+three final-source scenarios to calculate the remaining Azure runtime and ETA.
+Approval wait time, queue time and corrective reruns remain explicit schedule
+dependencies; no calendar completion date is supported yet.
+
+### Latest Published Candidate And Transfer Failure
+
+- Published source: `6190c5e07b7fe2f405c14e744598b5277c7d2978` on the existing
+  `yashumani` feature branch; no merge or production deployment.
+- Hosted [CI run 33823964566](https://github.com/yashumani/MLOPS_SOLUTION_ACCELRATOR/actions/runs/33823964566)
+  completed successfully for that exact commit. Backend output:
+  `652 passed, 1 skipped, 5 warnings in 33.55s`. The skip is the Windows-only
+  liveness probe on Linux. Runtime dependency audit passed with 7 documented
+  ignored findings; this is not a zero-exception audit. UI checks also passed.
+- New archive: `snapshots/controller-preflight-6190c5e0.zip` in the outer
+  workspace, 1,340,279 bytes, SHA-256
+  `c9ba2a49775f7871518acef99c32977c78c3fcd87ff3c99b336d0154db4e8766`.
+- Intended blob: `mlops_blob/qualification/code/controller-preflight-6190c5e0.zip`.
+  Upload failed once with `NoAuthenticationInformation` at
+  `2026-09-04T01:06:42.4353668Z`, request ID
+  `2acee484-f01e-0022-0b09-3c7fc5000000`. Existence/integrity is unverified;
+  the root cause is not established. This is separate from cluster RBAC.
+- Three new launcher tests passed in hosted CI but have not run on Azure.
+  The older 56-test Azure result does not cover these or prove the new archive.
+- `configs/jobs/validate_controller_archive.yml` still describes historical
+  job b and archive a. Before another submission, review a new unique job name,
+  current archive URI, expected checksum and source tags together. Do not
+  submit that file unchanged or overwrite a previous job.
 
 Remote setup evidence: subscription `Enabled`, identity
 `systemAssignedIdentity`, cluster provisioning `Succeeded`, autoscale 0-8.
@@ -51,7 +101,7 @@ The notebook SDK environment warned that `mlflow==3.1.1` and
 not qualification. Do not repair that shared environment blindly or count it
 as the pinned runtime; use the immutable Azure environment for actual tests.
 
-### Current Execution Checkpoint: Corrected Launcher
+### Recorded Azure Checkpoint: Corrected Launcher
 
 The multiline launch failure is resolved. The readable
 `scripts/bootstrap_controller_archive.py` is encoded into a single-line job
@@ -139,9 +189,10 @@ no credential substitution or changed execution design was attempted here.
 The controller can now initialize its own explicitly workspace-bound state
 without deploying the optional API. New tests cover repeated and competing
 initialization, wrong-workspace rejection, nonempty legacy state, path
-containment, and Azure access failure. These edits remain uncommitted and
-unvalidated. The first Azure job failed before reaching them; they are not the
-final source freeze.
+containment, and Azure access failure. At the first attempt these edits were
+uncommitted and unvalidated. The first Azure job failed before reaching them.
+The later job b and published-candidate evidence above supersede that status;
+neither is the final source freeze.
 
 - Azure preflight job: `controller-preflight-dc969f12-20260904a`.
 - Execution: one node on `mlopsv2computecluster`, environment
@@ -186,16 +237,18 @@ controller tests nor live discovery can be counted as passed.
 
 | Category | Blocker and impact if unresolved | Owner and next action |
 | --- | --- | --- |
+| Code transfer | Published-source upload returned `NoAuthenticationInformation`. The next Azure preflight cannot safely use an unverified archive. | Agent: bounded read-only diagnosis and blob integrity verification. Owner input only if a verified fix needs shared credentials or access changes. |
 | Permissions | Cluster managed identity cannot perform workspace read. The 56 focused tests pass, but live datastore/schedule checks and completed-job discovery cannot execute under that identity. | Owner: approve the workspace-scoped Reader proposal above, or perform it in Azure. Agent: revalidate with fresh credentials and a new bounded job; no broad role escalation. |
 | Service availability | Instance idle shutdown is `PT15M`; an interactive daemon cannot establish continuous availability. | Owner: approve the host lifecycle and supervised service change, including ongoing Azure compute cost. Agent: then verify persistent local disk, supervision, restart and recovery. |
 | Release qualification | The final code identity is not frozen and the full 15-scenario evidence set does not exist for it. Earlier passes cannot establish this release's acceptance. | Agent: complete controller acceptance, freeze source with green CI, run all 15 scenarios and final evidence verification on Azure. |
 
 The first attempt stopped after the launch blocker. On continuation, that
 launcher was corrected and job `controller-preflight-dc969f12-20260904b` proved
-the focused tests pass. The current attempt stops at the new managed-identity
-authorization boundary. No access workaround, role assignment, daemon
-deployment, model promotion, source commit, or new CI run was performed.
-The native core-release goal remains active, not complete.
+the focused tests pass, then stopped at the managed-identity authorization
+boundary. A later turn published the corrections and obtained green hosted
+CI, but stopped on the new transfer failure. No role assignment, daemon
+deployment or model promotion has been performed. The native core-release
+goal remains active, not complete.
 
 The compute instance has `idleTimeBeforeShutdown: PT15M`. Continuous service
 acceptance cannot rely on an interactive terminal staying connected. Before
@@ -330,3 +383,11 @@ older 12-scenario estimate as an estimate for this larger scope.
 Maintain the durable handoff with source identity, commands, job handles,
 checkpoint evidence, outstanding failures, and the next bounded action.
 Continuation resumes existing jobs and state; it must not duplicate submissions.
+
+Stop and refresh the handoff on a new unplanned blocker, 3 consecutive failed
+attempts, the same command run 5 times without new information, 10 polls, or
+approximately 150 tool calls without a verifiable checkpoint. Do not switch
+approaches or bypass a gate after reaching a stop condition. Report the exact
+failure, impact, owner and next bounded action. The goal stays incomplete
+until all three release gates have terminal evidence; production deployment
+and model promotion still require separate approval.
