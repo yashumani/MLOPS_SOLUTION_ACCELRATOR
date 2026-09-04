@@ -46,7 +46,7 @@ checks in this planning turn. No release gate is complete.
 | Establish Azure-only execution session | Complete | `mlopspipelinev2` Running; managed-identity workspace/cluster reads succeeded; all three legacy schedules disabled |
 | Controller bootstrap correction and remote preflight | Tests passed; live access blocked | Corrected Azure job `controller-preflight-dc969f12-20260904b`: 56 tests passed, 0 failures/errors/skips; managed-identity workspace read denied |
 | Publish controller corrections and regression tests | Published; hosted CI passed | Commit `6190c5e07b7fe2f405c14e744598b5277c7d2978`, CI `33823964566`: 652 backend tests passed, 1 Windows-only test skipped; 7 UI unit and 3 browser tests passed |
-| Transfer published source for fresh Azure validation | Unverified after authentication failure | New archive upload returned `NoAuthenticationInformation`; verify existence and integrity before any job uses it |
+| Transfer published source for fresh Azure validation | Complete for candidate `6190c5e0` | Upload and metadata confirmed; full round-trip download SHA-256 equals `c9ba2a49775f7871518acef99c32977c78c3fcd87ff3c99b336d0154db4e8766` |
 | Automated retraining acceptance | Pending | Live discovery, submission/refusal, replay/concurrency, restart and recovery evidence |
 | Final-source qualification | Pending | 15 accepted scenarios at one Git and uploaded source identity |
 | Final release acceptance | Pending | Complete evidence report, operational recovery proof, exact-commit green CI, no unresolved release-blocking findings |
@@ -55,7 +55,7 @@ checks in this planning turn. No release gate is complete.
 
 | Order | Work and owner | Completion check and dependency |
 | --- | --- | --- |
-| 1 | Agent: diagnose archive-upload authentication with read-only identity, configuration-presence and blob-metadata checks. Never print credentials. | Explain the specific failure; verify the new immutable blob and SHA-256 before submission. No blind retries, key rotation or permission changes. |
+| 1 | Complete for candidate `6190c5e0`: agent diagnosed key-retrieval transport failures and verified the uploaded archive by downloading it and comparing SHA-256. | Keep the verified blob immutable and recheck its checksum inside the Azure job. No key rotation or permission change was needed. |
 | 2 | Owner: approve workspace-only Reader for the cluster identity and approve supervised controller hosting with idle shutdown disabled. Agent: apply only approved changes and verify them. | Fresh managed-identity workspace read succeeds; persistent storage and service lifecycle are verified. These are two separate shared-resource approval boundaries. |
 | 3 | Agent: run the expanded Azure preflight and controller acceptance. | All 59 focused tests in the published candidate pass on Azure, then real discovery, one permitted submission, refusal/replay/concurrency, terminal candidate evidence and restart/recovery pass. Test count alone is not acceptance. |
 | 4 | Agent: finish any resulting corrections, obtain green exact-commit CI and freeze source/config/data/environment identities. | One final Git commit and uploaded source checksum are recorded. Do not mix the earlier archive or CI results into proof for changed source. |
@@ -70,7 +70,7 @@ three final-source scenarios to calculate the remaining Azure runtime and ETA.
 Approval wait time, queue time and corrective reruns remain explicit schedule
 dependencies; no calendar completion date is supported yet.
 
-### Latest Published Candidate And Transfer Failure
+### Latest Published Candidate And Verified Transfer
 
 - Published source: `6190c5e07b7fe2f405c14e744598b5277c7d2978` on the existing
   `yashumani` feature branch; no merge or production deployment.
@@ -83,10 +83,29 @@ dependencies; no calendar completion date is supported yet.
   workspace, 1,340,279 bytes, SHA-256
   `c9ba2a49775f7871518acef99c32977c78c3fcd87ff3c99b336d0154db4e8766`.
 - Intended blob: `mlops_blob/qualification/code/controller-preflight-6190c5e0.zip`.
-  Upload failed once with `NoAuthenticationInformation` at
+  Initial upload failed with `NoAuthenticationInformation` at
   `2026-09-04T01:06:42.4353668Z`, request ID
-  `2acee484-f01e-0022-0b09-3c7fc5000000`. Existence/integrity is unverified;
-  the root cause is not established. This is separate from cluster RBAC.
+  `2acee484-f01e-0022-0b09-3c7fc5000000`. A bounded retry subsequently
+  succeeded at `2026-09-04T01:21:37+00:00`, ETag `0x8DF0A22DD71B572`.
+  Blob properties confirmed 1,340,279 bytes and the expected source metadata.
+- Full content verification subsequently passed: the downloaded archive's
+  SHA-256 exactly matched the source hash above. Terminal output:
+  `{"Verified":true,"SHA256":"c9ba2a49775f7871518acef99c32977c78c3fcd87ff3c99b336d0154db4e8766","CredentialPersisted":false}`.
+  This closes transfer verification, not Azure execution of the candidate.
+- Explicit CLI key retrieval failed with `ConnectionResetError(10054)`.
+  Using the same Azure login with IPv4 `curl.exe` to the documented ARM
+  `listKeys` API succeeded; the existing key was passed only through a
+  process-scoped environment variable to the verification download. Tokens
+  and keys were never printed or saved; the environment was restored afterward.
+  No security setting, key rotation, identity substitution, role or host change
+  was required. General CLI transport reliability is not claimed repaired.
+  [Microsoft List Keys API](https://learn.microsoft.com/en-us/rest/api/storagerp/storage-accounts/list-keys?view=rest-storagerp-2025-06-01).
+- Azure CLI 2.84.0 can catch automatic key-retrieval errors and continue with
+  only a warning, hidden by `--only-show-errors`. This is a supported
+  explanation for the missing-authentication symptom, not proof of the exact
+  historical request failure. Fail closed if credentials cannot be retrieved;
+  do not send an unauthenticated fallback request.
+  [Versioned CLI implementation](https://github.com/Azure/azure-cli/blob/azure-cli-2.84.0/src/azure-cli/azure/cli/command_modules/storage/_validators.py#L154-L171).
 - Three new launcher tests passed in hosted CI but have not run on Azure.
   The older 56-test Azure result does not cover these or prove the new archive.
 - `configs/jobs/validate_controller_archive.yml` still describes historical
@@ -237,18 +256,22 @@ controller tests nor live discovery can be counted as passed.
 
 | Category | Blocker and impact if unresolved | Owner and next action |
 | --- | --- | --- |
-| Code transfer | Published-source upload returned `NoAuthenticationInformation`. The next Azure preflight cannot safely use an unverified archive. | Agent: bounded read-only diagnosis and blob integrity verification. Owner input only if a verified fix needs shared credentials or access changes. |
 | Permissions | Cluster managed identity cannot perform workspace read. The 56 focused tests pass, but live datastore/schedule checks and completed-job discovery cannot execute under that identity. | Owner: approve the workspace-scoped Reader proposal above, or perform it in Azure. Agent: revalidate with fresh credentials and a new bounded job; no broad role escalation. |
-| Service availability | Instance idle shutdown is `PT15M`; an interactive daemon cannot establish continuous availability. | Owner: approve the host lifecycle and supervised service change, including ongoing Azure compute cost. Agent: then verify persistent local disk, supervision, restart and recovery. |
+| Service availability | Instance is `Stopped` with idle shutdown `PT15M`; an interactive daemon cannot establish continuous availability. | Owner: approve the host lifecycle and supervised service change, including ongoing Azure compute cost. Agent: then verify persistent local disk, supervision, restart and recovery. |
 | Release qualification | The final code identity is not frozen and the full 15-scenario evidence set does not exist for it. Earlier passes cannot establish this release's acceptance. | Agent: complete controller acceptance, freeze source with green CI, run all 15 scenarios and final evidence verification on Azure. |
 
 The first attempt stopped after the launch blocker. On continuation, that
 launcher was corrected and job `controller-preflight-dc969f12-20260904b` proved
 the focused tests pass, then stopped at the managed-identity authorization
 boundary. A later turn published the corrections and obtained green hosted
-CI, but stopped on the new transfer failure. No role assignment, daemon
-deployment or model promotion has been performed. The native core-release
-goal remains active, not complete.
+CI, then resolved the transfer blocker with verified uploaded bytes. Fresh
+checks still return no cluster role assignments and a stopped instance with
+`PT15M` idle shutdown. No role assignment, daemon deployment or model promotion
+has been performed. Both shared-resource approvals have remained unanswered
+across at least three goal turns. Automatic pursuit is blocked on those owner
+decisions, not marked complete. Resume the same goal and verified artifact
+after approval; do not create another working copy or repeat a known-denied
+preflight merely to produce activity.
 
 The compute instance has `idleTimeBeforeShutdown: PT15M`. Continuous service
 acceptance cannot rely on an interactive terminal staying connected. Before
