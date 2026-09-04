@@ -7,8 +7,10 @@ import os
 import sqlite3
 import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+from uuid import UUID
 
 
 _configured_path: str = ""
@@ -125,6 +127,39 @@ def append_event(connection: sqlite3.Connection, namespace: str, payload: dict[s
         "INSERT INTO events(namespace, payload) VALUES(?,?)",
         (namespace, json.dumps(payload, sort_keys=True, allow_nan=False)),
     )
+
+
+def bind_workspace(binding: dict[str, str], *, initialize: bool = False) -> bool:
+    """Verify the workspace, or explicitly bind a new empty controller database."""
+    required = {"tenant_id", "subscription_id", "resource_group", "workspace_name"}
+    if set(binding) != required or any(
+        not isinstance(value, str) or not value or value != value.strip()
+        for value in binding.values()
+    ):
+        raise OperationalStateError("A complete, unambiguous workspace binding is required")
+    try:
+        UUID(binding["tenant_id"])
+        UUID(binding["subscription_id"])
+    except ValueError as exc:
+        raise OperationalStateError("Tenant and subscription must be UUIDs") from exc
+    with transaction() as connection:
+        existing = get_document(connection, "configuration", "workspace")
+        if existing is not None:
+            if existing != binding:
+                raise OperationalStateError("Operational state belongs to another tenant or workspace")
+            return False
+        if not initialize:
+            raise OperationalStateError("Initialize controller state explicitly before starting the controller")
+        if connection.execute("SELECT 1 FROM documents LIMIT 1").fetchone() or connection.execute(
+            "SELECT 1 FROM events LIMIT 1"
+        ).fetchone():
+            raise OperationalStateError("Cannot bind nonempty state without an existing workspace identity")
+        put_document(connection, "configuration", "workspace", binding)
+        append_event(connection, "controller_audit", {
+            "event": "workspace_initialized", "workspace": binding,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        })
+        return True
 
 
 def require_legacy_import(connection: sqlite3.Connection, namespace: str, legacy_exists: bool) -> None:

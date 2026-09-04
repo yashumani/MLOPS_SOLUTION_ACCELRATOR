@@ -1,0 +1,42 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: controller-core-release-preflight
+experiment_name: mlops-v3-controller-qualification
+description: Azure-only controller contracts, managed-identity datastore verification, and read-only Run History discovery. This is not full controller acceptance.
+code: ../..
+command: >-
+  python scripts/validate_controller_release.py
+  --tests-dir ${{inputs.test_suite}}
+  --output-dir ${{outputs.evidence}}
+  --config config_qualification_classification_healthcare_heart_disease_azureml.yml
+  --config config_qualification_regression_education_final_grade_azureml.yml
+  --config config_qualification_clustering_retail_transaction_segments_azureml.yml
+  --datastore-canary-job verify-workspace-datastores-70e5c60f-approved-20260903
+inputs:
+  test_suite:
+    type: uri_folder
+    path: ../../tests
+    mode: download
+outputs:
+  evidence:
+    type: uri_folder
+    mode: upload
+environment: azureml:mlops-v3-unified:33
+compute: azureml:mlopsv2computecluster
+identity:
+  type: managed
+resources:
+  instance_count: 1
+limits:
+  timeout: 1800
+environment_variables:
+  AZURE_TENANT_ID: 3bc05bc3-19d1-4d30-89c5-134f4b278b11
+  AZURE_SUBSCRIPTION_ID: 93044a08-5661-4f1b-b424-5eafe066a9d1
+  AZURE_RESOURCE_GROUP: mvpv1
+  AZURE_WORKSPACE_NAME: mlops-accelerator
+  AZURE_COMPUTE: mlopsv2computecluster
+tags:
+  evidence_scope: controller-preflight
+  source_base_sha: dc969f129b619ead6e7a8f651929592db29718b8
+  source_freeze: not-yet-frozen
+  controller_acceptance: "false"

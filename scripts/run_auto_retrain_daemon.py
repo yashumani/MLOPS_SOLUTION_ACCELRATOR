@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the external candidate controller on the approved API/state host."""
+"""Initialize or run the external candidate controller on its approved state host."""
 
 from __future__ import annotations
 
@@ -46,39 +46,61 @@ def load_targets(path: Path) -> list[WatchTarget]:
     return targets
 
 
-def main() -> int:
+def validate_state_paths() -> Path:
+    root = Path(os.environ["MLOPS_STATE_DIR"]).expanduser()
+    ledger = Path(os.environ["MLOPS_AUTO_RETRAIN_LEDGER"]).expanduser()
+    database = state.database_path()
+    if not root.is_absolute() or not ledger.is_absolute() or database is None:
+        raise ValueError("Controller state paths must be absolute")
+    root = root.resolve()
+    ledger = ledger.resolve()
+    if any(path == root or not path.is_relative_to(root) for path in (ledger, database)):
+        raise ValueError("Controller database and ledger must be contained in MLOPS_STATE_DIR")
+    if ledger == database:
+        raise ValueError("Controller database and legacy ledger must have distinct paths")
+    return ledger
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--initialize-state", action="store_true", help="Verify Azure access, bind an empty state database, and exit without submission")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--interval-seconds", type=int, default=300)
     parser.add_argument("--max-age-seconds", type=int, default=86400)
     parser.add_argument("--max-runs", type=int, default=200)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
+        if args.initialize_state and (args.manifest or args.execute or args.once):
+            raise ValueError("--initialize-state cannot be combined with a manifest, --execute, or --once")
+        if not args.initialize_state and args.manifest is None:
+            raise ValueError("A reviewed --manifest is required to run the controller")
         if not 60 <= args.interval_seconds <= 3600 or not 60 <= args.max_age_seconds <= 86400 or not 1 <= args.max_runs <= 1000:
             raise ValueError("Invalid polling, freshness, or scan bound")
-        if not args.execute and not args.once:
+        if not args.initialize_state and not args.execute and not args.once:
             raise ValueError("Use --once for a dry run; continuous mode requires --execute")
-        targets = load_targets(args.manifest)
+        targets = [] if args.initialize_state else load_targets(args.manifest)
         required = ("AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID", "AZURE_RESOURCE_GROUP", "AZURE_WORKSPACE_NAME", "AZURE_COMPUTE", "MLOPS_OPERATIONAL_STATE_DB", "MLOPS_AUTO_RETRAIN_LEDGER", "MLOPS_STATE_DIR")
         missing = [name for name in required if not os.environ.get(name, "").strip()]
         if missing:
             raise ValueError("Missing controller settings: " + ", ".join(missing))
         state.configure_database(os.environ["MLOPS_OPERATIONAL_STATE_DB"])
-        ledger = Path(os.environ["MLOPS_AUTO_RETRAIN_LEDGER"])
-        if not ledger.is_absolute() or not Path(os.environ["MLOPS_STATE_DIR"]).is_absolute():
-            raise ValueError("Controller state and ledger paths must be absolute and shared with the API")
+        ledger = validate_state_paths()
         context = AzureSubmissionContext(*(os.environ[name] for name in required[1:5]))
         binding = {"tenant_id": os.environ["AZURE_TENANT_ID"], "subscription_id": context.subscription_id, "resource_group": context.resource_group, "workspace_name": context.workspace_name}
-        with state.transaction() as connection:
-            if state.get_document(connection, "configuration", "workspace") != binding:
-                raise ValueError("Initialize the API database for this tenant/workspace before the controller")
+        if not args.initialize_state:
+            state.bind_workspace(binding)
         from azure.ai.ml import MLClient
         from azure.identity import ManagedIdentityCredential
         # The deployed service never falls back to a developer's cached CLI identity.
         credential = ManagedIdentityCredential(client_id=os.environ.get("AZURE_CLIENT_ID") or None)
         client = MLClient(credential, context.subscription_id, context.resource_group, context.workspace_name)
+        if args.initialize_state:
+            client.workspaces.get(context.workspace_name)
+            initialized = state.bind_workspace(binding, initialize=True)
+            print(json.dumps({"status": "initialized" if initialized else "already_initialized", "workspace": binding}, sort_keys=True), flush=True)
+            return 0
         while True:
             for schedule in PLANNED_AUTO_RETRAIN_SCHEDULES:
                 live = client.schedules.get(schedule.schedule_name)
