@@ -3,12 +3,14 @@ import atexit
 import json
 import logging
 import os
+import re
 import signal
 import hashlib
 import subprocess
 import time
 import traceback
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import sys
@@ -93,6 +95,47 @@ _SUBMISSION_REVISION_KINDS = {
     "decision_retrain",
     "new_revision",
 }
+
+
+def _resolve_drift_baseline_input(ml_client: MLClient, job: PipelineJob) -> None:
+    """Bind a completed job's baseline to storage, preserving its lineage URI."""
+    baseline = job.inputs.get("drift_baseline_in")
+    path = getattr(baseline, "path", None)
+    if not isinstance(path, str) or not path.startswith("azureml://jobs/"):
+        return
+    match = re.fullmatch(
+        r"azureml://jobs/([A-Za-z0-9][A-Za-z0-9_.-]*)/outputs/drift_baseline(?:/paths/?)?",
+        path,
+    )
+    if match is None:
+        raise ValueError("Baseline job URI must identify the complete drift_baseline output")
+    if getattr(baseline, "type", None) != "uri_folder":
+        raise ValueError("Baseline input must have type uri_folder")
+    job_name = match.group(1)
+    producer = ml_client.jobs.get(job_name)
+    if producer.name != job_name or str(producer.status).lower() != "completed":
+        raise ValueError("Baseline producer must be the requested completed job")
+    outputs = getattr(producer, "outputs", None)
+    output = outputs.get("drift_baseline") if isinstance(outputs, Mapping) else None
+    output_type = output.get("type") if isinstance(output, Mapping) else getattr(output, "type", None)
+    if output_type != "uri_folder":
+        raise ValueError("Baseline producer must declare a uri_folder drift_baseline output")
+    resolved = output.get("path") if isinstance(output, Mapping) else getattr(output, "path", None)
+    if not resolved:
+        # Pinned azure-ai-ml 1.34.1 uses this same resolver in jobs.download.
+        # ARM can omit pipeline output paths; never guess a storage location.
+        resolver = getattr(ml_client.jobs, "_get_named_output_uri", None)
+        if not callable(resolver):
+            raise RuntimeError("Azure ML SDK cannot resolve the baseline named output")
+        locations = resolver(job_name, output_names="drift_baseline")
+        resolved = locations.get("drift_baseline") if isinstance(locations, Mapping) else None
+    datastore_uri = (
+        r"azureml://(?:subscriptions/[^/?#]+/resourcegroups/[^/?#]+/"
+        r"workspaces/[^/?#]+/)?datastores/[^/?#]+/paths/[^?#]+"
+    )
+    if not isinstance(resolved, str) or re.fullmatch(datastore_uri, resolved) is None:
+        raise ValueError("Baseline output did not resolve to an Azure ML datastore URI")
+    baseline.path = resolved
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -1858,6 +1901,8 @@ def main():
                 print("="*80 + "\n")
                 _release_lock()
                 sys.exit(1)
+
+        _resolve_drift_baseline_input(ml_client, job)
 
         # Environment version from component YAMLs
         print(f"Note: Using environment {env_version} from component YAMLs (includes azureml-core, sweetviz, etc.)\n")
