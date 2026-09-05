@@ -220,8 +220,63 @@ def test_onehot_reference_category_is_shared():
     )
 
     assert list(transformed_train.columns) == list(transformed_holdout.columns)
-    assert transformed_holdout["category_b"].tolist() == [True, False]
-    assert transformed_holdout["category_c"].tolist() == [False, True]
+    assert transformed_holdout["category_b"].tolist() == [1.0, 0.0]
+    assert transformed_holdout["category_c"].tolist() == [0.0, 1.0]
+    assert transformed_holdout["category_b"].dtype == np.dtype(float)
+
+
+@pytest.mark.parametrize("method", ["smote", "smoteenn", "smotetomek", "adasyn"])
+def test_onehot_only_features_support_fold_local_resampling(method):
+    from sklearn.linear_model import LogisticRegression
+    from src.utils.common_evaluator import EvaluationSpec, evaluate_candidate
+
+    frame = pd.DataFrame({"category": ["a"] * 30 + ["c"] * 18 + ["b"] * 18 + ["c"] * 6})
+    target = pd.Series([0] * 48 + [1] * 24)
+    recipe = _variant(encoding="onehot")
+    recipe["stage3_preprocessing"]["imbalance_handling"]["method"] = method
+    candidate = build_fold_local_pipeline(
+        FittedVariantPreprocessor(recipe), LogisticRegression(),
+        recipe=recipe, task_type="classification", random_seed=42,
+    )
+    evidence = evaluate_candidate(
+        candidate, frame, target, candidate_id=method, engine="pycaret",
+        spec=EvaluationSpec(task_type="classification", folds=3, timeout_seconds=45),
+    )
+    assert evidence.status == "success", evidence.failure_reason
+    assert evidence.completed_folds == 3
+    assert not hasattr(candidate.named_steps["preprocessing"], "input_columns_")
+
+
+@pytest.mark.parametrize("task_type", ["classification", "regression", "clustering"])
+def test_feature_names_are_safe_unique_and_replayed_at_inference(task_type):
+    from lightgbm import LGBMClassifier
+    import joblib
+    import io
+
+    frame = pd.DataFrame({
+        "pressure [Pa]": np.arange(40, dtype=float),
+        "a[x]": np.arange(40, dtype=float) % 3,
+        "a_x": np.arange(40, dtype=float) % 4,
+        "a_x_1": np.arange(40, dtype=float) % 5,
+        "category": ["first", 'special[]:\"'] * 20,
+    })
+    recipe = _variant(encoding="onehot", task_type=task_type)
+    fitted = FittedVariantPreprocessor(recipe)
+    target = pd.Series([0, 1] * 20)
+    training = fitted.fit_transform(frame, target)
+    assert len(set(training.columns)) == training.shape[1] == 5
+    assert "a_x" in training and "a_x_1" in training
+    assert all(not any(char in name for char in '[]{}:\",<> ') for name in training.columns)
+    LGBMClassifier(n_estimators=2, n_jobs=1, verbosity=-1).fit(training, target)
+    buffer = io.BytesIO()
+    joblib.dump(fitted, buffer)
+    buffer.seek(0)
+    restored = joblib.load(buffer)
+    holdout = frame.iloc[:3].copy()
+    holdout["category"] = ["unseen", "first", 'special[]:\"']
+    pd.testing.assert_frame_equal(restored.transform(holdout), fitted.transform(holdout))
+    assert list(restored.transform(holdout).columns) == list(training.columns)
+    assert list(frame.columns) == ["pressure [Pa]", "a[x]", "a_x", "a_x_1", "category"]
 
 
 def test_preprocessor_detaches_read_only_input_buffers():

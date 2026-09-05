@@ -173,11 +173,24 @@ def _clone_for_isolated_fit(estimator: Any) -> Any:
     if not hasattr(fitted, "get_params"):
         return fitted
     parameters = fitted.get_params(deep=True)
-    updates = {
-        name: 1
-        for name in parameters
-        if name == "n_jobs" or name.endswith("__n_jobs")
-    }
+    updates = {}
+    for name in parameters:
+        owner_path, _, parameter = name.rpartition("__")
+        if parameter not in {"n_jobs", "thread_count"}:
+            continue
+        owner = parameters[owner_path] if owner_path else fitted
+        if callable(getattr(owner, "set_params", None)):
+            updates[name] = 1
+        elif any(
+            base.__module__ == "flaml.automl.model"
+            and base.__name__ == "BaseEstimator"
+            for base in type(owner).__mro__
+        ):
+            # FLAML 2.2 exposes constructor parameters but no set_params.
+            # Change only the unfitted clone, retaining wrapper preprocessing.
+            owner.params[parameter] = 1
+        else:
+            raise TypeError(f"Cannot bound parallelism for parameter {name!r}")
     if updates:
         fitted.set_params(**updates)
     return fitted

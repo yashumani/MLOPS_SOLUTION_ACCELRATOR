@@ -130,14 +130,15 @@ def test_bundle_detects_fitted_state_mutation():
         bundle.assert_integrity()
 
 
-def test_schema_three_bundle_keeps_legacy_identity_after_roundtrip(tmp_path):
+@pytest.mark.parametrize("schema_version", [3, 4])
+def test_legacy_bundle_keeps_identity_after_roundtrip(tmp_path, schema_version):
     raw, bundle = _bundle()
-    legacy = replace(bundle, bundle_schema_version=3)
+    legacy = replace(bundle, bundle_schema_version=schema_version)
     expected_id = legacy.bundle_id
     save_model_bundle(legacy, tmp_path)
     restored = load_model_bundle(tmp_path)
 
-    assert restored.bundle_schema_version == 3
+    assert restored.bundle_schema_version == schema_version
     assert restored.bundle_id == expected_id
     np.testing.assert_array_equal(restored.predict(raw), legacy.predict(raw))
     restored.estimator.coef_[0, 0] += 1.0
@@ -149,6 +150,58 @@ def test_bundle_rejects_unknown_hash_schema():
     _, bundle = _bundle()
     with pytest.raises(ValueError, match="Unsupported ModelBundle schema"):
         replace(bundle, bundle_schema_version=99)
+
+
+def test_schema_five_hashes_class_references_without_ignoring_fitted_values():
+    assert _model_state_sha256({"class": float, "state": [1.0]}, None) != (
+        _model_state_sha256({"class": int, "state": [1.0]}, None)
+    )
+    assert _model_state_sha256({"class": float, "state": [1.0]}, None) != (
+        _model_state_sha256({"class": float, "state": [2.0]}, None)
+    )
+    with pytest.raises(TypeError, match="state must be hashable"):
+        _model_state_sha256(float, None, schema_version=4)
+    with pytest.raises(TypeError, match="state must be hashable"):
+        _model_state_sha256(float.__add__, None)
+
+
+@pytest.mark.parametrize("task_type", ["classification", "regression"])
+def test_flaml_catboost_recipe_bundle_roundtrip_and_refit(tmp_path, task_type):
+    from flaml.automl.model import CatBoostEstimator
+    from src.utils.fitted_variant_preprocessor import FittedVariantPreprocessor
+
+    raw = pd.DataFrame({
+        "feature [units]": np.linspace(-3.0, 3.0, 80),
+        "category": ["a", "b"] * 40,
+    })
+    target = pd.Series([0, 1] * 40) if task_type == "classification" else raw.iloc[:, 0] ** 2
+    preprocessing = FittedVariantPreprocessor({
+        "task_type": task_type,
+        "stage3_preprocessing": {
+            "encoding": {"categorical_method": "onehot"},
+            "scaling": {"method": "standard"},
+        },
+    })
+    transformed = preprocessing.fit_transform(raw, target)
+    estimator = CatBoostEstimator(
+        task=task_type, n_estimators=5, thread_count=1, random_seed=42,
+        allow_writing_files=False,
+    )
+    estimator.fit(transformed, target, use_best_model=False)
+    bundle = ModelBundle(
+        estimator=estimator, preprocessing=preprocessing, task_type=task_type,
+        candidate_id=f"flaml-catboost-{task_type}", input_schema=capture_input_schema(raw),
+    )
+    prediction = bundle.predict(raw)
+    save_model_bundle(bundle, tmp_path)
+    restored = load_model_bundle(tmp_path)
+    assert restored.bundle_schema_version == 5
+    assert restored.bundle_id == bundle.bundle_id
+    np.testing.assert_allclose(restored.predict(raw), prediction)
+    changed_target = 1 - target if task_type == "classification" else -target
+    restored.estimator.fit(transformed, changed_target, use_best_model=False)
+    with pytest.raises(ValueError, match="fitted model state changed"):
+        restored.assert_integrity()
 
 
 def test_schema_four_hash_ignores_aliases_but_detects_value_changes():

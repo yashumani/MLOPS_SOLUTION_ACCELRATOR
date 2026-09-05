@@ -42,7 +42,7 @@ def _update_state_hash(
     digest: Any,
     value: Any,
     seen: dict[int, tuple[int, Any]],
-    schema_version: int = 4,
+    schema_version: int = 5,
 ) -> None:
     """Canonicalize fitted object state independent of pickle memory layout."""
     if value is None or isinstance(value, (bool, int, str)):
@@ -74,6 +74,13 @@ def _update_state_hash(
             f"function:{value.__module__}.{value.__qualname__}".encode(
                 "utf-8"
             )
+        )
+        return
+    if schema_version >= 5 and isinstance(value, type):
+        # Engine wrappers retain class references as constructor metadata.
+        # Fitted instances are still traversed separately, including all state.
+        digest.update(
+            f"class:{value.__module__}.{value.__qualname__}".encode("utf-8")
         )
         return
 
@@ -241,7 +248,7 @@ def _update_state_hash(
 def _model_state_sha256_once(
     estimator: Any,
     preprocessing: Any | None,
-    schema_version: int = 4,
+    schema_version: int = 5,
 ) -> str:
     digest = hashlib.sha256()
     _update_state_hash(digest, (estimator, preprocessing), {}, schema_version)
@@ -253,10 +260,10 @@ def _model_state_sha256(
     preprocessing: Any | None,
     target_decoder: Any | None = None,
     *,
-    schema_version: int = 4,
+    schema_version: int = 5,
 ) -> str:
     """Hash logical fitted state after any library lazy-state materialization."""
-    if schema_version not in {3, 4}:
+    if schema_version not in {3, 4, 5}:
         raise ValueError(f"Unsupported ModelBundle schema version: {schema_version}")
     try:
         previous = _model_state_sha256_once(
@@ -311,7 +318,7 @@ class ModelBundle:
     labels: Sequence[Any] = field(default_factory=tuple)
     signature: Mapping[str, Any] = field(default_factory=dict)
     input_example: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None
-    bundle_schema_version: int = 4
+    bundle_schema_version: int = 5
     _model_state_sha256: str = field(init=False, repr=False)
     _metadata_sha256: str = field(init=False, repr=False)
 

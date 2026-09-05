@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any, Mapping
 
 import numpy as np
@@ -304,6 +305,18 @@ class FittedVariantPreprocessor(BaseEstimator, TransformerMixin):
                     "all features"
                 )
             self.selected_columns_ = ordered
+        self.output_column_mapping_ = {}
+        used_names: set[str] = set()
+        reserved_names = set(self.selected_columns_)
+        for column in self.selected_columns_:
+            base = re.sub(r"[^\w.-]", "_", column).strip("_") or "feature"
+            name = base
+            suffix = 1
+            while name in used_names or (name != column and name in reserved_names):
+                name = f"{base}_{suffix}"
+                suffix += 1
+            self.output_column_mapping_[column] = name
+            used_names.add(name)
         return self
 
     def _apply_imputation(self, frame: pd.DataFrame) -> pd.DataFrame:
@@ -342,6 +355,7 @@ class FittedVariantPreprocessor(BaseEstimator, TransformerMixin):
                 result,
                 columns=list(self.category_values_),
                 drop_first=True,
+                dtype=float,
             )
             if hasattr(self, "encoded_columns_"):
                 result = result.reindex(columns=self.encoded_columns_, fill_value=0)
@@ -371,6 +385,8 @@ class FittedVariantPreprocessor(BaseEstimator, TransformerMixin):
         result = self._apply_encoding(result)
         result = self._apply_scaling(result)
         ordered = result.reindex(columns=self.selected_columns_, fill_value=0)
+        # Older bundles have no mapping; preserve their trained feature names.
+        ordered = ordered.rename(columns=getattr(self, "output_column_mapping_", {}))
         return _materialize_owned_frame(ordered)
 
     def fit_transform(self, frame: pd.DataFrame, target: Any = None) -> pd.DataFrame:

@@ -15,6 +15,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from src.utils.common_evaluator import (
     CandidateEvidence,
     EvaluationSpec,
+    _clone_for_isolated_fit,
     deterministic_cv_splits,
     evaluate_candidate,
     select_best_evidence,
@@ -144,6 +145,40 @@ def test_isolated_evaluator_disables_nested_estimator_process_pools():
     )
 
     assert evidence.status == "success"
+    assert evidence.completed_folds == 3
+
+
+@pytest.mark.parametrize("family,task_type", [
+    ("LRL1Classifier", "classification"),
+    ("LGBMEstimator", "regression"),
+    ("XGBoostLimitDepthEstimator", "regression"),
+    ("CatBoostEstimator", "classification"),
+])
+def test_real_flaml_wrappers_are_cloned_and_evaluated_without_nested_pools(family, task_type):
+    from flaml.automl import model as flaml_models
+
+    parameters = {"n_jobs": -1}
+    if family != "LRL1Classifier":
+        parameters["n_estimators"] = 5
+    estimator = getattr(flaml_models, family)(task=task_type, **parameters)
+    X, labels = _classification_data()
+    y = labels if task_type == "classification" else X["x"] ** 2
+    estimator.fit(X, y)
+    candidate = Pipeline([("scale", StandardScaler()), ("model", estimator)])
+    isolated = _clone_for_isolated_fit(candidate)
+    wrapper = isolated.named_steps["model"]
+    assert type(wrapper) is type(estimator)
+    assert wrapper.model is None
+    assert estimator.model is not None
+    parameter = "thread_count" if family == "CatBoostEstimator" else "n_jobs"
+    assert wrapper.get_params()[parameter] == 1
+    assert estimator.get_params()[parameter] == -1
+    assert _clone_for_isolated_fit(wrapper).get_params()[parameter] == 1
+    evidence = evaluate_candidate(
+        candidate, X, y, candidate_id=f"flaml-{family}", engine="flaml",
+        spec=EvaluationSpec(task_type=task_type, folds=3, timeout_seconds=45),
+    )
+    assert evidence.status == "success", evidence.failure_reason
     assert evidence.completed_folds == 3
 
 
