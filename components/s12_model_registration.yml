@@ -1,5 +1,5 @@
 name: v3_s12_model_registration
-version: 14
+version: 15
 display_name: V3 Stage 12 - Model Registry
 type: command
 is_deterministic: false
@@ -37,7 +37,7 @@ command: >
   --execution_manifest ${{inputs.execution_manifest}}
   --registry_info ${{outputs.registry_info}}
 
-environment: azureml:mlops-v3-registration:2
+environment: azureml:mlops-v3-registration:3-ee968ec2
 
 history:
   enableMLflowTracking: true
