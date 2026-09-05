@@ -50,6 +50,60 @@ def test_final_fit_error_captures_representation_without_target_values(tmp_path)
     assert "private-label" not in error
 
 
+@pytest.mark.parametrize("sampler_name", ["smotetomek", "smoteenn"])
+@pytest.mark.parametrize("string_labels", [False, True])
+def test_final_fit_detaches_read_only_classification_target(tmp_path, sampler_name, string_labels):
+    from imblearn.combine import SMOTEENN, SMOTETomek
+
+    values = np.array(["negative"] * 8 + ["positive"] * 8) if string_labels else np.repeat([0, 1], 8)
+    backing = np.frombuffer(values.tobytes(), dtype=values.dtype)
+    target = pd.Series(backing, copy=False)
+    features = np.column_stack((np.repeat([0.0, 10.0], 8), np.arange(16) / 100))
+    sampler = {"smotetomek": SMOTETomek, "smoteenn": SMOTEENN}[sampler_name](random_state=42)
+    result_path, error_path = tmp_path / "model.joblib", tmp_path / "error.txt"
+
+    phasec_optuna_hpo._final_fit_worker(
+        str(result_path), str(error_path), LogisticRegression(random_state=42),
+        features, target, sampler,
+    )
+
+    assert not error_path.exists(), error_path.read_text() if error_path.exists() else ""
+    restored = joblib.load(result_path)
+    np.testing.assert_array_equal(restored.predict(features), values)
+    np.testing.assert_array_equal(target.to_numpy(), values)
+    assert not backing.flags.writeable
+
+
+def test_final_fit_preserves_read_only_continuous_target(tmp_path):
+    from sklearn.linear_model import LinearRegression
+
+    values = np.array([0.25, 1.75, 3.25, 4.75])
+    backing = np.frombuffer(values.tobytes(), dtype=values.dtype)
+    target = pd.Series(backing, copy=False)
+    features = np.arange(4).reshape(-1, 1)
+    result_path, error_path = tmp_path / "model.joblib", tmp_path / "error.txt"
+    phasec_optuna_hpo._final_fit_worker(
+        str(result_path), str(error_path), LinearRegression(), features, target, None,
+    )
+    assert not error_path.exists(), error_path.read_text() if error_path.exists() else ""
+    np.testing.assert_allclose(joblib.load(result_path).predict(features), values)
+    assert target.dtype == values.dtype
+    assert not backing.flags.writeable
+
+
+def test_final_fit_preserves_targetless_clustering(tmp_path):
+    from sklearn.cluster import KMeans
+
+    features = np.array([[0.0], [0.1], [10.0], [10.1]])
+    result_path, error_path = tmp_path / "model.joblib", tmp_path / "error.txt"
+    phasec_optuna_hpo._final_fit_worker(
+        str(result_path), str(error_path), KMeans(n_clusters=2, n_init=1, random_state=42),
+        features, None, None,
+    )
+    assert not error_path.exists(), error_path.read_text() if error_path.exists() else ""
+    assert len(set(joblib.load(result_path).predict(features))) == 2
+
+
 def test_phasec_scaler_is_fitted_only_on_training_rows():
     train, target = _training_data()
     holdout = pd.DataFrame({"category": ["unseen"], "numeric": [100.0]})

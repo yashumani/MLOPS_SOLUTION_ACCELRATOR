@@ -51,7 +51,17 @@ def _final_fit_worker(
     try:
         import joblib
 
-        X_fit, y_fit = X, y
+        X_fit, y_fit = X, None
+        if y is not None:
+            incoming_target = np.asarray(y)
+            if not incoming_target.flags.writeable:
+                logger.warning(
+                    "Materializing read-only Phase C target: dtype=%s, shape=%s",
+                    incoming_target.dtype, incoming_target.shape,
+                )
+            # Match the evaluator boundary: sklearn's pandas validation may
+            # attempt to make a read-only transported target writable.
+            y_fit = np.array(y, copy=True)
         if resampler is not None:
             X_fit, y_fit = resampler.fit_resample(X_fit, y_fit)
         if y_fit is None:
