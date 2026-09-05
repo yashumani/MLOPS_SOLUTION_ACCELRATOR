@@ -59,9 +59,30 @@ def _final_fit_worker(
         else:
             model.fit(X_fit, y_fit)
         joblib.dump(model, result_path)
-    except BaseException as error:
+    except BaseException:
+        failure = traceback.format_exc()
+        # Report representation only, never feature values or target labels.
+        try:
+            from sklearn.utils.multiclass import type_of_target
+
+            target_array = np.asarray(y)
+            target_metadata = {
+                "container": f"{type(y).__module__}.{type(y).__name__}",
+                "dtype": str(getattr(y, "dtype", None)),
+                "array_dtype": str(target_array.dtype),
+                "array_kind": target_array.dtype.kind,
+                "shape": list(target_array.shape),
+                "target_type": type_of_target(y),
+                "scalar_types": sorted({
+                    f"{type(value).__module__}.{type(value).__name__}"
+                    for value in target_array.reshape(-1)[:16]
+                }),
+            }
+            failure += "\nFinal-fit target metadata: " + json.dumps(target_metadata)
+        except Exception as diagnostic_error:
+            failure += f"\nTarget metadata unavailable: {type(diagnostic_error).__name__}"
         Path(error_path).write_text(
-            traceback.format_exc(),
+            failure,
             encoding="utf-8",
         )
 

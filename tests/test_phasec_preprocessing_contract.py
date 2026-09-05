@@ -32,6 +32,24 @@ def _training_data():
     return features, target
 
 
+def test_final_fit_error_captures_representation_without_target_values(tmp_path):
+    class RejectingSampler:
+        def fit_resample(self, X, y):
+            raise ValueError("resampling rejected")
+
+    error_path = tmp_path / "error.txt"
+    phasec_optuna_hpo._final_fit_worker(
+        str(tmp_path / "model.joblib"), str(error_path), object(),
+        np.zeros((2, 1)), pd.Series(["private-label-a", "private-label-b"]),
+        RejectingSampler(),
+    )
+    error = error_path.read_text()
+    assert "resampling rejected" in error
+    assert '"container": "pandas.core.series.Series"' in error
+    assert '"array_dtype": "object"' in error
+    assert "private-label" not in error
+
+
 def test_phasec_scaler_is_fitted_only_on_training_rows():
     train, target = _training_data()
     holdout = pd.DataFrame({"category": ["unseen"], "numeric": [100.0]})

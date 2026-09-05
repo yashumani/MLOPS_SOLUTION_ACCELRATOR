@@ -36,6 +36,7 @@ import yaml
 
 # Add parent to path for utils imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from orchestration.contracts import ExecutionManifest
 from utils.drift_detector import (
     compute_feature_psi,
     compute_baseline_statistics,
@@ -126,7 +127,7 @@ _IDENTITY_FIELDS = (
 
 
 def _collect_upstream_identity(final_report: dict, registry_info: dict) -> dict:
-    """Pass through identity values already emitted by upstream stages."""
+    """Normalize upstream identity without guessing or masking conflicts."""
     sources = [
         final_report.get("identity") or {},
         final_report.get("lineage") or {},
@@ -135,13 +136,42 @@ def _collect_upstream_identity(final_report: dict, registry_info: dict) -> dict:
         registry_info.get("lineage") or {},
         registry_info,
     ]
+    manifest_payload = final_report.get("execution_manifest")
+    if manifest_payload is not None:
+        manifest = ExecutionManifest.from_dict(manifest_payload)
+        sources.append({
+            "execution_id": manifest.execution_id,
+            "config_hash": manifest.config_hash,
+            "source_sha": manifest.code_sha,
+            "data_fingerprint": manifest.dataset.get("content_sha256"),
+            "dataset_version": manifest.dataset.get("version"),
+        })
+    bundle = final_report.get("model_bundle") or {}
+    if isinstance(bundle, dict):
+        sources.append({
+            "model_bundle_id": bundle.get("bundle_id"),
+            "candidate_id": bundle.get("candidate_id"),
+        })
+    sources.append({"model_version": registry_info.get("version")})
+    aliases = {
+        "source_sha": ("source_sha", "code_sha", "source_identity"),
+        "data_fingerprint": ("data_fingerprint", "dataset_content_sha256"),
+        "split_fingerprint": ("split_fingerprint", "split_id"),
+    }
     identity = {}
     for field in _IDENTITY_FIELDS:
+        values = {}
         for source in sources:
-            value = source.get(field) if isinstance(source, dict) else None
-            if value not in (None, ""):
-                identity[field] = value
-                break
+            if not isinstance(source, dict):
+                continue
+            for alias in aliases.get(field, (field,)):
+                value = source.get(alias)
+                if value not in (None, ""):
+                    values.setdefault(str(value), value)
+        if len(values) > 1:
+            raise ValueError(f"Conflicting upstream baseline identity: {field}")
+        if values:
+            identity[field] = next(iter(values.values()))
 
     actual_run_id = os.getenv("AZUREML_RUN_ID") or os.getenv("MLFLOW_RUN_ID")
     if actual_run_id and "execution_id" not in identity:
@@ -367,6 +397,16 @@ def run_drift_monitor(args):
         if args.registry_info else {}
     )
     identity = _collect_upstream_identity(final_report, registry_info)
+    required_identity = (
+        "execution_id", "config_hash", "source_sha",
+        "model_bundle_id", "data_fingerprint",
+    )
+    missing_identity = [field for field in required_identity if not identity.get(field)]
+    if missing_identity:
+        raise ValueError(
+            "Cannot produce a reusable drift baseline without identity: "
+            + ", ".join(missing_identity)
+        )
     logger.info("  Upstream identity fields: %s", sorted(identity))
 
     # ── Load dataset ────────────────────────────────────────────
