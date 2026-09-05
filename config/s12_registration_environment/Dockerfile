@@ -9,4 +9,4 @@ RUN python -m pip install \
       --requirement /tmp/s12-registration-requirements.lock \
     && python -m pip check \
     && python -c \
-      "from azure.ai.ml import MLClient; import azureml.mlflow, catboost, lightgbm, marshmallow, xgboost; assert marshmallow.__version__ == '3.23.3'"
+      "from azure.ai.ml import MLClient; import azureml.mlflow, catboost, flaml, lightgbm, marshmallow, xgboost; from flaml.automl.model import CatBoostEstimator, LGBMEstimator, LRL1Classifier, XGBoostLimitDepthEstimator; assert flaml.__version__ == '2.2.0'; assert marshmallow.__version__ == '3.23.3'"
