@@ -16,8 +16,11 @@ from orchestration.auto_retrain_decision_ledger import append_decision_record, l
 from test_orchestration.test_auto_retrain_controller import _write_config, _write_s14_decision
 
 
-@pytest.fixture
-def scenario(tmp_path, monkeypatch):
+@pytest.fixture(params=[
+    "retrain_decision.json",
+    "retrain_decision/named-outputs/retrain_decision/retrain_decision",
+])
+def scenario(tmp_path, monkeypatch, request):
     monkeypatch.setenv("MLOPS_OPERATIONAL_STATE_DB", str(tmp_path / "state.sqlite3"))
     config = tmp_path / "config_regression_college_azureml.yml"
     decision = tmp_path / "source.json"
@@ -40,9 +43,11 @@ def scenario(tmp_path, monkeypatch):
 
         def download(self, *, name, output_name, download_path):
             assert name == "parent" and output_name == "retrain_decision"
-            (Path(download_path) / "retrain_decision.json").write_text(json.dumps(payload))
+            path = Path(download_path) / request.param
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(payload))
 
-    return SimpleNamespace(client=SimpleNamespace(jobs=Jobs()), target=controller.WatchTarget(config, "watched"), ledger=ledger, payload=payload, job=job, now=now, context=AzureSubmissionContext("sub", "rg", "ws", "cluster"))
+    return SimpleNamespace(client=SimpleNamespace(jobs=Jobs()), target=controller.WatchTarget(config, "watched"), ledger=ledger, payload=payload, job=job, now=now, artifact_path=request.param, context=AzureSubmissionContext("sub", "rg", "ws", "cluster"))
 
 
 def _process(scenario, **kwargs):
@@ -62,6 +67,73 @@ def _successful_submit(command, **kwargs):
 
 def test_dry_run_has_no_reservation_or_submission(scenario, monkeypatch):
     monkeypatch.setattr(controller.subprocess, "run", lambda *args, **kwargs: pytest.fail("dry run submitted"))
+    assert _process(scenario)["status"] == "eligible_dry_run"
+    assert len(load_decision_records(scenario.ledger)) == 1
+
+
+@pytest.mark.parametrize("artifact_case", [
+    "missing", "unknown_name", "directory", "duplicate_names", "duplicate_layouts",
+    "oversized", "symlink", "invalid_json", "non_object",
+])
+def test_invalid_download_never_reserves_or_submits(
+    scenario, monkeypatch, tmp_path, artifact_case,
+):
+    monkeypatch.setattr(controller.subprocess, "run", lambda *args, **kwargs: pytest.fail("invalid artifact submitted"))
+
+    def download(*, name, output_name, download_path):
+        assert name == "parent" and output_name == "retrain_decision"
+        if artifact_case == "missing":
+            return
+        root = Path(download_path)
+        path = root / scenario.artifact_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if artifact_case == "directory":
+            path.mkdir()
+            return
+        if artifact_case == "symlink":
+            outside = tmp_path / "outside.json"
+            outside.write_text(json.dumps(scenario.payload))
+            path.symlink_to(outside)
+            return
+        if artifact_case == "unknown_name":
+            path = path.with_name("unrelated.json")
+        content = json.dumps(scenario.payload)
+        if artifact_case == "invalid_json":
+            content = "{"
+        elif artifact_case == "non_object":
+            content = "[]"
+        elif artifact_case == "oversized":
+            content = content.ljust(2_000_001)
+        path.write_text(content)
+        if artifact_case in {"duplicate_names", "duplicate_layouts"}:
+            filename = path.name if artifact_case == "duplicate_layouts" else (
+                "retrain_decision" if path.name.endswith(".json") else "retrain_decision.json"
+            )
+            duplicate = root / "other" / filename
+            duplicate.parent.mkdir()
+            duplicate.write_text(content)
+
+    monkeypatch.setattr(scenario.client.jobs, "download", download)
+    if artifact_case in {"invalid_json", "non_object"}:
+        assert _process(scenario, execute=True)["status"] == "blocked"
+    else:
+        with pytest.raises(controller.AutoRetrainControllerError, match="bounded retrain_decision artifact"):
+            _process(scenario, execute=True)
+    assert len(load_decision_records(scenario.ledger)) == 1
+
+
+def test_maximum_size_decision_and_unrelated_metadata_are_supported(scenario, monkeypatch):
+    monkeypatch.setattr(controller.subprocess, "run", lambda *args, **kwargs: pytest.fail("dry run submitted"))
+
+    def download(*, name, output_name, download_path):
+        assert name == "parent" and output_name == "retrain_decision"
+        root = Path(download_path)
+        path = root / scenario.artifact_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(scenario.payload).ljust(2_000_000))
+        (root / "metadata.json").write_text("{}")
+
+    monkeypatch.setattr(scenario.client.jobs, "download", download)
     assert _process(scenario)["status"] == "eligible_dry_run"
     assert len(load_decision_records(scenario.ledger)) == 1
 

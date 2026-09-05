@@ -158,9 +158,13 @@ def process_source_job(client, target: WatchTarget, job_name: str, *, context: A
     with tempfile.TemporaryDirectory(prefix="mlops-controller-") as directory:
         folder = Path(directory)
         client.jobs.download(name=job_name, output_name="retrain_decision", download_path=str(folder))
-        files = list(folder.rglob("retrain_decision.json"))
-        if len(files) != 1 or files[0].stat().st_size > 2_000_000:
-            raise AutoRetrainControllerError("Expected one bounded retrain_decision.json artifact")
+        # Azure named uri_file outputs may lose the original filename extension.
+        files = [path for path in folder.rglob("*")
+                 if path.name in {"retrain_decision", "retrain_decision.json"} and path.is_file()]
+        if (len(files) != 1 or files[0].is_symlink()
+                or not files[0].resolve().is_relative_to(folder.resolve())
+                or files[0].stat().st_size > 2_000_000):
+            raise AutoRetrainControllerError("Expected one bounded retrain_decision artifact")
         try:
             payload = json.loads(files[0].read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
