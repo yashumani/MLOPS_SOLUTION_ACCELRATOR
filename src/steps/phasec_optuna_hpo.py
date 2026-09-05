@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import os
 import tempfile
+import traceback
 
 import numpy as np
 import pandas as pd
@@ -60,7 +61,7 @@ def _final_fit_worker(
         joblib.dump(model, result_path)
     except BaseException as error:
         Path(error_path).write_text(
-            f"{type(error).__name__}: {error}",
+            traceback.format_exc(),
             encoding="utf-8",
         )
 

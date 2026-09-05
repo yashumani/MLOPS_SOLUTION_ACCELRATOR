@@ -238,6 +238,77 @@ def test_auto_retrain_service_requires_producing_job_for_approval(
         )
 
 
+def test_baseline_validation_accepts_verified_system_generated_output(monkeypatch, tmp_path):
+    config_path = _write_config(tmp_path / "configs")
+    _patch_baseline_job_client(monkeypatch, config_path, tmp_path)
+    client = auto_retrain_service.get_ml_client()
+    job = client.jobs.get("baseline-job")
+    job.outputs["drift_baseline"] = SimpleNamespace(path=None, type="uri_folder")
+
+    uri, _, identity = auto_retrain_service.validate_baseline_job(
+        config_path=config_path,
+        metadata=auto_retrain_service.load_config_metadata(config_path),
+        baseline_job_name="baseline-job",
+        requested_uri=None,
+    )
+
+    assert uri == "azureml://jobs/baseline-job/outputs/drift_baseline/paths/"
+    assert identity["baseline_execution_id"] == "execution-1"
+
+
+@pytest.mark.parametrize("failure", ["missing", "wrong_type", "wrong_job", "unsafe_job"])
+def test_baseline_job_reference_requires_matching_folder_output(monkeypatch, tmp_path, failure):
+    config_path = _write_config(tmp_path / "configs")
+    _patch_baseline_job_client(monkeypatch, config_path, tmp_path)
+    client = auto_retrain_service.get_ml_client()
+    job = client.jobs.get("baseline-job")
+    job.outputs["drift_baseline"] = SimpleNamespace(path=None, type="uri_folder")
+    name = "baseline-job"
+    if failure == "missing":
+        job.outputs.clear()
+    elif failure == "wrong_type":
+        job.outputs["drift_baseline"].type = "uri_file"
+    elif failure == "wrong_job":
+        job.name = "different-job"
+    else:
+        job.name = name = "baseline-job/other"
+
+    with pytest.raises(ValueError, match="does not expose a reusable"):
+        auto_retrain_service.validate_baseline_job(
+            config_path=config_path,
+            metadata=auto_retrain_service.load_config_metadata(config_path),
+            baseline_job_name=name,
+            requested_uri=None,
+        )
+
+
+@pytest.mark.parametrize("failure", ["empty_artifacts", "wrong_identity", "requested_uri"])
+def test_baseline_job_reference_preserves_content_and_identity_gates(monkeypatch, tmp_path, failure):
+    config_path = _write_config(tmp_path / "configs")
+    _patch_baseline_job_client(monkeypatch, config_path, tmp_path)
+    client = auto_retrain_service.get_ml_client()
+    job = client.jobs.get("baseline-job")
+    job.outputs["drift_baseline"] = SimpleNamespace(path=None, type="uri_folder")
+    requested_uri = None
+    if failure == "empty_artifacts":
+        client.jobs.download = lambda **kwargs: None
+        expected = "exactly one feature_baseline"
+    elif failure == "wrong_identity":
+        job.tags["execution_id"] = "different-execution"
+        expected = "does not match its producing job"
+    else:
+        requested_uri = "azureml://jobs/other-job/outputs/drift_baseline/paths/"
+        expected = "does not match the producing job output"
+
+    with pytest.raises(ValueError, match=expected):
+        auto_retrain_service.validate_baseline_job(
+            config_path=config_path,
+            metadata=auto_retrain_service.load_config_metadata(config_path),
+            baseline_job_name="baseline-job",
+            requested_uri=requested_uri,
+        )
+
+
 def test_auto_retrain_service_rejects_external_baseline_uri(monkeypatch, tmp_path) -> None:
     configs_dir = tmp_path / "configs"
     ledger_root = tmp_path / "ledgers"

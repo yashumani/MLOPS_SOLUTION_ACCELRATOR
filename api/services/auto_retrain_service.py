@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -301,9 +302,18 @@ def validate_baseline_job(
     output = outputs.get("drift_baseline")
     output_uri = getattr(output, "path", None) if output is not None else None
     if not output_uri:
-        raise ValueError(
-            f"Baseline job {baseline_job_name!r} does not expose a reusable drift_baseline URI"
-        )
+        if (
+            output is None
+            or getattr(output, "type", None) != "uri_folder"
+            or getattr(job, "name", None) != baseline_job_name
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,254}", baseline_job_name) is None
+        ):
+            raise ValueError(
+                f"Baseline job {baseline_job_name!r} does not expose a reusable drift_baseline URI"
+            )
+        # Azure can leave a system-generated parent output path unset. The
+        # job-output reference is usable only after the content checks below.
+        output_uri = f"azureml://jobs/{baseline_job_name}/outputs/drift_baseline/paths/"
     try:
         output_uri = require_azureml_uri(
             str(output_uri),
