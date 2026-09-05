@@ -100,7 +100,11 @@ _SUBMISSION_REVISION_KINDS = {
 def _resolve_drift_baseline_input(ml_client: MLClient, job: PipelineJob) -> None:
     """Bind a completed job's baseline to storage, preserving its lineage URI."""
     baseline = job.inputs.get("drift_baseline_in")
-    path = getattr(baseline, "path", None)
+    # PipelineInput.type describes its declaration, which may be untyped.
+    # result() returns the supplied Input (or None for an omitted optional input).
+    result = getattr(baseline, "result", None)
+    value = result() if callable(result) else baseline
+    path = getattr(value, "path", None)
     if not isinstance(path, str) or not path.startswith("azureml://jobs/"):
         return
     match = re.fullmatch(
@@ -109,7 +113,7 @@ def _resolve_drift_baseline_input(ml_client: MLClient, job: PipelineJob) -> None
     )
     if match is None:
         raise ValueError("Baseline job URI must identify the complete drift_baseline output")
-    if getattr(baseline, "type", None) != "uri_folder":
+    if not isinstance(value, Input) or value.type != "uri_folder":
         raise ValueError("Baseline input must have type uri_folder")
     job_name = match.group(1)
     producer = ml_client.jobs.get(job_name)

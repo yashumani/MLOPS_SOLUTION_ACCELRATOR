@@ -44,7 +44,10 @@ def test_resolves_storage_binding_without_changing_lineage_or_mode(declared, map
 
     assert job.inputs["drift_baseline_in"].path == DATASTORE_URI
     assert job.inputs["drift_baseline_in"].mode == "ro_mount"
-    assert job.inputs["drift_baseline_uri"] == JOB_URI
+    assert job.inputs["drift_baseline_uri"].result() == JOB_URI
+    rest_inputs = job._to_rest_object().properties.inputs
+    assert rest_inputs["drift_baseline_in"].uri == DATASTORE_URI
+    assert rest_inputs["drift_baseline_uri"].value == JOB_URI
     client.jobs.get.assert_called_once_with("baseline-job")
     if declared:
         client.jobs._get_named_output_uri.assert_not_called()
@@ -79,6 +82,29 @@ def test_absent_baseline_does_not_call_azure():
     client = _client()
     submit_pipeline._resolve_drift_baseline_input(client, PipelineJob())
     client.jobs.get.assert_not_called()
+
+
+def test_omitted_optional_baseline_does_not_call_azure():
+    client = _client()
+    job = PipelineJob(inputs={"drift_baseline_in": None})
+    submit_pipeline._resolve_drift_baseline_input(client, job)
+    assert job.inputs["drift_baseline_in"].result() is None
+    client.jobs.get.assert_not_called()
+    client.jobs._get_named_output_uri.assert_not_called()
+
+
+def test_real_sdk_producer_output_is_resolved():
+    client = _client()
+    client.jobs.get.return_value.outputs = PipelineJob(outputs={
+        "drift_baseline": Output(type="uri_folder"),
+    }).outputs
+    job = _job()
+    assert job.inputs["drift_baseline_in"].type is None
+    assert job.inputs["drift_baseline_in"].result().type == "uri_folder"
+
+    submit_pipeline._resolve_drift_baseline_input(client, job)
+
+    assert job._to_rest_object().properties.inputs["drift_baseline_in"].uri == DATASTORE_URI
 
 
 @pytest.mark.parametrize("path", [
