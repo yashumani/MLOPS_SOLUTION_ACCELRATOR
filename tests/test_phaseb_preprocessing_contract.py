@@ -23,6 +23,12 @@ from src.steps.s06_phaseb_variant_runner import (
 )
 from src.utils.common_evaluator import build_fold_local_pipeline
 from src.utils.fitted_variant_preprocessor import FittedVariantPreprocessor
+from src.utils.model_bundle import (
+    ModelBundle,
+    capture_input_schema,
+    load_model_bundle,
+    save_model_bundle,
+)
 
 
 def _variant(
@@ -69,6 +75,42 @@ def _transform_pair(train, holdout, recipe):
     transformed_train["target"] = train["target"].values
     transformed_holdout["target"] = holdout["target"].values
     return transformed_train, transformed_holdout
+
+
+def test_clustering_iterative_recipe_bundle_roundtrip(tmp_path, monkeypatch) -> None:
+    from src.steps import s06_phaseb_variant_runner as runner
+
+    # Exercise the actual sampled PyCaret/refit composition at bounded test size.
+    monkeypatch.setattr(runner, "CLUSTERING_PYCARET_SELECTION_SAMPLE_ROWS", 64)
+    rng = np.random.default_rng(42)
+    raw = pd.DataFrame(rng.normal(size=(96, 23)), columns=[f"f{i}" for i in range(23)])
+    raw.iloc[32:64] += 4
+    raw.iloc[64:] -= 4
+    recipe = _variant(encoding="onehot", scaling="minmax", task_type="clustering")
+    recipe["stage3_preprocessing"]["imputation"] = {"method": "iterative", "max_iter": 3}
+    preprocessing = FittedVariantPreprocessor(recipe, random_seed=42)
+    transformed = preprocessing.fit_transform(raw)
+    model, metrics, timed_out = train_pycaret_variant(
+        transformed, _VariantStub(recipe), target_column="", task_type="clustering",
+        time_budget=120, random_seed=42,
+    )
+    assert timed_out is False, metrics
+    assert model is not None, metrics
+    assert metrics["pycaret_selection_rows"] == 64
+    assert metrics["full_refit_rows"] == len(raw)
+    bundle = ModelBundle(
+        estimator=model, preprocessing=preprocessing, task_type="clustering",
+        candidate_id="iterative-onehot-minmax", input_schema=capture_input_schema(raw),
+        recipe=recipe,
+    )
+    prediction = bundle.predict(raw)
+    save_model_bundle(bundle, tmp_path)
+    restored = load_model_bundle(tmp_path)
+    assert restored.bundle_id == bundle.bundle_id
+    np.testing.assert_array_equal(restored.predict(raw), prediction)
+    restored.estimator.cluster_centers_[0, 0] += 1.0
+    with pytest.raises(ValueError, match="fitted model state changed"):
+        restored.assert_integrity()
 
 
 def test_clustering_pycaret_selection_is_sampled_then_refit(monkeypatch) -> None:

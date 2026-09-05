@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -163,6 +164,76 @@ def test_schema_five_hashes_class_references_without_ignoring_fitted_values():
         _model_state_sha256(float, None, schema_version=4)
     with pytest.raises(TypeError, match="state must be hashable"):
         _model_state_sha256(float.__add__, None)
+
+
+@pytest.mark.parametrize("dtype", [
+    np.dtype("float64"), np.dtype(">f8"), np.dtype("int32"),
+    np.dtype("bool"), np.dtype("complex128"), np.dtype("object"),
+    np.dtype("U12"), np.dtype("S12"), np.dtype("V12"),
+    np.dtype("datetime64[ns]"), np.dtype("timedelta64[3D]"),
+    np.dtype(("f8", (2, 3))),
+    np.dtype([("count", "i4"), ("scores", "f8", (2,))], align=True),
+    np.dtype([(("display name", "name"), "U4"), ("amount", ">f8")]),
+    np.dtype({"names": ["left", "right"], "formats": ["i4", "i4"],
+              "offsets": [0, 0], "itemsize": 8}),
+    np.dtype("f8", metadata={"units": "dollars", "nested": {"scale": [1, 2]}}),
+])
+def test_schema_five_dtype_hash_survives_pickle_roundtrip(dtype):
+    restored = pickle.loads(pickle.dumps(dtype, protocol=4))
+    assert _model_state_sha256({"fitted_dtype": dtype}, None) == (
+        _model_state_sha256({"fitted_dtype": restored}, None)
+    )
+
+
+@pytest.mark.parametrize(("before", "after"), [
+    (np.dtype("f8"), np.dtype("f4")),
+    (np.dtype("<f8"), np.dtype(">f8")),
+    (np.dtype("f8"), np.dtype("i8")),
+    (np.dtype("U4"), np.dtype("U8")),
+    (np.dtype("datetime64[ns]"), np.dtype("datetime64[ms]")),
+    (np.dtype("timedelta64[D]"), np.dtype("timedelta64[3D]")),
+    (np.dtype(("f8", (2, 3))), np.dtype(("f8", (3, 2)))),
+    (np.dtype([("first", "i4")]), np.dtype([("second", "i4")])),
+    (np.dtype([("value", "i4")]), np.dtype([("value", "f4")])),
+    (np.dtype([(("title", "value"), "i4")]), np.dtype([("value", "i4")])),
+    (np.dtype([("x", "i4"), ("y", "i4")]),
+     np.dtype([("y", "i4"), ("x", "i4")])),
+    (np.dtype([("x", "i4")]), np.dtype([("x", "i4")], align=True)),
+    (np.dtype({"names": ["x"], "formats": ["i4"], "offsets": [0], "itemsize": 8}),
+     np.dtype({"names": ["x"], "formats": ["i4"], "offsets": [4], "itemsize": 8})),
+    (np.dtype("f8", metadata={"unit": "USD"}),
+     np.dtype("f8", metadata={"unit": "EUR"})),
+    (np.dtype("f8"), np.dtype("f8", metadata={})),
+])
+def test_schema_five_dtype_hash_binds_all_serialized_parameters(before, after):
+    assert _model_state_sha256(before, None) != _model_state_sha256(after, None)
+
+
+def test_dtype_metadata_hash_is_order_independent_and_rejects_opaque_values():
+    first = np.dtype("f8", metadata={"unit": "USD", "scale": [1, 2]})
+    reordered = np.dtype("f8", metadata={"scale": [1, 2], "unit": "USD"})
+    assert _model_state_sha256(first, None) == _model_state_sha256(reordered, None)
+    with pytest.raises(TypeError, match="state must be hashable"):
+        _model_state_sha256(np.dtype("f8", metadata={"opaque": object()}), None)
+
+
+@pytest.mark.parametrize("schema_version", [3, 4])
+def test_legacy_hash_schema_does_not_gain_dtype_support(schema_version):
+    with pytest.raises(TypeError, match="state must be hashable"):
+        _model_state_sha256(np.dtype("f8"), None, schema_version=schema_version)
+
+
+def test_bundle_detects_dtype_metadata_mutation(tmp_path):
+    raw, original = _bundle()
+    original.estimator.fitted_dtype_ = np.dtype("f8", metadata={"scale": [1, 2]})
+    bundle = replace(original)
+    save_model_bundle(bundle, tmp_path)
+    restored = load_model_bundle(tmp_path)
+    np.testing.assert_array_equal(restored.predict(raw), bundle.predict(raw))
+    assert restored.bundle_id == bundle.bundle_id
+    restored.estimator.fitted_dtype_.metadata["scale"].append(3)
+    with pytest.raises(ValueError, match="fitted model state changed"):
+        restored.assert_integrity()
 
 
 @pytest.mark.parametrize("task_type", ["classification", "regression"])

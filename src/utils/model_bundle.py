@@ -98,6 +98,12 @@ def _update_state_hash(
     # collected and the hash would emit a false alias for an unrelated value.
     seen[identity] = (len(seen), value)
 
+    if schema_version >= 5 and isinstance(value, np.dtype):
+        # Dtype's reduction preserves fields, offsets, subarrays and metadata;
+        # dtype.str alone loses these parts of fitted imputer state.
+        digest.update(b"numpy-dtype:")
+        _update_state_hash(digest, value.__reduce__(), seen, schema_version)
+        return
     if isinstance(value, np.ndarray):
         digest.update(
             _canonical_json(
