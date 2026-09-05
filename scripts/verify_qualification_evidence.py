@@ -457,7 +457,16 @@ def _validate_final_report(
     bundle = final.get("model_bundle")
     _expect(issues, isinstance(bundle, dict), "model_bundle", "final_report.model_bundle", "Raw-input model bundle manifest is required")
     if isinstance(bundle, dict):
-        _same(issues, bundle.get("bundle_schema_version"), 3, "bundle_schema", "final_report.model_bundle.bundle_schema_version")
+        bundle_schema = bundle.get("bundle_schema_version")
+        # Match ModelBundle's versioned state-hash compatibility without
+        # importing the training runtime into this artifact-only verifier.
+        _expect(
+            issues,
+            type(bundle_schema) is int and bundle_schema in (3, 4, 5),
+            "bundle_schema",
+            "final_report.model_bundle.bundle_schema_version",
+            f"Expected integer ModelBundle schema 3, 4 or 5; found {bundle_schema!r}",
+        )
         _same(issues, bundle.get("task_type"), task, "bundle_task", "final_report.model_bundle.task_type")
         if isinstance(selection, dict):
             _same(issues, bundle.get("candidate_id"), selection.get("candidate_id"), "bundle_candidate", "final_report.model_bundle.candidate_id")

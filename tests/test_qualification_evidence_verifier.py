@@ -131,7 +131,7 @@ def _write_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
         "decision_hash": DECISION_HASH,
     }
     bundle = {
-        "bundle_schema_version": 3,
+        "bundle_schema_version": 5,
         "task_type": "classification",
         "candidate_id": "candidate-1",
         "input_schema": {"column_order": ["feature"]},
@@ -404,6 +404,70 @@ def test_accepts_terminal_single_scenario_artifact_contract(tmp_path: Path) -> N
     assert report["accepted_scenario_count"] == 1
     assert report["release_matrix_accepted"] is False
     assert report["runtime_source_sha256_values"] == [CODE_SHA]
+
+
+@pytest.mark.parametrize("schema_version", [3, 4, 5])
+def test_accepts_supported_model_bundle_schemas(
+    tmp_path: Path, schema_version: int,
+) -> None:
+    module = _load_module()
+    manifest, catalog, pipeline = _write_fixture(tmp_path)
+    final_path = pipeline / "named-outputs" / "final_report" / "final_report"
+    final = _read_json(final_path)
+    final["model_bundle"]["bundle_schema_version"] = schema_version
+    _write_json(final_path, final)
+
+    report = module.verify_qualification_evidence(manifest, catalog_path=catalog)
+
+    assert report["state"] == "passed"
+    assert report["accepted_scenario_count"] == 1
+
+
+def test_accepts_current_model_bundle_default_schema(tmp_path: Path) -> None:
+    from utils.model_bundle import ModelBundle
+
+    module = _load_module()
+    manifest, catalog, pipeline = _write_fixture(tmp_path)
+    final_path = pipeline / "named-outputs" / "final_report" / "final_report"
+    final = _read_json(final_path)
+    final["model_bundle"]["bundle_schema_version"] = ModelBundle.bundle_schema_version
+    _write_json(final_path, final)
+
+    report = module.verify_qualification_evidence(manifest, catalog_path=catalog)
+
+    assert report["state"] == "passed"
+
+
+@pytest.mark.parametrize("schema_version", [None, True, False, "5", 5.0, 0, 2, 6, {}, []])
+def test_rejects_unsupported_or_malformed_model_bundle_schemas(
+    tmp_path: Path, schema_version: object,
+) -> None:
+    module = _load_module()
+    manifest, catalog, pipeline = _write_fixture(tmp_path)
+    final_path = pipeline / "named-outputs" / "final_report" / "final_report"
+    final = _read_json(final_path)
+    final["model_bundle"]["bundle_schema_version"] = schema_version
+    _write_json(final_path, final)
+
+    report = module.verify_qualification_evidence(manifest, catalog_path=catalog)
+
+    assert report["state"] == "failed"
+    assert report["accepted_scenario_count"] == 0
+    assert "bundle_schema" in _codes(report)
+
+
+def test_rejects_missing_model_bundle_schema(tmp_path: Path) -> None:
+    module = _load_module()
+    manifest, catalog, pipeline = _write_fixture(tmp_path)
+    final_path = pipeline / "named-outputs" / "final_report" / "final_report"
+    final = _read_json(final_path)
+    del final["model_bundle"]["bundle_schema_version"]
+    _write_json(final_path, final)
+
+    report = module.verify_qualification_evidence(manifest, catalog_path=catalog)
+
+    assert report["state"] == "failed"
+    assert "bundle_schema" in _codes(report)
 
 
 def test_rejects_locked_test_used_for_selection(tmp_path: Path) -> None:
