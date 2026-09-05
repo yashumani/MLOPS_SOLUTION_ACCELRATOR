@@ -19,8 +19,9 @@ from utils.candidate_ledger import (
     make_row, normalize_metrics, write_candidate_artifacts,
     write_stage_table,
 )
-from utils.model_universe import get_model_list, build_coverage_report, write_model_coverage
+from utils.model_universe import build_coverage_report, write_model_coverage
 from utils.model_universe import build_pycaret_breakdown, write_model_breakdown
+from utils.model_universe import pycaret_memory_plan
 from utils.common_evaluator import EvaluationSpec, evaluate_candidate
 from utils.phasea_model_bundle import (
     PhaseABundleError,
@@ -254,13 +255,16 @@ def main():
                 raise ValueError("Classification baseline requires two rows per class")
             print(f"   Discovery CV folds: {_n_folds}")
 
-            _include = get_model_list("classification", "pycaret") or None
+            metrics["model_memory_plan"] = pycaret_memory_plan("classification", len(df))
+            _include = metrics["model_memory_plan"]["included_models"]
+            safe_write_json(outputs_dir / "model_memory_plan.json", metrics["model_memory_plan"])
             print(f"   Models : {len(_include) if _include else 'ALL'} from MODEL_UNIVERSE")
 
             setup(
                 data=df,
                 target=target_col,
                 session_id=_seed,
+                n_jobs=1,
                 verbose=False,
                 log_experiment=False,
                 fix_imbalance=use_fix_imbalance,
@@ -306,7 +310,9 @@ def main():
             _n_folds = min(_cv_folds, len(df))
             if _n_folds < 2:
                 raise ValueError("Regression baseline requires at least two rows")
-            _include = get_model_list("regression", "pycaret") or None
+            metrics["model_memory_plan"] = pycaret_memory_plan("regression", len(df))
+            _include = metrics["model_memory_plan"]["included_models"]
+            safe_write_json(outputs_dir / "model_memory_plan.json", metrics["model_memory_plan"])
             print(f"\nPyCaret Regression Baseline")
             print(f"   Dataset : {df.shape[0]:,} rows × {df.shape[1]} cols")
             print(f"   Models  : {len(_include) if _include else 'ALL'} from MODEL_UNIVERSE")
@@ -314,7 +320,7 @@ def main():
             # K5: preprocess=False prevents PyCaret from re-encoding/re-scaling
             # data that stage 3 has already preprocessed via the recipe.
             setup(data=df, target=target_col, session_id=_seed, verbose=False,
-                  log_experiment=False, fold=_n_folds,
+                  log_experiment=False, fold=_n_folds, n_jobs=1,
                   preprocess=False, normalize=False, transformation=False)
             # T19: Guard against empty leaderboard from compare_models
             try:
@@ -646,7 +652,7 @@ def main():
 
     # ── Model Coverage Report ─────────────────────────────────────────
     try:
-        coverage = build_coverage_report(task_type)
+        coverage = build_coverage_report(task_type, memory_plan=metrics.get("model_memory_plan"))
         write_model_coverage(coverage, "outputs")
     except Exception as _cov_err:
         print(f"⚠️  Model coverage report failed (non-fatal): {_cov_err}")

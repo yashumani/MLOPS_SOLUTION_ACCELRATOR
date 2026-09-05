@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from steps import s06_phaseb_variant_runner as runner
+from utils.model_universe import pycaret_memory_plan
 
 
 @pytest.mark.parametrize("remaining", [0.5, 30, 120, 300, 600, 900])
@@ -29,14 +30,18 @@ def test_pycaret_search_uses_fractional_minutes_and_reserves_completion(
 ):
     clock = [100.0]
     observed = []
+    setup_options = {}
+    include_lists = []
     monkeypatch.setattr(runner.time, "time", lambda: clock[0])
     module = ModuleType(f"pycaret.{task_type}")
 
-    def setup(**_kwargs):
+    def setup(**kwargs):
+        setup_options.update(kwargs)
         clock[0] += 5
 
     def compare_models(**kwargs):
         observed.append(kwargs["budget_time"])
+        include_lists.append(kwargs["include"])
         clock[0] += kwargs["budget_time"] * 60
         return object()
 
@@ -50,13 +55,18 @@ def test_pycaret_search_uses_fractional_minutes_and_reserves_completion(
     variant = SimpleNamespace(
         stage3_preprocessing=SimpleNamespace(imbalance_handling=None)
     )
-    model, _metrics, timed_out = runner.train_pycaret_variant(
-        pd.DataFrame({"feature": [1, 2], "target": [0, 1]}),
+    plan = pycaret_memory_plan(task_type, 80000, memory_budget_bytes=2 * 1024**3)
+    monkeypatch.setattr(runner, "pycaret_memory_plan", lambda task, rows: plan)
+    model, metrics, timed_out = runner.train_pycaret_variant(
+        pd.DataFrame({"feature": range(80000), "target": [0, 1] * 40000}),
         variant, "target", task_type, time_budget=60,
     )
     assert model is not None
     assert not timed_out
     assert observed == [pytest.approx(43 / 60)]
+    assert setup_options["n_jobs"] == 1
+    assert include_lists == [plan["included_models"]]
+    assert metrics["model_memory_plan"] == plan
     assert clock[0] < 160
 
 
@@ -102,6 +112,8 @@ def test_worker_consuming_all_its_budget_leaves_time_for_common_cv(
     )
     monkeypatch.setattr(runner.mlflow, "set_tag", lambda *_args: None)
     monkeypatch.setattr(runner.mlflow, "log_params", lambda *_args: None)
+    logged_plans = []
+    monkeypatch.setattr(runner.mlflow, "log_dict", lambda *args: logged_plans.append(args))
     monkeypatch.setattr(runner, "build_fold_local_pipeline", lambda *_args, **_: object())
     monkeypatch.setattr(runner, "FittedVariantPreprocessor", lambda *_args, **_: object())
 
@@ -109,7 +121,10 @@ def test_worker_consuming_all_its_budget_leaves_time_for_common_cv(
         observed["engine_budget"] = _args[4]
         observed["worker_budget"] = timeout_seconds
         clock[0] += timeout_seconds
-        return object(), {"algorithm": "rf", "primary_metric": 0.75}, False
+        metrics = {"algorithm": "rf", "primary_metric": 0.75}
+        if engine == "pycaret":
+            metrics["model_memory_plan"] = {"excluded_models": [{"model_id": "kr"}]}
+        return object(), metrics, False
 
     def evaluate(*_args, spec, **_kwargs):
         observed["evaluation_budget"] = spec.timeout_seconds
@@ -151,3 +166,7 @@ def test_worker_consuming_all_its_budget_leaves_time_for_common_cv(
     assert result.failed
     assert result.failure_reason == "test evaluation failure"
     assert model is None
+    assert logged_plans == (
+        [({"excluded_models": [{"model_id": "kr"}]}, "model_memory_plan.json")]
+        if engine == "pycaret" else []
+    )

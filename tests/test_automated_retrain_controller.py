@@ -86,6 +86,26 @@ def test_invalid_evidence_never_submits(scenario, monkeypatch, change):
     assert len(load_decision_records(scenario.ledger)) == 1
 
 
+@pytest.mark.parametrize("wrong_experiment", [False, True])
+def test_no_baseline_refusal_is_distinct_from_experiment_mismatch(
+    scenario, monkeypatch, wrong_experiment,
+):
+    monkeypatch.setattr(controller.subprocess, "run", lambda *args, **kwargs: pytest.fail("negative source submitted"))
+    scenario.payload["comparison"] = {"available": False, "input_baseline_uri": None}
+    for field in ("decision", "retrain_decision"):
+        scenario.payload[field]["should_submit"] = False
+        scenario.payload[field]["outcome"] = "refresh_baseline"
+    if wrong_experiment:
+        scenario.job.experiment_name = "unwatched"
+    result = _process(scenario, execute=True)
+    assert result["status"] == "blocked"
+    assert result["reason"] == (
+        "Only completed pipeline parents in the configured experiment are eligible"
+        if wrong_experiment else "Automatic submission requires an explicit compared baseline"
+    )
+    assert len(load_decision_records(scenario.ledger)) == 1
+
+
 def test_competing_controllers_submit_once_and_never_promote(scenario, monkeypatch):
     calls = []
     def submit(command, **kwargs):

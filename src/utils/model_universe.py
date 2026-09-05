@@ -217,6 +217,56 @@ def get_model_list(task_type: str, engine: str) -> List[str]:
     return list(models)
 
 
+def pycaret_memory_plan(
+    task_type: str, row_count: int, *, memory_budget_bytes: int | None = None,
+) -> Dict[str, Any]:
+    """Prune known dense-kernel allocations before starting model discovery."""
+    if task_type not in {"classification", "regression"}:
+        raise ValueError("Memory planning supports supervised PyCaret discovery only")
+    if not isinstance(row_count, int) or isinstance(row_count, bool) or row_count <= 0:
+        raise ValueError("Model feasibility requires a positive training row count")
+    if memory_budget_bytes is None:
+        import psutil
+
+        available = int(psutil.virtual_memory().available)
+        # Honor the job's cgroup allowance as well as host available memory.
+        for limit_path, usage_path in (
+            ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
+            ("/sys/fs/cgroup/memory/memory.limit_in_bytes", "/sys/fs/cgroup/memory/memory.usage_in_bytes"),
+        ):
+            if Path(limit_path).is_file() and Path(usage_path).is_file():
+                limit = Path(limit_path).read_text().strip()
+                if limit != "max":
+                    remaining = int(limit) - int(Path(usage_path).read_text().strip())
+                    available = min(available, max(0, remaining))
+        # Leave room for the parent process, data copies and Azure sidecars.
+        memory_budget_bytes = available // 2
+    if (not isinstance(memory_budget_bytes, int)
+            or isinstance(memory_budget_bytes, bool) or memory_budget_bytes <= 0):
+        raise ValueError("No positive memory budget is available for model discovery")
+    models = get_model_list(task_type, "pycaret")
+    excluded = []
+    if "kr" in models:
+        # Kernel Ridge forms a dense n-by-n Gram matrix. Account for the
+        # matrix plus factorization/copy workspace at full-training refit size.
+        estimated_bytes = row_count * row_count * 8 * 3
+        if estimated_bytes > memory_budget_bytes:
+            models.remove("kr")
+            excluded.append({
+                "model_id": "kr",
+                "status": "skipped_memory_infeasible",
+                "reason": "dense_kernel_estimate_exceeds_worker_budget",
+                "estimated_peak_bytes": estimated_bytes,
+            })
+    return {
+        "training_rows": row_count,
+        "memory_budget_bytes": int(memory_budget_bytes),
+        "included_models": models,
+        "excluded_models": excluded,
+        "n_jobs": 1,
+    }
+
+
 def check_model_availability(task_type: str, engine: str) -> Dict[str, Dict[str, Any]]:
     """Return per-model availability status.
 
@@ -231,7 +281,10 @@ def check_model_availability(task_type: str, engine: str) -> Dict[str, Dict[str,
     return coverage
 
 
-def build_coverage_report(task_type: str, include_forecasting: bool = False) -> Dict[str, Any]:
+def build_coverage_report(
+    task_type: str, include_forecasting: bool = False,
+    *, memory_plan: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     """Build a combined coverage report for both engines.
 
     If *include_forecasting* is True, also report statsmodels forecasting models.
@@ -246,6 +299,12 @@ def build_coverage_report(task_type: str, include_forecasting: bool = False) -> 
             avail = {m: {"status": "available", "reason": ""} for m in models}
         else:
             avail = check_model_availability(task_type, engine)
+        if engine == "pycaret" and memory_plan is not None:
+            for exclusion in memory_plan["excluded_models"]:
+                model_id = exclusion["model_id"]
+                if model_id not in avail:
+                    raise ValueError(f"Memory plan model is outside the catalog: {model_id}")
+                avail[model_id] = {key: value for key, value in exclusion.items() if key != "model_id"}
         total = len(avail)
         available = sum(1 for v in avail.values() if v["status"] == "available")
         skipped = total - available

@@ -57,7 +57,7 @@ from utils.preprocessing_cache import PreprocessingCache, create_preprocessing_c
 from utils.candidate_ledger import (
     make_row, normalize_metrics, write_stage_table, sha256_file,
 )
-from utils.model_universe import get_model_list
+from utils.model_universe import pycaret_memory_plan
 from orchestration.config_compiler import (
     CANDIDATE_ENGINE_TIMEOUT_CAP_SECONDS,
     PHASE_B_TIMEOUT_CAP_SECONDS,
@@ -1747,15 +1747,16 @@ def train_pycaret_variant(
     """
     start_time = time.time()
     timed_out = False
+    memory_plan = None
     
     try:
+        if task_type in {"classification", "regression"}:
+            memory_plan = pycaret_memory_plan(task_type, len(df))
+            _include_models = memory_plan["included_models"]
+            print(f"      PyCaret model memory plan: {json.dumps(memory_plan, sort_keys=True)}", flush=True)
         if task_type == "classification":
             from pycaret.classification import setup, compare_models, pull, add_metric
             from sklearn.metrics import balanced_accuracy_score
-            
-            # Get canonical model list (enforces MODEL_UNIVERSE, prevents PyCaret adding removed models)
-            _include_models = get_model_list(task_type, "pycaret")
-            print(f"      PyCaret include list: {len(_include_models)} models from MODEL_UNIVERSE")
             
             # Disable MLflow autologging to prevent conflicts
             # preprocess=False: data is ALREADY preprocessed by our variant pipeline
@@ -1774,6 +1775,7 @@ def train_pycaret_variant(
                 target=target_column,
                 session_id=random_seed,
                 fold=3,  # 3-fold CV (was defaulting to 10 — 3.3x speedup)
+                n_jobs=1,
                 preprocess=False,  # CRITICAL: avoid double-preprocessing
                 normalize=False,         # K5: defense-in-depth
                 transformation=False,    # K5: defense-in-depth
@@ -1816,7 +1818,7 @@ def train_pycaret_variant(
             sort_metric = get_primary_metric(task_type)
             try:
                 best_model = compare_models(
-                    include=_include_models,  # Enforce MODEL_UNIVERSE (all 14 models)
+                    include=_include_models,
                     sort=sort_metric,
                     n_select=1,
                     budget_time=budget_minutes,
@@ -1865,6 +1867,7 @@ def train_pycaret_variant(
                 "timed_out": timed_out,
                 "n_models_trained": len(leaderboard)
             }
+            metrics["model_memory_plan"] = memory_plan
             
             # ── Extract ALL CV metrics from PyCaret leaderboard ──
             _PYCARET_METRIC_MAP = {
@@ -1950,16 +1953,13 @@ def train_pycaret_variant(
         elif task_type == "regression":
             from pycaret.regression import setup, compare_models, pull
             
-            # Get canonical model list (enforces MODEL_UNIVERSE, prevents PyCaret adding removed models)
-            _include_models = get_model_list(task_type, "pycaret")
-            print(f"      PyCaret include list: {len(_include_models)} models from MODEL_UNIVERSE")
-            
             # preprocess=False: data is ALREADY preprocessed by our variant pipeline
             setup(
                 data=df,
                 target=target_column,
                 session_id=random_seed,
                 fold=3,  # 3-fold CV (was defaulting to 10 — 3.3x speedup)
+                n_jobs=1,
                 preprocess=False,  # CRITICAL: avoid double-preprocessing
                 normalize=False,         # K5: defense-in-depth
                 transformation=False,    # K5: defense-in-depth
@@ -1986,7 +1986,7 @@ def train_pycaret_variant(
             
             sort_metric = get_primary_metric(task_type)   # "R2" for regression
             best_model = compare_models(
-                include=_include_models,  # Enforce MODEL_UNIVERSE (all 23 models)
+                include=_include_models,
                 sort=sort_metric,         # Sort by R2 (explicit — matches s5a baseline)
                 n_select=1,
                 budget_time=budget_minutes,
@@ -2009,6 +2009,7 @@ def train_pycaret_variant(
                 "timed_out": timed_out,
                 "n_models_trained": len(leaderboard)
             }
+            metrics["model_memory_plan"] = memory_plan
 
             # ── Extract ALL regression CV metrics from PyCaret leaderboard ──
             _PYCARET_REG_MAP = {
@@ -2110,6 +2111,7 @@ def train_pycaret_variant(
     except Exception as e:
         print(f"❌ PyCaret training failed: {e}")
         return None, {
+            "model_memory_plan": memory_plan,
             "primary_metric": 0.0,
             "algorithm": "failed",
             "runtime_sec": time.time() - start_time,
@@ -2467,6 +2469,8 @@ def run_variant_with_nested_mlflow(
                         remaining_seconds - worker_seconds
                     ),
                 })
+                if metrics.get("model_memory_plan") is not None:
+                    mlflow.log_dict(metrics["model_memory_plan"], "model_memory_plan.json")
             except HardDeadlineExceeded as exc:
                 return VariantResult(
                     variant_id=variant.variant_id,
@@ -2637,6 +2641,7 @@ def run_variant_with_nested_mlflow(
                 ), None
             metrics = {
                 **evidence.metrics,
+                "model_memory_plan": metrics.get("model_memory_plan"),
                 "primary_metric": float(evidence.selection_score),
                 "algorithm": str(metrics.get("algorithm") or type(model).__name__),
                 "runtime_sec": time.time() - start_time,
