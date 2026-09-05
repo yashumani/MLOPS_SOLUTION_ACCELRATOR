@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
+import pickle
+from tempfile import TemporaryDirectory
 from types import FunctionType
 from typing import Any, Mapping, Sequence
 
@@ -40,6 +42,7 @@ def _update_state_hash(
     digest: Any,
     value: Any,
     seen: dict[int, tuple[int, Any]],
+    schema_version: int = 4,
 ) -> None:
     """Canonicalize fitted object state independent of pickle memory layout."""
     if value is None or isinstance(value, (bool, int, str)):
@@ -53,7 +56,7 @@ def _update_state_hash(
         digest.update(f"float:{value.hex()}".encode("ascii"))
         return
     if isinstance(value, np.generic):
-        _update_state_hash(digest, value.item(), seen)
+        _update_state_hash(digest, value.item(), seen, schema_version)
         return
     if isinstance(value, bytes):
         digest.update(b"bytes:")
@@ -78,6 +81,10 @@ def _update_state_hash(
     if identity in seen:
         digest.update(f"ref:{seen[identity][0]}".encode("ascii"))
         return
+    # Schema 4 tracks only ancestors: pickle may copy a shared array without
+    # changing its logical values. Schema 3 retains its original alias rules.
+    if schema_version >= 4:
+        seen = dict(seen)
     # Retain a strong reference for the lifetime of this traversal. Several
     # estimators return temporary nested containers from ``__getstate__``;
     # without the object reference CPython may recycle an id after a child is
@@ -97,19 +104,20 @@ def _update_state_hash(
             # logical field is identical. Hash named fields independently.
             digest.update(_canonical_json(list(value.dtype.names)))
             for field_name in value.dtype.names:
-                _update_state_hash(digest, value[field_name], seen)
+                _update_state_hash(digest, value[field_name], seen, schema_version)
         elif value.dtype.hasobject:
-            _update_state_hash(digest, value.tolist(), seen)
+            _update_state_hash(digest, value.tolist(), seen, schema_version)
         else:
             digest.update(np.ascontiguousarray(value).tobytes(order="C"))
         return
     if isinstance(value, pd.DataFrame):
         digest.update(b"dataframe:")
-        _update_state_hash(digest, list(value.columns), seen)
+        _update_state_hash(digest, list(value.columns), seen, schema_version)
         _update_state_hash(
             digest,
             [str(dtype) for dtype in value.dtypes],
             seen,
+            schema_version,
         )
         digest.update(
             pd.util.hash_pandas_object(
@@ -140,19 +148,19 @@ def _update_state_hash(
                 repr(item),
             ),
         ):
-            _update_state_hash(digest, key, seen)
-            _update_state_hash(digest, value[key], seen)
+            _update_state_hash(digest, key, seen, schema_version)
+            _update_state_hash(digest, value[key], seen, schema_version)
         return
     if isinstance(value, (list, tuple)):
         digest.update(type(value).__name__.encode("ascii"))
         for item in value:
-            _update_state_hash(digest, item, seen)
+            _update_state_hash(digest, item, seen, schema_version)
         return
     if isinstance(value, (set, frozenset)):
         child_hashes = []
         for item in value:
             child = hashlib.sha256()
-            _update_state_hash(child, item, {})
+            _update_state_hash(child, item, {}, schema_version)
             child_hashes.append(child.digest())
         digest.update(type(value).__name__.encode("ascii"))
         for child_hash in sorted(child_hashes):
@@ -175,7 +183,7 @@ def _update_state_hash(
             value.indptr,
             tuple(value.shape),
         ):
-            _update_state_hash(digest, item, seen)
+            _update_state_hash(digest, item, seen, schema_version)
         return
     if hasattr(value, "save_raw") and callable(value.save_raw):
         try:
@@ -196,24 +204,47 @@ def _update_state_hash(
     elif hasattr(value, "__dict__"):
         state = vars(value)
     if state is None:
+        if schema_version >= 4 and type(value).__module__ == "sklearn._loss._loss":
+            # Cython loss objects expose their parameters through pickle's
+            # reduction protocol, not __getstate__. Do not skip their state.
+            digest.update(b"sklearn-cython-loss:")
+            digest.update(pickle.dumps(value, protocol=4))
+            return
         raise TypeError(
             "Unsupported fitted state value: "
             f"{type(value).__module__}.{type(value).__qualname__}"
         )
+    if (
+        schema_version >= 4
+        and any(
+            base.__module__ == "catboost.core" and base.__name__ == "CatBoost"
+            for base in type(value).__mro__
+        )
+        and isinstance(state, Mapping)
+        and "__model" in state
+    ):
+        # CatBoost's native binary can reorder metadata after a lossless load.
+        # Hash its full structured export plus all Python wrapper state instead.
+        with TemporaryDirectory(prefix="mlops-catboost-state-") as directory:
+            path = Path(directory) / "model.json"
+            value.save_model(str(path), format="json")
+            state = dict(state)
+            state["__model"] = json.loads(path.read_text(encoding="utf-8"))
     digest.update(
         f"object:{type(value).__module__}.{type(value).__qualname__}:".encode(
             "utf-8"
         )
     )
-    _update_state_hash(digest, state, seen)
+    _update_state_hash(digest, state, seen, schema_version)
 
 
 def _model_state_sha256_once(
     estimator: Any,
     preprocessing: Any | None,
+    schema_version: int = 4,
 ) -> str:
     digest = hashlib.sha256()
-    _update_state_hash(digest, (estimator, preprocessing), {})
+    _update_state_hash(digest, (estimator, preprocessing), {}, schema_version)
     return digest.hexdigest()
 
 
@@ -221,12 +252,17 @@ def _model_state_sha256(
     estimator: Any,
     preprocessing: Any | None,
     target_decoder: Any | None = None,
+    *,
+    schema_version: int = 4,
 ) -> str:
     """Hash logical fitted state after any library lazy-state materialization."""
+    if schema_version not in {3, 4}:
+        raise ValueError(f"Unsupported ModelBundle schema version: {schema_version}")
     try:
         previous = _model_state_sha256_once(
             estimator,
             (preprocessing, target_decoder),
+            schema_version,
         )
         # Some composed sklearn estimators lazily materialize nested state over
         # several successive ``__getstate__`` calls.  Bound the convergence
@@ -235,6 +271,7 @@ def _model_state_sha256(
             current = _model_state_sha256_once(
                 estimator,
                 (preprocessing, target_decoder),
+                schema_version,
             )
             if current == previous:
                 return current
@@ -274,7 +311,7 @@ class ModelBundle:
     labels: Sequence[Any] = field(default_factory=tuple)
     signature: Mapping[str, Any] = field(default_factory=dict)
     input_example: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None
-    bundle_schema_version: int = 3
+    bundle_schema_version: int = 4
     _model_state_sha256: str = field(init=False, repr=False)
     _metadata_sha256: str = field(init=False, repr=False)
 
@@ -314,6 +351,7 @@ class ModelBundle:
                 self.estimator,
                 self.preprocessing,
                 self.target_decoder,
+                schema_version=self.bundle_schema_version,
             ),
         )
         object.__setattr__(
@@ -362,6 +400,7 @@ class ModelBundle:
             self.estimator,
             self.preprocessing,
             self.target_decoder,
+            schema_version=self.bundle_schema_version,
         )
         if state_actual != self._model_state_sha256:
             raise ValueError("ModelBundle fitted model state changed after construction")

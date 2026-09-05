@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 
 import numpy as np
@@ -14,6 +15,7 @@ from src.utils.model_bundle import (
     BUNDLE_FILE_NAME,
     BUNDLE_MANIFEST_NAME,
     ModelBundle,
+    _model_state_sha256,
     capture_input_schema,
     load_model_bundle,
     save_model_bundle,
@@ -126,6 +128,112 @@ def test_bundle_detects_fitted_state_mutation():
 
     with pytest.raises(ValueError, match="fitted model state changed"):
         bundle.assert_integrity()
+
+
+def test_schema_three_bundle_keeps_legacy_identity_after_roundtrip(tmp_path):
+    raw, bundle = _bundle()
+    legacy = replace(bundle, bundle_schema_version=3)
+    expected_id = legacy.bundle_id
+    save_model_bundle(legacy, tmp_path)
+    restored = load_model_bundle(tmp_path)
+
+    assert restored.bundle_schema_version == 3
+    assert restored.bundle_id == expected_id
+    np.testing.assert_array_equal(restored.predict(raw), legacy.predict(raw))
+    restored.estimator.coef_[0, 0] += 1.0
+    with pytest.raises(ValueError, match="fitted model state changed"):
+        restored.assert_integrity()
+
+
+def test_bundle_rejects_unknown_hash_schema():
+    _, bundle = _bundle()
+    with pytest.raises(ValueError, match="Unsupported ModelBundle schema"):
+        replace(bundle, bundle_schema_version=99)
+
+
+def test_schema_four_hash_ignores_aliases_but_detects_value_changes():
+    shared = np.array([1.0, 2.0])
+    aliased = {"first": shared, "second": shared}
+    copied = {"first": shared.copy(), "second": shared.copy()}
+    assert _model_state_sha256(aliased, None) == _model_state_sha256(copied, None)
+    assert _model_state_sha256(aliased, None, schema_version=3) != (
+        _model_state_sha256(copied, None, schema_version=3)
+    )
+    copied["second"][0] += 1.0
+    assert _model_state_sha256(aliased, None) != _model_state_sha256(copied, None)
+
+
+def test_schema_four_hash_handles_cycles_and_rejects_opaque_state():
+    left, right = [], []
+    left.append(left)
+    right.append(right)
+    assert _model_state_sha256(left, None) == _model_state_sha256(right, None)
+    right.append(1)
+    assert _model_state_sha256(left, None) != _model_state_sha256(right, None)
+    with pytest.raises(TypeError, match="state must be hashable"):
+        _model_state_sha256(object(), None)
+
+
+def test_cython_loss_hash_binds_reduction_parameters():
+    from sklearn._loss._loss import CyPinballLoss
+
+    assert _model_state_sha256(CyPinballLoss(0.2), None) == (
+        _model_state_sha256(CyPinballLoss(0.2), None)
+    )
+    assert _model_state_sha256(CyPinballLoss(0.2), None) != (
+        _model_state_sha256(CyPinballLoss(0.8), None)
+    )
+
+
+@pytest.mark.parametrize("family", ["gradient_boosting", "catboost", "lightgbm"])
+@pytest.mark.parametrize("task_type", ["classification", "regression"])
+def test_boosted_tree_bundle_roundtrip_preserves_identity_and_detects_refit(
+    tmp_path, family, task_type
+):
+    from catboost import CatBoostClassifier, CatBoostRegressor
+    from lightgbm import LGBMClassifier, LGBMRegressor
+    from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+
+    classification = task_type == "classification"
+    if family == "gradient_boosting":
+        cls = GradientBoostingClassifier if classification else GradientBoostingRegressor
+        estimator = cls(n_estimators=5, random_state=42)
+    elif family == "catboost":
+        cls = CatBoostClassifier if classification else CatBoostRegressor
+        estimator = cls(
+            iterations=5, depth=3, random_seed=42, thread_count=1,
+            verbose=False, allow_writing_files=False,
+        )
+    else:
+        cls = LGBMClassifier if classification else LGBMRegressor
+        estimator = cls(n_estimators=5, num_leaves=5, random_state=42, n_jobs=1, verbosity=-1)
+    raw = pd.DataFrame(np.random.RandomState(42).normal(size=(80, 4)))
+    raw.columns = [f"feature_{index}" for index in range(4)]
+    continuous_target = raw.iloc[:, 0] * 2 + raw.iloc[:, 1]
+    target = (continuous_target > 0).astype(int) if classification else continuous_target
+    preprocessing = StandardScaler().fit(raw)
+    transformed = preprocessing.transform(raw)
+    estimator.fit(transformed, target)
+    bundle = ModelBundle(
+        estimator=estimator,
+        preprocessing=preprocessing,
+        task_type=task_type,
+        candidate_id=f"{family}-{task_type}",
+        input_schema=capture_input_schema(raw),
+    )
+    expected_id = bundle.bundle_id
+    expected_predictions = bundle.predict(raw)
+    save_model_bundle(bundle, tmp_path)
+    restored = load_model_bundle(tmp_path)
+
+    np.testing.assert_allclose(restored.predict(raw), expected_predictions)
+    np.testing.assert_allclose(restored.predict(raw), expected_predictions)
+    assert restored.bundle_id == expected_id
+
+    changed_target = 1 - target if classification else -target
+    restored.estimator.fit(transformed, changed_target)
+    with pytest.raises(ValueError, match="fitted model state changed"):
+        restored.assert_integrity()
 
 
 def test_bundle_roundtrip_decodes_classification_predictions(tmp_path):
