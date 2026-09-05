@@ -39,9 +39,9 @@ metrics:
 phases:
   phase_a_baseline:
     cv_folds: 3
-    candidate_engine_timeout_seconds: 120
+    candidate_engine_timeout_seconds: 300
     flaml_config:
-      time_budget: 120
+      time_budget: 300
   phase_b:
     enable_profiling: true
     profiling_output_path: outputs/dataset_profile.json
@@ -50,8 +50,8 @@ phases:
     tier: progressive
     max_variants: 4
     selection_strategy: scored
-    runtime_budget_sec: 120
-    time_budget_per_variant: 120
+    runtime_budget_sec: 300
+    time_budget_per_variant: 300
     phase_timeout_seconds: 1800
     safety_net_review_required: true
     engines:

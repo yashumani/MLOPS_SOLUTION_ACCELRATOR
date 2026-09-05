@@ -32,7 +32,9 @@ def _candidate_timeout_seconds(profile: dict[str, Any]) -> int:
     """Size qualification candidate budgets from the immutable data profile."""
 
     row_count = int(profile.get("row_count") or 0)
-    return 300 if row_count >= 250_000 else 120
+    # Azure insurance qualification has 100k source rows (80k training rows).
+    # Its 120s candidate ceiling did not support both search and common CV.
+    return 300 if row_count >= 100_000 else 120
 
 
 def _slug(value: str) -> str:

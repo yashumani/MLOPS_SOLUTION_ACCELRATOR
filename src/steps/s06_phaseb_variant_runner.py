@@ -1716,6 +1716,22 @@ def require_training_environment_hash(manifest: ExecutionManifest) -> str:
     return environment_hash
 
 
+def candidate_training_budgets(remaining_seconds: float) -> Tuple[float, float]:
+    """Reserve 40% for common CV, then worker startup/serialization overhead."""
+    remaining_seconds = float(remaining_seconds)
+    if not math.isfinite(remaining_seconds) or remaining_seconds <= 0:
+        raise HardDeadlineExceeded("No finite positive candidate budget remains")
+    worker_seconds = min(
+        remaining_seconds, float(CANDIDATE_ENGINE_TIMEOUT_CAP_SECONDS)
+    ) * 0.60
+    return worker_seconds * 0.90, worker_seconds
+
+
+def engine_search_remaining(time_budget: float, elapsed_seconds: float) -> float:
+    """Leave engine time for final fitting and metric extraction after search."""
+    return max(0.0, float(time_budget) * 0.80 - elapsed_seconds)
+
+
 def train_pycaret_variant(
     df: pd.DataFrame,
     variant: VariantConfig,
@@ -1780,10 +1796,11 @@ def train_pycaret_variant(
                 print(f"      ⚠️ PyCaret balanced accuracy metric registration failed: {_metric_err}")
             
             # Train models with time budget (soft timeout)
-            remaining_time = max(0.0, time_budget - (time.time() - start_time))
-            # PyCaret accepts fractional minutes. Never round a lower configured
-            # ceiling up to a one-minute floor.
-            budget_minutes = max(1.0 / 60.0, remaining_time / 60.0)
+            remaining_time = engine_search_remaining(
+                time_budget, time.time() - start_time
+            )
+            # PyCaret accepts fractional minutes; never round up a deadline.
+            budget_minutes = remaining_time / 60.0
             print(f"      PyCaret: remaining_time={remaining_time:.1f}s, budget={budget_minutes} minutes")
             
             if remaining_time < 30:
@@ -1809,11 +1826,22 @@ def train_pycaret_variant(
                 if sort_metric == "Balanced Accuracy":
                     print(f"      ⚠️ PyCaret sort by Balanced Accuracy failed: {_compare_metric_err}; falling back to AUC search")
                     sort_metric = "AUC"
+                    remaining_time = engine_search_remaining(
+                        time_budget, time.time() - start_time
+                    )
+                    if remaining_time < 30:
+                        return None, {
+                            "primary_metric": 0.0,
+                            "algorithm": "insufficient_time",
+                            "runtime_sec": time.time() - start_time,
+                            "timed_out": True,
+                            "error": "No search budget remains for PyCaret metric fallback",
+                        }, True
                     best_model = compare_models(
                         include=_include_models,
                         sort=sort_metric,
                         n_select=1,
-                        budget_time=budget_minutes,
+                        budget_time=remaining_time / 60.0,
                         verbose=False
                     )
                 else:
@@ -1940,8 +1968,10 @@ def train_pycaret_variant(
                 html=False
             )
             
-            remaining_time = max(0.0, time_budget - (time.time() - start_time))
-            budget_minutes = max(1, int(remaining_time // 60))
+            remaining_time = engine_search_remaining(
+                time_budget, time.time() - start_time
+            )
+            budget_minutes = remaining_time / 60.0
             print(f"      PyCaret: remaining_time={remaining_time:.1f}s, budget={budget_minutes} minutes")
             
             if remaining_time < 30:
@@ -2129,8 +2159,10 @@ def train_flaml_variant(
             "regression": "regression"
         }.get(task_type, "classification")
         
-        # Check remaining time (soft timeout)
-        remaining_time = max(0.0, time_budget - (time.time() - start_time))
+        # Reserve engine completion time after the soft search deadline.
+        remaining_time = engine_search_remaining(
+            time_budget, time.time() - start_time
+        )
         print(f"      FLAML budget: {min(remaining_time, time_budget):.1f} seconds")
         if remaining_time < 30:
             timed_out = True
@@ -2415,16 +2447,26 @@ def run_variant_with_nested_mlflow(
                 max(0.0, attempt_deadline - time.time()),
             )
             try:
+                engine_seconds, worker_seconds = candidate_training_budgets(
+                    remaining_seconds
+                )
                 model, metrics, timed_out = run_with_hard_timeout(
                     training_function,
                     df_processed,
                     variant,
                     target_column,
                     task_type,
-                    remaining_seconds,
+                    engine_seconds,
                     random_seed,
-                    timeout_seconds=remaining_seconds,
+                    timeout_seconds=worker_seconds,
                 )
+                mlflow.log_params({
+                    "engine_timeout_seconds": engine_seconds,
+                    "training_worker_timeout_seconds": worker_seconds,
+                    "common_evaluation_reserve_seconds": (
+                        remaining_seconds - worker_seconds
+                    ),
+                })
             except HardDeadlineExceeded as exc:
                 return VariantResult(
                     variant_id=variant.variant_id,

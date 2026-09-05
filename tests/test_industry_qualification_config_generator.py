@@ -1,6 +1,19 @@
 from __future__ import annotations
 
-from scripts.generate_industry_qualification_configs import _build_config
+import pytest
+
+from scripts.generate_industry_qualification_configs import (
+    _build_config,
+    _candidate_timeout_seconds,
+)
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [(10_000, 120), (99_999, 120), (100_000, 300), (541_909, 300)],
+)
+def test_qualification_budget_accounts_for_insurance_scale(rows, expected):
+    assert _candidate_timeout_seconds({"row_count": rows}) == expected
 
 
 def test_build_config_binds_qualified_identity_and_exclusions() -> None:
