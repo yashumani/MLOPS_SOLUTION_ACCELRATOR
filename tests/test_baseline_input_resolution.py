@@ -88,7 +88,7 @@ def test_omitted_optional_baseline_does_not_call_azure():
     client = _client()
     job = PipelineJob(inputs={"drift_baseline_in": None})
     submit_pipeline._resolve_drift_baseline_input(client, job)
-    assert job.inputs["drift_baseline_in"].result() is None
+    assert "drift_baseline_in" not in job.inputs
     client.jobs.get.assert_not_called()
     client.jobs._get_named_output_uri.assert_not_called()
 
