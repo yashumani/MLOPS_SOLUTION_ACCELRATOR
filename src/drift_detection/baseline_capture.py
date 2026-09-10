@@ -214,10 +214,13 @@ class BaselineCapture:
         pred_col = self.config.column_mapping.prediction_column
         if pred_col and pred_col in df.columns:
             self._prediction_stats = {
-                "mean": float(df[pred_col].mean()),
-                "std": float(df[pred_col].std()),
                 "value_counts": df[pred_col].value_counts().to_dict(),
             }
+            if pd.api.types.is_numeric_dtype(df[pred_col]):
+                self._prediction_stats.update({
+                    "mean": float(df[pred_col].mean()),
+                    "std": float(df[pred_col].std()),
+                })
 
     def _compute_label_stats(self, df: pd.DataFrame) -> None:
         """Compute target/label-column distribution stats."""

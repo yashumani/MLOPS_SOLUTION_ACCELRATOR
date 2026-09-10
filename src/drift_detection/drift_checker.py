@@ -1,24 +1,22 @@
-"""Run drift checks against a persisted baseline and return results.
-
-Supports four drift types using Evidently:
-
-1. **Feature drift** — ``DataDriftPreset`` with PSI statistic.
-2. **Prediction drift** — ``ValueDrift`` (or column-level check) on the
-   prediction column using the Kolmogorov–Smirnov test.
-3. **Concept drift** — compares model quality metrics (accuracy drop).
-4. **Label drift** — chi-squared test on the target column distribution.
-"""
+"""Task-aware drift evidence against a persisted observation baseline."""
 
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal
 
-import numpy as np
 import pandas as pd
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
+)
 
 from .baseline_capture import BaselineCapture
 from .drift_config import DriftConfig
@@ -33,29 +31,9 @@ from .evidently_compat import (
 logger = logging.getLogger(__name__)
 
 
-# ── Result dataclass ────────────────────────────────────────────
-
 @dataclass
 class DriftResult:
-    """Container for a single drift-check result.
-
-    Attributes
-    ----------
-    drift_detected : bool
-        ``True`` if the score exceeds its threshold.
-    drift_type : str
-        One of ``feature``, ``prediction``, ``concept``, ``label``.
-    drift_score : float
-        Numeric score returned by the statistical test.
-    drifted_columns : list[str]
-        Names of columns that individually drifted.
-    timestamp : str
-        ISO-8601 UTC timestamp of when the check ran.
-    evidently_report_path : str
-        File path to the saved HTML report (empty if not saved).
-    details : dict
-        Extra per-column or per-metric detail.
-    """
+    """A statistical result, or an explicit reason the check was not evaluated."""
 
     drift_detected: bool = False
     drift_type: str = ""
@@ -64,285 +42,230 @@ class DriftResult:
     timestamp: str = ""
     evidently_report_path: str = ""
     details: Dict[str, Any] = field(default_factory=dict)
+    status: Literal["evaluated", "unavailable", "not_applicable"] = "evaluated"
+    reason: str = ""
 
-
-# ── Checker ─────────────────────────────────────────────────────
 
 class DriftChecker:
-    """Compare current production data against a stored baseline.
+    """Compare windows from the same monitored model against its baseline.
 
-    Parameters
-    ----------
-    config : DriftConfig
-        Global drift-detection settings.
-    baseline : BaselineCapture
-        A loaded baseline instance (call ``BaselineCapture.load()`` first).
-
-    Example
-    -------
-    >>> cfg = DriftConfig.from_yaml()
-    >>> bl  = BaselineCapture.load(cfg)
-    >>> checker = DriftChecker(cfg, bl)
-    >>> results = checker.run_all_checks(production_df)
-    >>> for r in results:
-    ...     print(r.drift_type, r.drift_detected)
+    The caller owns model/window identity validation. Training-candidate scores
+    from different models are not production concept-drift evidence.
     """
 
     def __init__(self, config: DriftConfig, baseline: BaselineCapture) -> None:
         self.config = config
         self.baseline = baseline
 
-    # ── Public API ──────────────────────────────────────────────
-
     def run_all_checks(self, current_df: pd.DataFrame) -> List[DriftResult]:
-        """Execute all four drift checks and return a list of results.
-
-        Parameters
-        ----------
-        current_df : pd.DataFrame
-            Production/inference data to evaluate.
-
-        Returns
-        -------
-        list[DriftResult]
-        """
-        results: List[DriftResult] = [
+        results = [
             self.check_feature_drift(current_df),
             self.check_prediction_drift(current_df),
             self.check_concept_drift(current_df),
             self.check_label_drift(current_df),
         ]
-        drifted = [r for r in results if r.drift_detected]
+        drifted = [r.drift_type for r in results if r.status == "evaluated" and r.drift_detected]
+        unavailable = [r.drift_type for r in results if r.status == "unavailable"]
         if drifted:
-            logger.warning("Drift detected in: %s", [r.drift_type for r in drifted])
-        else:
-            logger.info("No drift detected across all checks.")
+            logger.warning("Drift detected in: %s", drifted)
+        if unavailable:
+            logger.warning("Drift assessment incomplete; unavailable checks: %s", unavailable)
+        elif not drifted:
+            logger.info("No drift detected in evaluated, applicable checks.")
         return results
 
-    # ── Individual checks ───────────────────────────────────────
-
     def check_feature_drift(self, current_df: pd.DataFrame) -> DriftResult:
-        """Feature drift using Evidently ``DataDriftPreset`` (PSI by default).
-
-        Parameters
-        ----------
-        current_df : pd.DataFrame
-
-        Returns
-        -------
-        DriftResult
-        """
-        ts = _utc_now()
-        col_mapping = self._column_mapping()
-
-        report = Report(metrics=[DataDriftPreset(), DatasetDriftMetric()])
+        columns = self.baseline.feature_columns
+        missing = sorted(set(columns) - set(current_df.columns))
+        if not columns:
+            return self._unavailable("feature", "no_feature_columns")
+        if missing:
+            return self._unavailable("feature", "missing_feature_columns", columns=missing)
+        if current_df.empty:
+            return self._unavailable("feature", "empty_observation_window")
+        method = self.config.get_method("feature")
+        options = {
+            "stattest": None if method == "auto" else method,
+            "stattest_threshold": self._threshold("feature"),
+        }
+        report = Report(metrics=[DataDriftPreset(**options), DatasetDriftMetric(**options)])
         report.run(
-            reference_data=self.baseline.reference_df,
-            current_data=current_df,
-            column_mapping=col_mapping,
+            reference_data=self.baseline.reference_df[columns],
+            current_data=current_df[columns],
+            column_mapping=ColumnMapping(target=None, prediction=None),
         )
-
-        report_dict = report.as_dict()
-        drifted_cols: List[str] = []
+        drifted_columns = []
         dataset_drifted = False
-        drift_share: float = 0.0
+        drift_share = 0.0
         column_count = 0
-        details: Dict[str, Any] = {}
-
-        for metric_result in report_dict.get("metrics", []):
-            result_data = metric_result.get("result", {})
-            # DatasetDriftMetric stores dataset_drift
-            if "dataset_drift" in result_data:
-                dataset_drifted = bool(result_data.get("dataset_drift", False))
-                drift_share = float(result_data.get("share_of_drifted_columns", 0.0) or 0.0)
+        details = {}
+        for metric_result in report.as_dict().get("metrics", []):
+            data = metric_result.get("result", {})
+            if "dataset_drift" in data:
+                dataset_drifted = bool(data["dataset_drift"])
+                drift_share = float(data.get("share_of_drifted_columns", 0.0) or 0.0)
                 details["dataset_drift"] = dataset_drifted
-                details["drift_share"] = drift_share
-            # DataDriftPreset stores per-column info in drift_by_columns
-            if "drift_by_columns" in result_data:
-                for col_name, col_info in result_data["drift_by_columns"].items():
-                    column_count += 1
-                    col_score = col_info.get("drift_score", 0.0)
-                    col_drifted = bool(col_info.get("drift_detected", False))
-                    if col_drifted:
-                        drifted_cols.append(col_name)
-                    details[col_name] = {
-                        "score": col_score,
-                        "drifted": col_drifted,
-                    }
-
-        threshold = self.config.get_threshold("feature")
-        score = drift_share
-        if score == 0.0 and column_count:
-            score = len(set(drifted_cols)) / column_count
-        detected = bool(dataset_drifted or drifted_cols or score >= threshold)
-
+            for name, info in data.get("drift_by_columns", {}).items():
+                column_count += 1
+                drifted = bool(info.get("drift_detected", False))
+                if drifted:
+                    drifted_columns.append(name)
+                details[name] = {
+                    "score": info.get("drift_score"),
+                    "drifted": drifted,
+                    "stattest_name": info.get("stattest_name"),
+                    "threshold": info.get("stattest_threshold"),
+                }
+        if not details:
+            return self._unavailable("feature", "missing_statistical_result")
+        if drift_share == 0.0 and column_count:
+            drift_share = len(set(drifted_columns)) / column_count
+        details.update(drift_share=drift_share, score_type="drifted_feature_share")
         return DriftResult(
-            drift_detected=detected,
-            drift_type="feature",
-            drift_score=round(score, 6),
-            drifted_columns=drifted_cols,
-            timestamp=ts,
+            drift_detected=bool(dataset_drifted or drifted_columns),
+            drift_type="feature", drift_score=round(drift_share, 6),
+            drifted_columns=sorted(set(drifted_columns)), timestamp=_utc_now(),
             details=details,
         )
 
     def check_prediction_drift(self, current_df: pd.DataFrame) -> DriftResult:
-        """Prediction-column drift using KS test via Evidently.
-
-        Parameters
-        ----------
-        current_df : pd.DataFrame
-
-        Returns
-        -------
-        DriftResult
-        """
-        ts = _utc_now()
-        pred_col = self.config.column_mapping.prediction_column
-
-        if pred_col not in current_df.columns or pred_col not in self.baseline.reference_df.columns:
-            logger.info("Prediction column %r missing — skipping prediction drift check.", pred_col)
-            return DriftResult(drift_type="prediction", timestamp=ts)
-
-        col_mapping = self._column_mapping()
-
-        report = Report(metrics=[ColumnDriftMetric(column_name=pred_col)])
-        report.run(
-            reference_data=self.baseline.reference_df,
-            current_data=current_df,
-            column_mapping=col_mapping,
-        )
-
-        report_dict = report.as_dict()
-        score: float = 0.0
-        detected: bool = False
-
-        for metric_result in report_dict.get("metrics", []):
-            result_data = metric_result.get("result", {})
-            score = result_data.get("drift_score", 0.0)
-            detected = bool(result_data.get("drift_detected", False))
-
-        threshold = self.config.get_threshold("prediction")
-        detected = bool(detected or score >= threshold)
-
-        return DriftResult(
-            drift_detected=detected,
-            drift_type="prediction",
-            drift_score=round(score, 6),
-            drifted_columns=[pred_col] if detected else [],
-            timestamp=ts,
+        return self._check_column_drift(
+            current_df, "prediction", self.config.column_mapping.prediction_column,
         )
 
     def check_concept_drift(self, current_df: pd.DataFrame) -> DriftResult:
-        """Concept drift by comparing accuracy between baseline and current.
-
-        This is a simple metric-comparison approach: if the accuracy on the
-        current data drops by more than the configured threshold relative
-        to the baseline, concept drift is flagged.
-
-        Parameters
-        ----------
-        current_df : pd.DataFrame
-            Must contain both ``prediction`` and ``target`` columns.
-
-        Returns
-        -------
-        DriftResult
-        """
-        ts = _utc_now()
+        """Compare supervised performance, not exact equality for regression."""
+        if self.config.task_type == "clustering":
+            return self._unavailable("concept", "unlabeled_task", status="not_applicable")
         pred_col = self.config.column_mapping.prediction_column
         tgt_col = self.config.column_mapping.target_column
-
-        if not tgt_col or tgt_col not in current_df.columns or pred_col not in current_df.columns:
-            logger.info("Target or prediction column missing — skipping concept drift check.")
-            return DriftResult(drift_type="concept", timestamp=ts)
-
         ref = self.baseline.reference_df
-        if tgt_col not in ref.columns or pred_col not in ref.columns:
-            logger.info("Baseline lacks target/prediction — skipping concept drift check.")
-            return DriftResult(drift_type="concept", timestamp=ts)
-
-        ref_acc = float((ref[pred_col] == ref[tgt_col]).mean())
-        cur_acc = float((current_df[pred_col] == current_df[tgt_col]).mean())
-        drop = ref_acc - cur_acc
-
-        threshold = self.config.get_threshold("concept")
-        detected = bool(drop >= threshold)
-
+        if not tgt_col or any(
+            column not in frame.columns
+            for frame in (ref, current_df) for column in (pred_col, tgt_col)
+        ):
+            return self._unavailable("concept", "missing_target_or_prediction")
+        details = {"reference_rows": len(ref), "current_rows": len(current_df)}
+        if min(len(ref), len(current_df)) < 2:
+            return self._unavailable("concept", "insufficient_rows", **details)
+        if any(frame[[pred_col, tgt_col]].isna().any().any() for frame in (ref, current_df)):
+            return self._unavailable("concept", "missing_target_or_prediction_values", **details)
+        metric = self.config.concept_metric or (
+            "balanced_accuracy" if self.config.task_type == "classification" else "r2"
+        )
+        scorers = {
+            "accuracy": accuracy_score,
+            "balanced_accuracy": balanced_accuracy_score,
+            "f1_weighted": lambda y, p: f1_score(y, p, average="weighted", zero_division=0),
+            "r2": r2_score,
+            "mae": mean_absolute_error,
+            "mse": mean_squared_error,
+            "rmse": lambda y, p: math.sqrt(mean_squared_error(y, p)),
+        }
+        if metric == "r2" and any(frame[tgt_col].nunique() < 2 for frame in (ref, current_df)):
+            return self._unavailable("concept", "constant_target_r2_undefined", **details)
+        if metric == "balanced_accuracy" and any(
+            frame[tgt_col].nunique() < 2 for frame in (ref, current_df)
+        ):
+            return self._unavailable("concept", "insufficient_target_classes", **details)
+        try:
+            reference_score = float(scorers[metric](ref[tgt_col], ref[pred_col]))
+            current_score = float(scorers[metric](current_df[tgt_col], current_df[pred_col]))
+        except (ValueError, TypeError):
+            return self._unavailable("concept", "invalid_metric_inputs", metric_name=metric, **details)
+        if not all(math.isfinite(value) for value in (reference_score, current_score)):
+            return self._unavailable("concept", "non_finite_metric", metric_name=metric, **details)
+        lower_is_better = metric in {"mae", "mse", "rmse"}
+        drop = current_score - reference_score if lower_is_better else reference_score - current_score
+        threshold = self._threshold("concept")
+        details.update({
+            "metric_name": metric,
+            "metric_direction": "minimize" if lower_is_better else "maximize",
+            "reference_score": reference_score,
+            "current_score": current_score,
+            "degradation": drop,
+            "threshold": threshold,
+            "evidence_type": "supervised_performance_degradation",
+        })
+        if metric in {"accuracy", "balanced_accuracy"}:
+            details.update(
+                reference_accuracy=reference_score,
+                current_accuracy=current_score, accuracy_drop=drop,
+            )
+        detected = drop > threshold
         return DriftResult(
-            drift_detected=detected,
-            drift_type="concept",
+            drift_detected=detected, drift_type="concept",
             drift_score=round(drop, 6),
             drifted_columns=[pred_col, tgt_col] if detected else [],
-            timestamp=ts,
-            details={
-                "reference_accuracy": round(ref_acc, 6),
-                "current_accuracy": round(cur_acc, 6),
-                "accuracy_drop": round(drop, 6),
-            },
+            timestamp=_utc_now(), details=details,
         )
 
     def check_label_drift(self, current_df: pd.DataFrame) -> DriftResult:
-        """Label/target distribution drift using chi-squared via Evidently.
-
-        Parameters
-        ----------
-        current_df : pd.DataFrame
-
-        Returns
-        -------
-        DriftResult
-        """
-        ts = _utc_now()
-        tgt_col = self.config.column_mapping.target_column
-
-        if not tgt_col or tgt_col not in current_df.columns:
-            logger.info("Target column %r missing — skipping label drift check.", tgt_col)
-            return DriftResult(drift_type="label", timestamp=ts)
-
-        if tgt_col not in self.baseline.reference_df.columns:
-            logger.info("Baseline lacks target column — skipping label drift check.")
-            return DriftResult(drift_type="label", timestamp=ts)
-
-        col_mapping = self._column_mapping()
-
-        report = Report(metrics=[ColumnDriftMetric(column_name=tgt_col)])
-        report.run(
-            reference_data=self.baseline.reference_df,
-            current_data=current_df,
-            column_mapping=col_mapping,
+        if self.config.task_type == "clustering":
+            return self._unavailable("label", "unlabeled_task", status="not_applicable")
+        return self._check_column_drift(
+            current_df, "label", self.config.column_mapping.target_column,
         )
 
-        report_dict = report.as_dict()
-        score: float = 0.0
-        detected: bool = False
-
-        for metric_result in report_dict.get("metrics", []):
-            result_data = metric_result.get("result", {})
-            score = result_data.get("drift_score", 0.0)
-            detected = bool(result_data.get("drift_detected", False))
-
-        threshold = self.config.get_threshold("label")
-        detected = bool(detected or score >= threshold)
-
+    @staticmethod
+    def _unavailable(drift_type, reason, *, status="unavailable", **details) -> DriftResult:
         return DriftResult(
-            drift_detected=detected,
-            drift_type="label",
-            drift_score=round(score, 6),
-            drifted_columns=[tgt_col] if detected else [],
-            timestamp=ts,
+            drift_type=drift_type, timestamp=_utc_now(), status=status,
+            reason=reason, details=details,
         )
 
-    # ── Helpers ─────────────────────────────────────────────────
+    def _threshold(self, drift_type: str) -> float:
+        threshold = self.config.get_threshold(drift_type)
+        if not math.isfinite(threshold) or threshold < 0:
+            raise ValueError("Drift threshold must be finite and non-negative")
+        return threshold
 
-    def _column_mapping(self) -> ColumnMapping:
-        """Build Evidently ``ColumnMapping`` from config."""
-        return ColumnMapping(
-            prediction=self.config.column_mapping.prediction_column,
-            target=self.config.column_mapping.target_column,
-            id=self.config.column_mapping.id_column,
+    def _check_column_drift(self, current_df, drift_type, column) -> DriftResult:
+        ref = self.baseline.reference_df
+        if not column or column not in current_df.columns or column not in ref.columns:
+            return self._unavailable(drift_type, "missing_column", column=column)
+        if current_df[column].dropna().empty or ref[column].dropna().empty:
+            return self._unavailable(drift_type, "no_observed_values", column=column)
+        method = self.config.get_method(drift_type)
+        method = {"auto": None, "chi_square": "chisquare"}.get(method, method)
+        threshold = self._threshold(drift_type)
+        report = Report(metrics=[ColumnDriftMetric(
+            column_name=column, stattest=method, stattest_threshold=threshold,
+        )])
+        numeric = self.config.task_type == "regression"
+        report.run(
+            reference_data=ref[[column]], current_data=current_df[[column]],
+            column_mapping=ColumnMapping(
+                target=None, prediction=None,
+                numerical_features=[column] if numeric else [],
+                categorical_features=[] if numeric else [column],
+            ),
         )
+        for result in report.as_dict().get("metrics", []):
+            data = result.get("result", {})
+            if "drift_detected" not in data or data.get("column_name", column) != column:
+                continue
+            try:
+                score = float(data["drift_score"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not math.isfinite(score):
+                continue
+            # Evidently owns score direction: p-values and distances differ.
+            detected = bool(data["drift_detected"])
+            return DriftResult(
+                drift_type=drift_type, drift_score=score, drift_detected=detected,
+                drifted_columns=[column] if detected else [], timestamp=_utc_now(),
+                details={
+                    "stattest_name": data.get("stattest_name"),
+                    "threshold": data.get("stattest_threshold", threshold),
+                    "reference_rows": len(ref), "current_rows": len(current_df),
+                    "reference_observed_rows": int(ref[column].notna().sum()),
+                    "current_observed_rows": int(current_df[column].notna().sum()),
+                },
+            )
+        return self._unavailable(drift_type, "missing_statistical_result", column=column)
 
 
 def _utc_now() -> str:
-    """ISO-8601 UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()

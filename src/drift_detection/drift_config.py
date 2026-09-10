@@ -25,9 +25,9 @@ class DriftMethods:
     """Statistical method to use for each drift type."""
 
     feature: str = "psi"
-    prediction: str = "ks"
+    prediction: str = "auto"
     concept: str = "accuracy_threshold"
-    label: str = "chi_square"
+    label: str = "auto"
 
 
 @dataclass
@@ -118,6 +118,21 @@ class DriftConfig:
     auto_retrain: AutoRetrainConfig = field(default_factory=AutoRetrainConfig)
     artifact_paths: ArtifactPaths = field(default_factory=ArtifactPaths)
     column_mapping: ColumnMapping = field(default_factory=ColumnMapping)
+    task_type: str = "classification"
+    concept_metric: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        metrics = {
+            "classification": {"accuracy", "balanced_accuracy", "f1_weighted"},
+            "regression": {"r2", "mae", "mse", "rmse"},
+            "clustering": set(),
+        }
+        if self.task_type not in metrics:
+            raise ValueError(f"Unsupported drift task_type: {self.task_type}")
+        if self.concept_metric is not None and self.concept_metric not in metrics[self.task_type]:
+            raise ValueError(
+                f"Concept metric {self.concept_metric!r} is not supported for {self.task_type}"
+            )
 
     # ── Factory ─────────────────────────────────────────────────
 
@@ -153,6 +168,8 @@ class DriftConfig:
             )
 
         return cls(
+            task_type=raw.get("task_type", "classification"),
+            concept_metric=raw.get("concept_metric"),
             methods=DriftMethods(**raw.get("drift_methods", {})),
             thresholds=DriftThresholds(**raw.get("thresholds", {})),
             schedule=DriftSchedule(**raw.get("schedule", {})),

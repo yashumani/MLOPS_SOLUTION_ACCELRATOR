@@ -4,17 +4,20 @@
 # Controls which statistical methods are used per drift type, when
 # thresholds trigger alerts or pipeline re-runs, and scheduling.
 
+task_type: classification           # Set from the monitored model's task
+concept_metric: null                # balanced_accuracy / r2 by task; clustering is not applicable
+
 drift_methods:
   feature: "psi"                     # PSI (Population Stability Index) for feature distributions
-  prediction: "ks"                   # Kolmogorov–Smirnov test for prediction column
+  prediction: "auto"                 # Evidently selects a task/data-appropriate test
   concept: "accuracy_threshold"      # Accuracy-drop check for concept drift
-  label: "chi_square"                # Chi-squared test for label distribution shift
+  label: "auto"                      # Categorical labels or continuous regression targets
 
 thresholds:
-  feature_drift: 0.15               # Mean PSI across features; > threshold = drift
-  prediction_drift: 0.10            # KS statistic on predictions; > threshold = drift
-  concept_drift_accuracy_drop: 0.05 # Absolute accuracy drop vs baseline; > threshold = drift
-  label_drift: 0.10                 # Chi-squared p-value complement; > threshold = drift
+  feature_drift: 0.15               # Per-column PSI threshold
+  prediction_drift: 0.10            # Test threshold; p-values drift BELOW, distances ABOVE
+  concept_drift_accuracy_drop: 0.05 # Legacy key: degradation in configured metric units
+  label_drift: 0.10                 # Test threshold, interpreted by Evidently's selected method
 
 # S14 consumes feature/concept thresholds from the shared block above. Every
 # remaining policy value is explicit so a code default cannot silently change

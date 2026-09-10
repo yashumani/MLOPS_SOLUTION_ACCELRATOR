@@ -61,9 +61,13 @@ class PipelineTrigger:
         """
         triggered_by: List[str] = []
         details: Dict[str, Dict] = {}
+        check_statuses = {
+            r.drift_type: {"status": r.status, "reason": r.reason} for r in results
+        }
+        incomplete = any(r.status == "unavailable" for r in results)
 
         for r in results:
-            if r.drift_detected:
+            if r.status == "evaluated" and r.drift_detected:
                 triggered_by.append(r.drift_type)
                 details[r.drift_type] = {
                     "score": r.drift_score,
@@ -82,9 +86,11 @@ class PipelineTrigger:
             "dry_run": self.dry_run,
             "timestamp": ts,
             "details": details,
+            "check_statuses": check_statuses,
+            "assessment_complete": not incomplete,
             "execution": {
                 "status": "not_requested",
-                "reason": "no_drift",
+                "reason": "incomplete_evidence" if incomplete else "no_drift",
             },
         }
 
@@ -104,6 +110,8 @@ class PipelineTrigger:
             else:
                 summary["execution"] = self._execute_trigger(summary)
                 self._log_to_mlflow(summary)
+        elif incomplete:
+            logger.warning("Drift evidence incomplete; do not interpret as no drift.")
         else:
             logger.info("No drift — no pipeline trigger needed.")
 
