@@ -348,33 +348,21 @@ def _run_evidently_drift(reference_df: pd.DataFrame, current_df: pd.DataFrame,
 
 def _run_concept_drift(final_report: dict, baseline_metadata: dict,
                        task_type: str) -> dict:
-    """Check concept drift by comparing current vs baseline metrics."""
-    concept = {"detected": False, "metric_name": "", "current": None,
-               "baseline": None, "drop": 0.0}
-
-    # Get current metric from final_report
-    selection = final_report.get("selection", {})
-    current_score = selection.get("score")
-    if current_score is None:
-        current_score = final_report.get("primary_metric_value")
-
-    # Get baseline metric from previous run
-    prev_score = baseline_metadata.get("champion_metric")
-
-    if current_score is None or prev_score is None:
-        return concept
-
-    metric_name = "balanced_accuracy" if task_type == "classification" else "r2_score"
-    drop = float(prev_score) - float(current_score)
-    threshold = 0.05
-
-    concept["metric_name"] = metric_name
-    concept["current"] = round(float(current_score), 4)
-    concept["baseline"] = round(float(prev_score), 4)
-    concept["drop"] = round(drop, 4)
-    concept["detected"] = drop > threshold
-
-    return concept
+    """Training-candidate score differences do not measure production drift."""
+    return {
+        "available": False,
+        "status": "not_applicable" if task_type == "clustering" else "unavailable",
+        "reason": (
+            "unlabeled_task" if task_type == "clustering"
+            else "same_model_predictions_and_ground_truth_required"
+        ),
+        "evidence_type": "training_baseline_profile",
+        "detected": False,
+        "metric_name": "",
+        "current": None,
+        "baseline": None,
+        "drop": None,
+    }
 
 
 def run_drift_monitor(args):
@@ -578,6 +566,11 @@ def run_drift_monitor(args):
     )
     champion_info["primary_metric"] = final_report.get("selection", {}).get("score")
     champion_info["phase"] = final_report.get("selection", {}).get("key", "unknown")
+    champion_info["metric_name"] = (
+        (final_report.get("selection_evidence") or {})
+        .get(champion_info["phase"], {})
+        .get("metric_name")
+    )
 
     # From registry_info
     champion_info["registered"] = not registry_info.get("registration_skipped", False)
@@ -607,6 +600,7 @@ def run_drift_monitor(args):
                 "n_rows": prev_meta.get("n_rows"),
                 "n_features": prev_meta.get("n_features"),
                 "champion_metric": prev_meta.get("champion_metric"),
+                "champion_metric_name": prev_meta.get("champion_metric_name"),
                 "champion_algorithm": prev_meta.get("champion_algorithm"),
             }
             logger.info(
@@ -639,7 +633,7 @@ def run_drift_monitor(args):
                 comparison_drift["baseline_status"] = "loaded_no_reference_data"
                 logger.info("  No reference CSV in baseline — skipping Evidently comparison")
 
-            # Concept drift (metric comparison)
+            # Production concept drift requires observation windows from one model.
             concept_result = _run_concept_drift(final_report, prev_meta, task_type)
             comparison_drift["concept_drift"] = concept_result
             if concept_result.get("detected"):
@@ -738,6 +732,7 @@ def run_drift_monitor(args):
         "n_features": n_features,
         "feature_statistics": baseline_stats,
         "champion_metric": champion_info.get("primary_metric"),
+        "champion_metric_name": champion_info.get("metric_name"),
         "champion_algorithm": champion_info.get("algorithm"),
         "psi_bins": 10,
         "reference_split": f"train_80pct_seed_{_seed}",
@@ -796,7 +791,8 @@ def run_drift_monitor(args):
                 mlflow.log_metric("evidently_drifted_share",
                                   ev.get("share_of_drifted_columns", 0.0))
             cd = comparison_drift.get("concept_drift", {})
-            if cd.get("detected") is not None:
+            mlflow.log_param("concept_drift_status", cd.get("status", "unavailable"))
+            if cd.get("available") and cd.get("status") == "evaluated":
                 mlflow.log_metric("concept_drift_detected",
                                   1 if cd.get("detected") else 0)
                 if cd.get("drop") is not None:
@@ -828,7 +824,7 @@ def run_drift_monitor(args):
         ev = comparison_drift.get("evidently", {})
         cd = comparison_drift.get("concept_drift", {})
         logger.info(f"  Comparison drift: Evidently={ev.get('dataset_drift', 'N/A')}, "
-                     f"Concept={cd.get('detected', 'N/A')}")
+                     f"Concept status={cd.get('status', 'unavailable')}")
     else:
         logger.info("  Comparison drift: no previous baseline")
     if warnings:

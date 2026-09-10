@@ -206,3 +206,19 @@ def test_yaml_loads_task_and_metric_without_reinterpreting_threshold(tmp_path):
 def test_invalid_task_metric_contract_is_rejected(task, metric):
     with pytest.raises(ValueError):
         DriftConfig(task_type=task, concept_metric=metric)
+
+
+@pytest.mark.parametrize("task", ["classification", "regression", "clustering"])
+def test_training_candidate_score_changes_are_not_production_concept_drift(task):
+    from src.steps.s13_drift_monitor import _run_concept_drift
+
+    result = _run_concept_drift(
+        {"selection": {"score": -100.0}},
+        {"champion_metric": 100.0},
+        task,
+    )
+    assert result["available"] is False
+    assert result["detected"] is False
+    assert result["drop"] is None
+    assert result["metric_name"] == ""
+    assert result["status"] == ("not_applicable" if task == "clustering" else "unavailable")

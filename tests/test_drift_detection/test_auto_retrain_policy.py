@@ -115,3 +115,37 @@ def test_policy_does_not_submit_from_smoke_test_psi_alone() -> None:
     assert decision.should_submit is False
     assert decision.signals["max_feature_psi"] == 0.0
     assert decision.signals["smoke_test_max_feature_psi"] == 0.42
+
+
+def test_unavailable_concept_evidence_cannot_request_retraining_or_promotion() -> None:
+    report = _base_report()
+    report["comparison_drift"]["concept_drift"] = {
+        "available": False,
+        "status": "unavailable",
+        "reason": "same_model_predictions_and_ground_truth_required",
+        "detected": True,
+        "drop": 0.9,
+        "baseline": 0.1,
+        "current": 0.99,
+    }
+    decision = evaluate_auto_retrain_policy(
+        report, final_report={"selection": {"score": 0.99}},
+        policy=AutoRetrainPolicyConfig(allow_auto_promotion=True),
+    )
+    assert decision.outcome == "observe_only"
+    assert decision.should_submit is False
+    assert decision.eligible_for_promotion is False
+    assert decision.signals["concept_drift_detected"] is False
+    assert decision.signals["concept_drift_status"] == "unavailable"
+    assert decision.signals["score_delta"] is None
+
+
+def test_unavailable_labels_do_not_suppress_real_feature_drift() -> None:
+    report = _base_report()
+    report["comparison_drift"]["feature_psi_scores"]["age"] = 0.5
+    report["comparison_drift"]["concept_drift"] = {
+        "available": False, "status": "unavailable", "drop": None,
+    }
+    decision = evaluate_auto_retrain_policy(report)
+    assert decision.outcome == "candidate_retrain"
+    assert decision.signals["concept_drift_detected"] is False

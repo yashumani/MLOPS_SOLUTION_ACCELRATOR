@@ -97,7 +97,13 @@ def evaluate_auto_retrain_policy(
     drifted_share = drifted_count / feature_count if feature_count else 0.0
 
     concept_drop = _as_float(concept.get("drop"), 0.0)
-    concept_detected = bool(concept.get("detected")) or concept_drop >= policy.concept_drift_drop
+    concept_available = (
+        concept.get("available", True)
+        and concept.get("status", "evaluated") == "evaluated"
+    )
+    concept_detected = bool(concept_available) and (
+        bool(concept.get("detected")) or concept_drop >= policy.concept_drift_drop
+    )
     dataset_drift = bool(evidently.get("dataset_drift"))
     comparison_available = bool(comparison.get("available"))
     baseline_status = comparison.get("baseline_status") or (
@@ -184,7 +190,9 @@ def evaluate_auto_retrain_policy(
         "comparison_available": comparison_available,
         "dataset_drift": dataset_drift,
         "concept_drift_detected": concept_detected,
-        "concept_drift_drop": concept_drop,
+        "concept_drift_status": concept.get("status", "evaluated"),
+        "concept_drift_reason": concept.get("reason", ""),
+        "concept_drift_drop": concept_drop if concept_available else None,
         "max_feature_psi": max_psi,
         "mean_feature_psi": mean_psi,
         "smoke_test_max_feature_psi": smoke_max_psi,
@@ -232,6 +240,8 @@ def _candidate_registered(drift_report: dict[str, Any], registry_info: dict[str,
 
 
 def _score_delta(final_report: dict[str, Any], concept: dict[str, Any]) -> float | None:
+    if not concept.get("available", True) or concept.get("status", "evaluated") != "evaluated":
+        return None
     current = (final_report.get("selection") or {}).get("score")
     if current is None:
         current = concept.get("current")
