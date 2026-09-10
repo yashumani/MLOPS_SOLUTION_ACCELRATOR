@@ -44,6 +44,12 @@ DATASTORE_CANARY_TAGS = {
     "evidence_scope": "platform-recovery",
     "shared_datastore_change_required": "true",
 }
+DATASTORE_TRANSPORT_CANARY_TAGS = {
+    "evidence_scope": "workspace-datastore-transport",
+    "shared_datastore_change_required": "false",
+    "production_change": "false",
+    "rbac_change": "false",
+}
 DATASTORE_CANARY_OUTPUT = "probe"
 DATASTORE_CANARY_MARKER = "workspace_datastore_probe.json"
 DATASTORE_CANARY_STATUS = "workspace_datastore_write_succeeded"
@@ -171,9 +177,14 @@ def verify_live_release_gates(
         str(key): str(value)
         for key, value in (getattr(canary, "tags", None) or {}).items()
     }
+    expected_canary_tags = (
+        DATASTORE_TRANSPORT_CANARY_TAGS
+        if canary_tags.get("evidence_scope") == "workspace-datastore-transport"
+        else DATASTORE_CANARY_TAGS
+    )
     invalid_tags = [
         f"{key}={canary_tags.get(key)!r}"
-        for key, expected in DATASTORE_CANARY_TAGS.items()
+        for key, expected in expected_canary_tags.items()
         if canary_tags.get(key) != expected
     ]
     if invalid_tags:
@@ -209,6 +220,8 @@ def verify_live_release_gates(
             f"workspaceblobstore is not verified: {exc}"
         ) from exc
     marker, marker_sha256 = _load_probe_marker(output_root)
+    if marker.get("run_id") != datastore_canary_job:
+        raise ReleaseGateError("Datastore canary marker run_id does not match its job")
     marker_created_at = _parse_utc_timestamp(
         marker.get("created_at"), field="created_at"
     )
@@ -231,7 +244,7 @@ def verify_live_release_gates(
         "datastore_canary": {
             "job_name": datastore_canary_job,
             "status": canary_status,
-            "tags": {key: canary_tags[key] for key in DATASTORE_CANARY_TAGS},
+            "tags": {key: canary_tags[key] for key in expected_canary_tags},
             "default_artifact_file_count": len(artifact_files),
             "probe_output": DATASTORE_CANARY_OUTPUT,
             "probe_marker_sha256": marker_sha256,

@@ -89,6 +89,8 @@ def main() -> int:
                 str(source / "tests/test_phaseb_candidate_deadlines.py"),
                 str(source / "tests/test_phasec_aggregate_contract.py"),
                 str(source / "tests/test_same_family_hpo.py"),
+                str(source / "tests/test_qualification_batch_runner.py"),
+                str(source / "tests/test_qualification_archive_bootstrap.py"),
             ], "drift-tests.log", env)
         report["status"] = "passed"
         return 0

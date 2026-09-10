@@ -69,6 +69,9 @@ def test_bootstrap_binds_verified_archive_identity(
     assert bootstrap.os.environ["MLOPS_AZURE_CREDENTIAL_MODE"] == "azureml_obo"
     assert bootstrap.os.environ["MLOPS_SOURCE_ARCHIVE_SHA256"] == digest
     assert observed["run_name"] == "__main__"
+    arguments = observed["argv"]
+    assert arguments[arguments.index("--max-hours") + 1] == "2"
+    assert arguments[arguments.index("--poll-minutes") + 1] == "15"
     assert observed["argv"][-2:] == [
         "--scenario",
         "classification-healthcare-heart-disease",

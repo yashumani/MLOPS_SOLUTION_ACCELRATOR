@@ -129,7 +129,9 @@ def main() -> None:
         "--output-dir",
         str(output / "wave"),
         "--max-hours",
-        "20",
+        "2",
+        "--poll-minutes",
+        "15",
     ]
     for scenario in scenarios:
         arguments.extend(("--scenario", scenario))

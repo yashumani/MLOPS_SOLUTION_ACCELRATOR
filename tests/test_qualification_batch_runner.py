@@ -199,6 +199,61 @@ def test_live_release_gates_reject_enabled_legacy_schedule(tmp_path: Path) -> No
     assert jobs.download_calls == []
 
 
+def test_transport_only_canary_does_not_require_a_shared_datastore_change(tmp_path: Path) -> None:
+    module = _load_module()
+    now = datetime(2026, 9, 10, 17, 30, tzinfo=timezone.utc)
+    jobs = _FakeJobs(marker_created_at=now, tags=module.DATASTORE_TRANSPORT_CANARY_TAGS)
+    evidence = module.verify_live_release_gates(
+        _fake_client(jobs=jobs), datastore_canary_job="datastore-canary",
+        download_root=tmp_path, now_utc=now,
+    )
+    assert evidence["state"] == "passed"
+    assert evidence["datastore_canary"]["tags"]["shared_datastore_change_required"] == "false"
+    assert jobs.download_calls == [None, "probe"]
+
+
+@pytest.mark.parametrize("field", ["shared_datastore_change_required", "production_change", "rbac_change"])
+def test_transport_only_canary_rejects_mutation_tags(tmp_path: Path, field: str) -> None:
+    module = _load_module()
+    now = datetime(2026, 9, 10, 17, 30, tzinfo=timezone.utc)
+    tags = {**module.DATASTORE_TRANSPORT_CANARY_TAGS, field: "true"}
+    jobs = _FakeJobs(marker_created_at=now, tags=tags)
+    with pytest.raises(module.ReleaseGateError, match="identity tags"):
+        module.verify_live_release_gates(
+            _fake_client(jobs=jobs), datastore_canary_job="datastore-canary",
+            download_root=tmp_path, now_utc=now,
+        )
+    assert jobs.download_calls == []
+
+
+def test_canary_marker_cannot_be_reused_from_another_job(tmp_path: Path) -> None:
+    module = _load_module()
+    now = datetime(2026, 9, 10, 17, 30, tzinfo=timezone.utc)
+    jobs = _FakeJobs(marker_created_at=now, tags=module.DATASTORE_TRANSPORT_CANARY_TAGS)
+    with pytest.raises(module.ReleaseGateError, match="run_id does not match"):
+        module.verify_live_release_gates(
+            _fake_client(jobs=jobs), datastore_canary_job="different-job",
+            download_root=tmp_path, now_utc=now,
+        )
+
+
+@pytest.mark.parametrize("failure", ["stale", "missing_marker", "missing_artifacts", "enabled_schedule"])
+def test_transport_only_canary_preserves_all_live_gates(tmp_path: Path, failure: str) -> None:
+    module = _load_module()
+    now = datetime(2026, 9, 10, 17, 30, tzinfo=timezone.utc)
+    jobs = _FakeJobs(
+        marker_created_at=now - timedelta(hours=25) if failure == "stale" else now,
+        tags=module.DATASTORE_TRANSPORT_CANARY_TAGS,
+        write_marker=failure != "missing_marker",
+        write_artifact=failure != "missing_artifacts",
+    )
+    with pytest.raises(module.ReleaseGateError):
+        module.verify_live_release_gates(
+            _fake_client(jobs=jobs, enabled_name=module.LEGACY_SCHEDULE_NAMES[0] if failure == "enabled_schedule" else None),
+            datastore_canary_job="datastore-canary", download_root=tmp_path, now_utc=now,
+        )
+
+
 def test_live_release_gates_reject_incomplete_canary(tmp_path: Path) -> None:
     module = _load_module()
     now = datetime(2026, 9, 3, 17, 30, tzinfo=timezone.utc)
