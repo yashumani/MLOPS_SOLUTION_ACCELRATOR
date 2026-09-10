@@ -5,6 +5,11 @@ inspect pipeline jobs without touching the Azure portal.
 
 ## Quick Start
 
+Run these commands only on the approved existing server or Azure compute
+instance. This project's release work prohibits local application execution.
+Confirm the host, identity, durable state and HTTPS configuration before
+starting a shared service; these commands do not provision or approve a host.
+
 ```bash
 # 1. Copy and fill environment variables
 cp .env.example .env
@@ -42,19 +47,30 @@ uvicorn api.main:app --host 127.0.0.1 --port 8000
 
 ## Authentication
 
-All `/api/v1/pipelines/*` and `/api/v1/configs/*` endpoints require an
-`X-API-Key` header matching the `API_KEY` environment variable.
+Protected pipeline and configuration routes use the selected deployment profile:
 
-`API_DEPLOYMENT_PROFILE=development` preserves the local workflow. The only
-implemented release profile is `private_single_operator`: one private API
-process and one controller writer, explicit HTTPS origins, a server key of at
-least 32 characters, config mutation disabled, and absolute durable paths for
-submitter state, request records, retraining decisions, and notification
-reports. Startup rejects an unsafe private profile. `multi_user` fails closed
-until Entra/OIDC authorization and transactional shared state are implemented.
+- `development` and `private_single_operator` require `X-API-Key` matching
+  `API_KEY`. The private profile requires at least 32 characters, explicit HTTPS
+  origins, reload/config mutation disabled and absolute durable state/report
+  paths. Neither profile authorizes a public shared deployment.
+- `multi_user` requires a single-tenant Entra delegated bearer token, an allowed
+  client/application scope and a server-managed user record. Startup requires
+  the configured bootstrap allowlist to contain exactly one admin, initially
+  Yashu's confirmed tenant/object identity. API keys are not a bearer fallback.
+  Admins manage users through `/api/v1/users`; roles are `viewer`, `operator`
+  and `admin`. Mutating operations require operator/admin access and user
+  management requires admin access. Request-audit writes fail closed when
+  durable state is unavailable.
 
-The React UI never reads a key from Vite or public runtime configuration. The
-operator enters it for the in-memory browser session.
+The multi-user configuration requires the existing Entra application bindings,
+explicit HTTPS origins/redirect and an absolute local-disk
+`MLOPS_OPERATIONAL_STATE_DB` SQLite path. This is a single-host transactional
+state implementation, not a distributed state service. Do not put SQLite WAL
+on a network filesystem or infer host/identity approval from credentials.
+
+The React UI does not read a server key from Vite/public runtime configuration.
+The full website remains optional for release. Implemented authentication and
+green tests do not replace live hosted authorized/unauthorized request evidence.
 
 ## Environment Variables
 

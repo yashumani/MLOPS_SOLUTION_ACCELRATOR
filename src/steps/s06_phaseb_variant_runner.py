@@ -83,6 +83,7 @@ from utils.model_bundle import (
 from utils.common_evaluator import (
     EvaluationSpec,
     build_fold_local_pipeline,
+    build_training_resampler,
     evaluate_candidate,
 )
 
@@ -2342,6 +2343,26 @@ def train_flaml_variant(
         }, False
 
 
+def fit_resampled_phaseb_estimator(model, features, target, sampler):
+    """Fit the selected parameters using the same training sampler as CV."""
+    from sklearn.base import clone
+
+    if sampler is None or target is None:
+        raise ValueError("Resampled final fitting requires a sampler and target")
+    fitted = clone(model)
+    fit_features, fit_target = sampler.fit_resample(
+        features.copy(deep=True), np.array(target, copy=True)
+    )
+    fitted.fit(fit_features, fit_target)
+    return fitted, {
+        "status": "success",
+        "sampler": type(sampler).__name__,
+        "training_rows_before": len(features),
+        "training_rows_after": len(fit_features),
+        "holdout_used": False,
+    }
+
+
 def run_variant_with_nested_mlflow(
     variant: VariantConfig,
     df: pd.DataFrame,
@@ -2571,6 +2592,14 @@ def run_variant_with_nested_mlflow(
                         "mlflow_run_id": child_run_id,
                     },
                 ), None
+            final_sampler = build_training_resampler(
+                variant.to_dict(), random_seed
+            )
+            if final_sampler is not None:
+                if task_type != "classification":
+                    raise ValueError("Imbalance resampling requires classification")
+                # Keep final fitting inside the original candidate deadline.
+                remaining_evaluation_seconds *= 0.80
             raw_features = (
                 df.drop(columns=[target_column])
                 if target_column and target_column in df
@@ -2639,6 +2668,46 @@ def run_variant_with_nested_mlflow(
                         "mlflow_run_id": child_run_id,
                     },
                 ), None
+            final_fit_evidence = None
+            if final_sampler is not None:
+                remaining_fit_seconds = min(
+                    float(CANDIDATE_ENGINE_TIMEOUT_CAP_SECONDS),
+                    max(0.0, attempt_deadline - time.time()),
+                )
+                try:
+                    if remaining_fit_seconds <= 0:
+                        raise HardDeadlineExceeded("No time remains for recipe final fitting")
+                    trained_model, final_fit_evidence = run_with_hard_timeout(
+                        fit_resampled_phaseb_estimator,
+                        model,
+                        df_processed.drop(columns=[target_column]),
+                        df_processed[target_column],
+                        final_sampler,
+                        timeout_seconds=remaining_fit_seconds,
+                    )
+                except Exception as exc:
+                    fit_timed_out = isinstance(exc, HardDeadlineExceeded)
+                    return VariantResult(
+                        variant_id=variant.variant_id,
+                        engine=engine,
+                        algorithm=metrics.get("algorithm", "unknown"),
+                        metrics={"common_evaluator": evidence.to_dict()},
+                        runtime_sec=time.time() - start_time,
+                        timed_out=fit_timed_out,
+                        failed=True,
+                        failure_reason=f"Recipe final fitting failed: {exc}",
+                        candidate_id=realized_candidate.candidate_id,
+                        candidate_record={
+                            **realized_candidate_payload,
+                            "status": "timed_out" if fit_timed_out else "failed",
+                            "timed_out": fit_timed_out,
+                            "censored": fit_timed_out,
+                            "failure_reason": f"Recipe final fitting failed: {exc}",
+                            "mlflow_run_id": child_run_id,
+                        },
+                        mlflow_run_id=child_run_id,
+                    ), None
+                mlflow.log_dict(final_fit_evidence, "recipe_final_fit.json")
             metrics = {
                 **evidence.metrics,
                 "model_memory_plan": metrics.get("model_memory_plan"),
@@ -2648,6 +2717,8 @@ def run_variant_with_nested_mlflow(
                 "timed_out": False,
                 "common_evaluator": evidence.to_dict(),
             }
+            if final_fit_evidence is not None:
+                metrics["recipe_final_fit"] = final_fit_evidence
 
             # Hard budget guard: check after training
             if deadline_guard(attempt_deadline, "after_training"):
