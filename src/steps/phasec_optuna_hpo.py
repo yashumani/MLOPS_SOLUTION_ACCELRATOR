@@ -292,12 +292,22 @@ def finish_phasec_candidate_run(
     client.set_terminated(run_id, status=status)
 
 
-def complete_phaseb_recipe(manifest: dict) -> dict | None:
+def complete_phaseb_recipe(
+    manifest: dict, task_type: str | None = None,
+) -> dict | None:
     """Return only an explicit complete recipe mapping."""
     recipe = manifest.get("full_recipe")
     if recipe is None and isinstance(manifest.get("recipe"), dict):
         recipe = manifest["recipe"]
     if not isinstance(recipe, dict) or not recipe:
+        return None
+    task_type = task_type or manifest.get("task_type") or recipe.get("task_type") or "classification"
+    if task_type not in {"classification", "regression", "clustering"}:
+        return None
+    if any(
+        declared is not None and declared != task_type
+        for declared in (manifest.get("task_type"), recipe.get("task_type"))
+    ):
         return None
     stage3 = recipe.get("stage3_preprocessing")
     stage4 = recipe.get("stage4_feature_engineering")
@@ -307,7 +317,6 @@ def complete_phaseb_recipe(manifest: dict) -> dict | None:
         "imputation",
         "encoding",
         "scaling",
-        "imbalance_handling",
     ):
         if not isinstance(stage3.get(field), dict) or not stage3[field]:
             return None
@@ -323,7 +332,15 @@ def complete_phaseb_recipe(manifest: dict) -> dict | None:
         return None
     if not stage3["scaling"].get("method"):
         return None
-    if not stage3["imbalance_handling"].get("method"):
+    imbalance = stage3.get("imbalance_handling")
+    # VariantConfig serializes absent class resampling as null for these tasks.
+    # Preserve that exact recipe; do not fabricate a different preprocessing plan.
+    if task_type in {"regression", "clustering"}:
+        if imbalance is not None and (
+            not isinstance(imbalance, dict) or imbalance.get("method") != "none"
+        ):
+            return None
+    elif not isinstance(imbalance, dict) or not imbalance.get("method"):
         return None
     if not feature_selection.get("method"):
         return None
@@ -620,7 +637,7 @@ def main():
             champion_metadata,
         )
         return
-    full_phaseb_recipe = complete_phaseb_recipe(champion_metadata)
+    full_phaseb_recipe = complete_phaseb_recipe(champion_metadata, task_type=task_type)
     if full_phaseb_recipe is None:
         _write_skipped_unsupported(
             args,

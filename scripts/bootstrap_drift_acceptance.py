@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run drift and Phase B contracts only inside existing Azure ML compute."""
+"""Run drift and candidate contracts only inside existing Azure ML compute."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def main() -> int:
         package.extractall(source)
     output.mkdir(parents=True, exist_ok=True)
     report = {
-        "scope": "azure_ml_drift_and_phaseb_contract_acceptance",
+        "scope": "azure_ml_drift_and_candidate_contract_acceptance",
         "job_name": os.environ["AZUREML_RUN_ID"],
         "source_git_commit": commit,
         "source_archive_sha256": expected,
@@ -87,6 +87,8 @@ def main() -> int:
                 str(source / "tests/test_orchestration/test_s14_retrain_decision.py"),
                 str(source / "tests/test_phaseb_final_fit_contract.py"),
                 str(source / "tests/test_phaseb_candidate_deadlines.py"),
+                str(source / "tests/test_phasec_aggregate_contract.py"),
+                str(source / "tests/test_same_family_hpo.py"),
             ], "drift-tests.log", env)
         report["status"] = "passed"
         return 0

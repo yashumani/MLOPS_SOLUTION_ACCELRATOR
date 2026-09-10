@@ -15,6 +15,7 @@ from src.steps.phasec_optuna_hpo import (
     phasec_candidate_id,
     seeded_optuna_sampler,
 )
+from src.utils.common_evaluator import build_training_resampler
 
 
 class SlowFinalEstimator:
@@ -141,3 +142,73 @@ def test_phasec_final_fit_returns_fitted_estimator():
         timeout_seconds=10.0,
     )
     assert fitted.predict([[3.0]]).tolist() == [1.0]
+
+
+@pytest.mark.parametrize("task", ["regression", "clustering"])
+@pytest.mark.parametrize("imbalance", [None, "absent", {"method": "none"}])
+def test_nonclassification_recipe_without_resampling_is_complete(task, imbalance):
+    recipe = {
+        "task_type": task,
+        "stage3_preprocessing": {
+            "imputation": {"method": "mean"},
+            "encoding": {"categorical_method": "label"},
+            "scaling": {"method": "standard"},
+            "outlier_handling": None,
+        },
+        "stage4_feature_engineering": {"feature_selection": {"method": "none"}},
+    }
+    if imbalance != "absent":
+        recipe["stage3_preprocessing"]["imbalance_handling"] = imbalance
+    before = json.dumps(recipe, sort_keys=True)
+    actual = complete_phaseb_recipe({"full_recipe": recipe, "task_type": task}, task_type=task)
+    assert actual == recipe
+    assert actual is not recipe
+    assert json.dumps(recipe, sort_keys=True) == before
+    assert build_training_resampler(actual, 42) is None
+
+
+@pytest.mark.parametrize("task", ["regression", "clustering"])
+@pytest.mark.parametrize("imbalance", [{}, {"method": "smote"}, "none", False])
+def test_nonclassification_recipe_rejects_invalid_or_active_resampling(task, imbalance):
+    recipe = {
+        "task_type": task,
+        "stage3_preprocessing": {
+            "imputation": {"method": "mean"},
+            "encoding": {"categorical_method": "label"},
+            "scaling": {"method": "standard"},
+            "imbalance_handling": imbalance,
+        },
+        "stage4_feature_engineering": {"feature_selection": {"method": "none"}},
+    }
+    assert complete_phaseb_recipe({"full_recipe": recipe}, task_type=task) is None
+
+
+@pytest.mark.parametrize("task", ["classification", "unknown"])
+def test_recipe_task_cannot_be_reinterpreted_to_bypass_resampling_contract(task):
+    recipe = {
+        "task_type": "regression",
+        "stage3_preprocessing": {
+            "imputation": {"method": "mean"},
+            "encoding": {"categorical_method": "label"},
+            "scaling": {"method": "standard"},
+            "imbalance_handling": None,
+        },
+        "stage4_feature_engineering": {"feature_selection": {"method": "none"}},
+    }
+    assert complete_phaseb_recipe({"recipe": recipe}, task_type=task) is None
+
+
+@pytest.mark.parametrize("task", ["regression", "clustering"])
+def test_nonclassification_still_requires_learned_transform_configuration(task):
+    recipe = {
+        "task_type": task,
+        "stage3_preprocessing": {
+            "imputation": {"method": "mean"},
+            "encoding": {"categorical_method": "label"},
+            "scaling": {"method": "standard"},
+            "imbalance_handling": None,
+        },
+        "stage4_feature_engineering": {"feature_selection": {"method": "none"}},
+    }
+    del recipe["stage3_preprocessing"]["encoding"]
+    assert complete_phaseb_recipe({"recipe": recipe}, task_type=task) is None

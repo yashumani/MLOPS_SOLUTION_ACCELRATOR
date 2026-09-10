@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import time
 from pathlib import Path
 import sys
@@ -44,11 +45,20 @@ def validate_and_log_outputs(output_path: Path, output_type: str = "model") -> d
 
 
 def load_json(path: str):
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except Exception:
-        return None
+    def reject_nonfinite(value):
+        raise ValueError(f"Phase C metrics contain non-finite JSON number: {value}")
+
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f, parse_constant=reject_nonfinite)
+    if not isinstance(payload, dict):
+        raise ValueError("Phase C metrics must be a JSON object")
+    if payload.get("status") not in {"success", "skipped_unsupported"}:
+        raise ValueError("Phase C metrics contain an unsupported or missing status")
+    if payload["status"] == "skipped_unsupported" and not str(
+        payload.get("reason") or ""
+    ).strip():
+        raise ValueError("Skipped Phase C metrics must include a reason")
+    return payload
 
 
 def has_exact_model_bundle(path: Path) -> bool:
@@ -77,22 +87,33 @@ def main():
     print("STEP S09: AGGREGATE PHASE C")
     print("=" * 80)
 
-    metrics = load_json(args.hpo_metrics) or {}
+    metrics = load_json(args.hpo_metrics)
+    candidate_id = metrics.get("candidate_id") or (
+        metrics.get("model_bundle") or {}
+    ).get("candidate_id")
     report = {
+        "schema_version": 2,
         "phase": "C",
+        "status": metrics["status"],
+        "reason": metrics.get("reason"),
+        "candidate_id": candidate_id,
+        "execution_id": metrics.get("execution_id"),
+        "config_hash": metrics.get("config_hash"),
+        "preserve_phaseb": metrics.get("preserve_phaseb", False),
+        # Keep the upstream decision intact, including skip and trial evidence.
+        "hpo_evidence": metrics,
         "selection": {
             "score": metrics.get("best_score"),
-            "params": metrics.get("best_params")
+            "params": metrics.get("best_params"),
+            "metric_name": metrics.get("selection_metric"),
         },
         "model_copied": False,
+        "candidate_usable": False,
     }
     
     # Use absolute path resolution for Azure ML outputs
     report_path = Path(args.report_out).resolve()
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(report_path, "w") as f:
-        json.dump(report, f, indent=2)
-    print(f"  ✅ Report saved: {report_path} ({report_path.stat().st_size:,} bytes)")
     
     # 📊 CREATE OUTPUTS FOLDER FOR AZURE ML STUDIO VISIBILITY
     import shutil
@@ -100,27 +121,22 @@ def main():
     outputs_dir.mkdir(parents=True, exist_ok=True)
     print(f"\n📊 PHASE C AGGREGATE TO outputs/ FOLDER:")
     
-    # 1. Copy report to outputs
-    shutil.copy2(report_path, outputs_dir / "phasec_aggregate_report.json")
-    print(f"  ✅ Aggregate report copied: phasec_aggregate_report.json")
-    
-    # 2. Save champion summary
-    champion_summary = {
-        "phase": "C",
-        "best_score": metrics.get("best_score"),
-        "best_params": metrics.get("best_params"),
-        "optimizer": "optuna"
-    }
-    with open(outputs_dir / "phasec_champion_summary.json", 'w') as f:
-        json.dump(champion_summary, f, indent=2)
-    print(f"  ✅ Champion summary: phasec_champion_summary.json")
-
     src = Path(args.optimized_model)
     print(f"🏆 Phase C Aggregate: HPO best_score={metrics.get('best_score')}")
     
-    if metrics.get("status") == "success" and has_exact_model_bundle(src):
-        import shutil
+    if metrics["status"] == "success":
         try:
+            score = metrics.get("best_score")
+            if (
+                isinstance(score, bool)
+                or not isinstance(score, (int, float))
+                or not math.isfinite(score)
+            ):
+                raise ValueError("Successful HPO requires a finite numeric best_score")
+            if not isinstance(candidate_id, str) or not candidate_id.strip():
+                raise ValueError("Successful HPO requires an exact candidate identity")
+            if not has_exact_model_bundle(src):
+                raise ValueError("Successful HPO is missing its exact ModelBundle")
             # Azure ML-safe copy with absolute path resolution
             output_path = Path(args.champion_out).resolve()
             output_path.mkdir(parents=True, exist_ok=True)
@@ -145,7 +161,6 @@ def main():
                         copied_count += 1
                 print(f"  ✅ Copied {copied_count} model files to {output_path}")
             
-            report["model_copied"] = True
             report["files_copied"] = copied_count
             (output_path / "selection_manifest.json").write_text(
                 json.dumps(
@@ -203,23 +218,23 @@ def main():
                 print(f"  ❌ Output validation failed:")
                 for err in validation["errors"]:
                     print(f"     - {err}")
-            if not has_exact_model_bundle(output_path):
-                (output_path / ".no_model").write_text(
-                    "Source had no exact ModelBundle"
-                )
-                print("  ⚠️  No exact ModelBundle — wrote .no_model sentinel")
-                report["model_copied"] = False
+            if not validation["valid"] or not has_exact_model_bundle(output_path):
+                raise ValueError("Copied HPO output is missing its exact ModelBundle")
+            report["model_copied"] = True
+            report["candidate_usable"] = True
         except Exception as e:
             print(f"  ❌ Error copying model: {e}")
             import traceback
             traceback.print_exc()
             report["model_copy_error"] = str(e)
+            report["status"] = "failed"
+            report["reason"] = f"phasec_aggregate_contract_failed: {e}"
     else:
         # T4: Create output folder with sentinel file so downstream knows no model was produced
         output_path = Path(args.champion_out).resolve()
         output_path.mkdir(parents=True, exist_ok=True)
         (output_path / ".no_model").write_text(
-            "HPO produced no exact successful ModelBundle"
+            str(metrics["reason"]), encoding="utf-8",
         )
         print(
             f"  ⚠️  HPO output is skipped/incomplete: {src} "
@@ -227,13 +242,33 @@ def main():
         )
     
     # Update report with final status (absolute path)
-    with open(report_path, "w") as f:
+    if not report["candidate_usable"]:
+        report["selection"]["score"] = None
+        report["selection"]["params"] = None
+    with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
+    shutil.copy2(report_path, outputs_dir / "phasec_aggregate_report.json")
+    champion_summary = {
+        "phase": "C",
+        "status": report["status"],
+        "reason": report["reason"],
+        "candidate_id": candidate_id,
+        "candidate_usable": report["candidate_usable"],
+        "model_copied": report["model_copied"],
+        "best_score": metrics.get("best_score") if report["candidate_usable"] else None,
+        "best_params": metrics.get("best_params") if report["candidate_usable"] else None,
+        "optimizer": "optuna",
+        "hpo_evidence": metrics,
+    }
+    (outputs_dir / "phasec_champion_summary.json").write_text(
+        json.dumps(champion_summary, indent=2), encoding="utf-8",
+    )
     print(f"  ✅ Final report updated: {report_path}")
 
     # ── Emit stage signal ──────────────────────────────────────────────
     _elapsed = time.time() - _t0
-    _hpo_score = metrics.get("best_score")
+    _usable = report["candidate_usable"]
+    _hpo_score = metrics.get("best_score") if _usable else None
     try:
         import yaml
         with open(args.config, "r") as f:
@@ -248,12 +283,18 @@ def main():
             task_type=_task,
             config_name=Path(args.config).name,
             candidate_count_in=1,
-            candidate_count_out=1 if _hpo_score is not None else 0,
+            candidate_count_out=1 if _usable else 0,
             best_score=float(_hpo_score) if _hpo_score is not None else None,
-            best_metric_name="best_score",
+            best_metric_name=metrics.get("selection_metric") or "best_score",
             compute_time_sec=round(_elapsed, 2),
-            recommendation="proceed" if _hpo_score is not None else "stop",
-            recommendation_reason="HPO optimised model ready" if _hpo_score else "HPO produced no score",
+            recommendation="proceed" if _usable else "stop",
+            recommendation_reason="HPO optimised model ready" if _usable else report["reason"],
+            extra={
+                "hpo_status": metrics["status"],
+                "aggregate_status": report["status"],
+                "preserve_phaseb": report["preserve_phaseb"],
+                "phaseb_candidate_id": metrics.get("phaseb_candidate_id"),
+            },
         )
         write_stage_signal(sig, out_dir="outputs", filename="phasec_stage_signal.json")
     except Exception as _sig_err:
@@ -262,16 +303,21 @@ def main():
     # ── Candidate Ledger ──────────────────────────────────────────────────
     try:
         _norm = normalize_metrics(_task, {"best_score": _hpo_score} if _hpo_score is not None else {})
+        _norm.update(
+            primary_metric_name=metrics.get("selection_metric") or "best_score",
+            primary_metric_value=_hpo_score,
+        )
         _row = make_row(
             stage="phase_c", step_name="s09", engine="optuna",
-            candidate_id="phasec_hpo_champion",
+            candidate_id=candidate_id or f"phasec_unavailable:{metrics.get('phaseb_candidate_id') or 'unknown'}",
             task_type=_task,
             dataset_id=Path(args.config).name,
-            status="ok" if _hpo_score is not None else "failed",
+            status="ok" if _usable else report["status"],
+            failure_reason="" if _usable else report["reason"],
             compute_time_sec=round(_elapsed, 2),
             source_path="src/steps/aggregate_phasec.py",
             recipe_name=metrics.get("algorithm", "optuna_hpo"),
-            is_stage_best=True,
+            is_stage_best=_usable,
             params_json=json.dumps(metrics.get("best_params", {}), default=str),
             **_norm,
         )
@@ -282,6 +328,9 @@ def main():
         )
     except Exception as _ledger_err:
         print(f"⚠️  Candidate ledger write failed (non-fatal): {_ledger_err}")
+
+    if report["status"] == "failed":
+        raise RuntimeError(report["reason"])
 
 
 if __name__ == "__main__":
